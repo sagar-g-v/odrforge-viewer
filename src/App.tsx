@@ -1,0 +1,331 @@
+import type { PickingInfo } from "@deck.gl/core";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
+import Inspector, { type Selection } from "./components/Inspector";
+import SidePanel, { type Tab } from "./components/SidePanel";
+import { listServerFiles, useNetwork } from "./data/useNetwork";
+import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
+import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
+import { parseFindings, type Finding } from "./review/findings";
+import { probe } from "./xodr/query";
+
+const STATUS_COLOR: Record<string, [number, number, number, number]> = {
+  open: [245, 184, 74, 255], fixed: [62, 207, 142, 255], question: [90, 169, 255, 255], wontfix: [140, 146, 158, 255],
+};
+const LEVEL_COLOR: Record<string, [number, number, number, number]> = {
+  error: [255, 92, 92, 230], warning: [255, 170, 60, 220], info: [120, 170, 255, 210],
+};
+
+const store = (k: string, v?: string) => {
+  try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* storage blocked */ }
+  return null;
+};
+
+export default function App() {
+  const params = useMemo(() => new URLSearchParams(location.search), []);
+  const [theme, setTheme] = useState<"dark" | "light">((store("odrv.theme") as "dark" | "light") || "dark");
+  const [basemap, setBasemap] = useState<Basemap>(theme === "dark" ? "dark" : "liberty");
+  const [mode, setMode] = useState<"2d" | "3d">("2d");
+  const [layers, setLayers] = useState<MapLayers>({
+    lanes: true, marks: true, borders: false, refs: false, signals: true, objects: true, buildings: true, terrain: false, flags: true, findings: true,
+  });
+  const [heightMode, setHeightMode] = useState<HeightMode>("relative");
+  const [exaggeration, setExaggeration] = useState(1);
+  const [buildingOpacity, setBuildingOpacity] = useState(0.5);
+  const [panelOpen, setPanelOpen] = useState(true);
+  const [tab, setTab] = useState<Tab>("layers");
+  const [server, setServer] = useState(params.get("server") || store("odrv.server") || "http://127.0.0.1:8766");
+  const [files, setFiles] = useState<string[]>([]);
+  const [serverState, setServerState] = useState<"idle" | "ok" | "error">("idle");
+  const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
+  const [sel, setSel] = useState<Selection | null>(null);
+  const [flags, setFlags] = useState<Flag[]>([]);
+  const flagStore = useRef<FlagStore | null>(null);
+  const [flagStoreKind, setFlagStoreKind] = useState<FlagStore["kind"]>("browser");
+  const [flagMode, setFlagMode] = useState(false);
+  const [draft, setDraft] = useState<FlagDraft | null>(null);
+  const [selectedFlag, setSelectedFlag] = useState<number | null>(null);
+  const [showDeleted, setShowDeleted] = useState(false);
+  const [findings, setFindings] = useState<Finding[]>([]);
+  const [ruleOff, setRuleOff] = useState<Set<string>>(new Set());
+  const [flyTo, setFlyTo] = useState<{ lon: number; lat: number; zoom?: number; key: number } | null>(null);
+  const [fitKey, setFitKey] = useState(0);
+  const [cursor, setCursor] = useState<[number, number] | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { document.documentElement.dataset.theme = theme; store("odrv.theme", theme); }, [theme]);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  // review server: its .xodr files
+  const connect = useCallback(async (url: string) => {
+    try {
+      const fs = await listServerFiles(url);
+      setFiles(fs); setServerState("ok"); store("odrv.server", url);
+      return fs;
+    } catch {
+      setFiles([]); setServerState("error");
+      return [];
+    }
+  }, []);
+  useEffect(() => {
+    connect(server).then((fs) => {
+      const f = params.get("file");
+      if (f && fs.includes(f)) openServerFile(server, f);
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a new network: fit, reset selection, load its flags
+  useEffect(() => {
+    if (!net) return;
+    setFitKey((k) => k + 1); setSel(null); setFindings([]); setSelectedFlag(null);
+    flagStore.current = net.fromServer ? serverStore(server, net.page) : browserStore(net.page);
+    setFlagStoreKind(flagStore.current.kind);
+    flagStore.current.load().then(setFlags).catch(() => {
+      flagStore.current = browserStore(net.page);
+      setFlagStoreKind("browser");
+      flagStore.current.load().then(setFlags);
+      setToast("Review server unreachable: flags are kept in this browser.");
+    });
+    if (net.fromServer) {
+      const u = new URL(location.href);
+      u.searchParams.set("server", server); u.searchParams.set("file", net.name);
+      history.replaceState(null, "", u);
+    }
+  }, [net]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveFlags = useCallback(async (next: Flag[]) => {
+    setFlags(next);
+    if (!flagStore.current) return;
+    try { setFlags(await flagStore.current.save(next)); } catch (e) { setToast(`Could not save flags: ${e instanceof Error ? e.message : e}`); }
+  }, []);
+
+  const toLonLat = useCallback((x: number, y: number) => net!.proj.forward(x, y), [net]);
+  const visibleFlags = useMemo(() => flags.filter((f) => showDeleted || !f.deleted), [flags, showDeleted]);
+
+  const flagMarkers = useMemo<MarkerPoint[]>(() => {
+    if (!net) return [];
+    return visibleFlags.map((f) => {
+      const [lon, lat] = toLonLat(f.x, f.y);
+      return {
+        id: `flag-${f.id}`, lon, lat, label: String(f.id), selected: f.id === selectedFlag,
+        color: f.deleted ? [120, 120, 120, 200] : STATUS_COLOR[f.status ?? "open"] ?? STATUS_COLOR.open,
+      };
+    });
+  }, [visibleFlags, net, selectedFlag, toLonLat]);
+
+  const findingMarkers = useMemo<MarkerPoint[]>(() => {
+    if (!net) return [];
+    return findings.filter((f) => !ruleOff.has(`${f.source} · ${f.rule}`)).map((f, i) => {
+      const [lon, lat] = toLonLat(f.x, f.y);
+      return { id: `finding-${i}`, lon, lat, color: LEVEL_COLOR[f.level] };
+    });
+  }, [findings, ruleOff, net, toLonLat]);
+
+  const where = (f: Flag) =>
+    f.road
+      ? `Road ${f.road}${f.lane !== null ? ` · lane ${f.lane}${f.laneType ? ` (${f.laneType})` : ""}` : ""}${f.s !== null ? ` · s ${f.s.toFixed(1)} m` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}`
+      : `x ${f.x.toFixed(2)}, y ${f.y.toFixed(2)}`;
+
+  const newFlagAt = useCallback((x: number, y: number, s: Selection | null) => {
+    if (!net) return;
+    const laneType = s?.probe?.lane?.type ?? (s && s.laneIndex !== null ? net.render.lanes.meta[s.laneIndex]?.type : null) ?? null;
+    const f: Flag = {
+      id: nextFlagId(flags), x, y, road: s ? net.roads[s.road].id : null, lane: s?.laneId ?? null, laneType,
+      junction: s ? net.roads[s.road].junction : null, s: s?.probe ? Math.round(s.probe.s * 10) / 10 : null,
+      category: "geometry", note: "", created: new Date().toISOString(), status: "open",
+    };
+    setDraft({ flag: f, isNew: true, where: where(f) });
+  }, [flags, net]);
+
+  const onPick = useCallback((info: PickingInfo) => {
+    if (!net || !info.coordinate) return;
+    const layer = info.layer?.id ?? "";
+    if (layer === "flags") {
+      const f = visibleFlags[info.index];
+      if (f) { setSelectedFlag(f.id); setDraft({ flag: f, isNew: false, where: where(f) }); }
+      return;
+    }
+    const [x, y] = net.proj.inverse(info.coordinate[0], info.coordinate[1]);
+    let s: Selection | null = null;
+    if (layer === "lanes" && info.index >= 0) {
+      const m = net.render.lanes.meta[info.index];
+      const road = net.od?.roads[m.road];
+      s = { road: m.road, laneId: m.lane, laneIndex: info.index, x, y, probe: road ? probe(road, m.lane, x, y) : null };
+    }
+    if (flagMode) { newFlagAt(x, y, s); return; }
+    setSel(s);
+  }, [net, visibleFlags, flagMode, newFlagAt]);
+
+  const goRoad = useCallback((q: string) => {
+    if (!net) return;
+    const k = q.trim().toLowerCase();
+    if (!k) return;
+    const exact = net.roads.findIndex((r) => r.id.toLowerCase() === k);
+    const idx = exact >= 0 ? exact : net.roads.findIndex((r) => r.name.toLowerCase().includes(k));
+    if (idx < 0) { setToast(`No road "${q}"`); return; }
+    const R = net.render.refs, at = R.meta.indexOf(idx);
+    if (at < 0) return;
+    const mid = Math.floor((R.starts[at] + R.starts[at + 1]) / 2);
+    const lon = R.positions[3 * mid], lat = R.positions[3 * mid + 1];
+    setFlyTo({ lon, lat, zoom: 18.5, key: Date.now() });
+    const li = net.render.lanes.meta.findIndex((m) => m.road === idx);
+    const laneId = li >= 0 ? net.render.lanes.meta[li].lane : null;
+    const [x, y] = net.proj.inverse(lon, lat);
+    const road = net.od?.roads[idx];
+    setSel({ road: idx, laneId, laneIndex: li >= 0 ? li : null, x, y, probe: road ? probe(road, laneId, x, y) : null });
+  }, [net]);
+
+  // keyboard: F flag mode, V 2D / 3D, Esc leaves flag mode or closes the inspector, / search
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select, dialog")) return;
+      if (e.key === "f" || e.key === "F" || e.key === "m" || e.key === "M") setFlagMode((v) => !v);
+      else if (e.key === "v" || e.key === "V") setMode((m) => (m === "2d" ? "3d" : "2d"));
+      else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else setSel(null); }
+      else if (e.key === "/") { e.preventDefault(); document.getElementById("search")?.focus(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flagMode]);
+
+  const loadFindings = useCallback(async (fs: File[]) => {
+    const all: Finding[] = [];
+    for (const f of fs) {
+      try { all.push(...parseFindings(f.name, await f.text())); } catch (e) { setToast(`${f.name}: ${e instanceof Error ? e.message : e}`); }
+    }
+    setFindings((old) => [...old, ...all]);
+    setTab("findings"); setPanelOpen(true);
+    setToast(`${all.length.toLocaleString()} findings loaded`);
+  }, []);
+
+  // drop files anywhere: a network (.xodr / OdrForge page) and / or checker results
+  useEffect(() => {
+    const over = (e: DragEvent) => e.preventDefault();
+    const drop = (e: DragEvent) => {
+      e.preventDefault();
+      const fs = [...(e.dataTransfer?.files ?? [])];
+      const network = fs.find((f) => /\.(xodr|html)$/i.test(f.name));
+      const rest = fs.filter((f) => f !== network);
+      if (network) openLocalFile(network);
+      if (rest.length) loadFindings(rest);
+    };
+    window.addEventListener("dragover", over);
+    window.addEventListener("drop", drop);
+    return () => { window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
+  }, [openLocalFile, loadFindings]);
+
+  const cursorXY = cursor && net ? net.proj.inverse(cursor[0], cursor[1]) : null;
+
+  return (
+    <div className={`app ${panelOpen ? "" : "panel-closed"}`}>
+      <header className="topbar">
+        <button className="icon-btn" aria-label={panelOpen ? "Hide panel" : "Show panel"} title="Panel" onClick={() => setPanelOpen((v) => !v)}>☰</button>
+        <div className="brand"><span className="logo">◆</span> OdrForge <span className="muted">Viewer</span></div>
+        <div className="source">
+          <span className={`dot ${serverState}`} title={serverState === "ok" ? "Review server connected" : "Review server not reachable"} />
+          <input className="server" value={server} onChange={(e) => setServer(e.target.value)} onBlur={() => connect(server)}
+            onKeyDown={(e) => e.key === "Enter" && connect(server)} spellCheck={false} aria-label="Review server URL" />
+          <select value={net?.fromServer ? net.name : ""} onChange={(e) => e.target.value && openServerFile(server, e.target.value)} aria-label="File on the server">
+            <option value="">{files.length ? "Choose a file…" : "No files on server"}</option>
+            {files.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          <button className="btn" onClick={() => fileInput.current?.click()}>Open file…</button>
+          <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => e.target.files?.[0] && openLocalFile(e.target.files[0])} />
+        </div>
+        <input id="search" className="search" placeholder="Road id or name   /" value={search}
+          onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
+        <span className="grow" />
+        <div className="seg" role="group" aria-label="View">
+          <button className={mode === "2d" ? "on" : ""} onClick={() => setMode("2d")}>2D</button>
+          <button className={mode === "3d" ? "on" : ""} onClick={() => setMode("3d")}>3D</button>
+        </div>
+        <button className={`btn ${flagMode ? "warn" : ""}`} onClick={() => setFlagMode((v) => !v)} disabled={!net} title="Flag mode (F)">
+          ⚑ {flagMode ? "Click the map…" : "Flag"}
+        </button>
+        <button className="icon-btn" aria-label="Fit network" title="Fit network" onClick={() => setFitKey((k) => k + 1)} disabled={!net}>⤢</button>
+        <button className="icon-btn" aria-label="Toggle theme" title="Theme" onClick={() => {
+          const t = theme === "dark" ? "light" : "dark";
+          setTheme(t);
+          setBasemap((b) => (b === "dark" && t === "light" ? "liberty" : b === "liberty" && t === "dark" ? "dark" : b));
+        }}>◐</button>
+      </header>
+
+      {panelOpen && (
+        <SidePanel
+          tab={tab} setTab={setTab} net={net} theme={theme} layers={layers} setLayers={setLayers}
+          basemap={basemap} setBasemap={setBasemap} heightMode={heightMode} setHeightMode={setHeightMode}
+          exaggeration={exaggeration} setExaggeration={setExaggeration}
+          buildingOpacity={buildingOpacity} setBuildingOpacity={setBuildingOpacity}
+          flags={flags} flagStoreKind={flagStoreKind} selectedFlag={selectedFlag}
+          onFlag={(f) => { setSelectedFlag(f.id); const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
+          onEditFlag={(f) => setDraft({ flag: f, isNew: false, where: where(f) })}
+          showDeleted={showDeleted} setShowDeleted={setShowDeleted}
+          onExportFlags={() => {
+            const blob = new Blob([JSON.stringify({ page: net?.page, flags }, null, 1)], { type: "application/json" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob); a.download = `${net?.page ?? "flags"}.flags.json`; a.click();
+          }}
+          findings={findings} ruleOff={ruleOff}
+          toggleRule={(r) => setRuleOff((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n; })}
+          onFinding={(f) => { const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
+          onLoadFindings={(fl) => loadFindings([...fl])}
+        />
+      )}
+
+      <main className="stage">
+        <MapView
+          render={net?.render ?? null} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} selectedLane={sel?.laneIndex ?? null} flags={flagMarkers} findings={findingMarkers}
+          flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
+        />
+        {!net && !loading && (
+          <div className="empty">
+            <h1>Review an OpenDRIVE network</h1>
+            <p>Choose a file from the review server above, click <b>Open file…</b>, or drop a <code>.xodr</code> (or an OdrForge viewer page) anywhere.</p>
+            {serverState === "error" && (
+              <p className="muted small">Review server not reachable at {server}. Start it with <code>python tools/inspect/viz_server.py --dir …</code></p>
+            )}
+          </div>
+        )}
+        {loading && <div className="loading"><span className="spinner" />{loading}</div>}
+        {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
+        {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
+        {toast && <div className="toast" role="status">{toast}</div>}
+        {net && sel && (
+          <Inspector net={net} sel={sel} onClose={() => setSel(null)} onGoRoad={goRoad} onFlag={() => newFlagAt(sel.x, sel.y, sel)} />
+        )}
+      </main>
+
+      <footer className="statusbar">
+        {net ? (
+          <>
+            <span><b>{net.name}</b> · {net.kind === "xodr" ? `OpenDRIVE ${net.od!.header.revMajor}.${net.od!.header.revMinor}` : "OdrForge export"}</span>
+            <span>{net.render.stats.vertices.toLocaleString()} vertices · built in {(net.ms / 1000).toFixed(1)} s</span>
+            {!net.proj.georeferenced && <span className="warn-text">no geoReference: placed at 0°, 0°</span>}
+          </>
+        ) : <span className="muted">No network loaded</span>}
+        <span className="grow" />
+        {cursor && <span className="mono">{cursor[1].toFixed(6)}, {cursor[0].toFixed(6)}</span>}
+        {cursorXY && <span className="mono">x {cursorXY[0].toFixed(2)} · y {cursorXY[1].toFixed(2)}</span>}
+      </footer>
+
+      <FlagDialog
+        draft={draft}
+        onClose={() => setDraft(null)}
+        onSave={(f) => {
+          const exists = flags.some((q) => q.id === f.id);
+          saveFlags(exists ? flags.map((q) => (q.id === f.id ? f : q)) : [...flags, f]);
+          setSelectedFlag(f.id); setDraft(null); setFlagMode(false); setTab("flags");
+        }}
+        onDelete={(f) => { saveFlags(flags.map((q) => (q.id === f.id ? { ...q, deleted: true } : q))); setDraft(null); }}
+      />
+    </div>
+  );
+}

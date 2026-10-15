@@ -1,0 +1,267 @@
+// The map: MapLibre GL (OpenFreeMap vector tiles, OSM 3D buildings, terrain) with the OpenDRIVE layers drawn by
+// deck.gl interleaved into the same WebGL context, so buildings and roads share one depth buffer.
+import { MapboxOverlay } from "@deck.gl/mapbox";
+import { PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { PathStyleExtension } from "@deck.gl/extensions";
+import type { PickingInfo } from "@deck.gl/core";
+import * as maplibregl from "maplibre-gl";
+import type { Map as MlMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
+import { Matrix4 } from "@math.gl/core";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { RenderData } from "../xodr/build";
+import { laneColor, type Rgba } from "./palette";
+
+export type Basemap = "liberty" | "positron" | "dark" | "none";
+export type HeightMode = "flat" | "relative" | "absolute";
+
+export interface MapLayers {
+  lanes: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
+  buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
+}
+
+export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; }
+
+export interface MapViewProps {
+  render: RenderData | null;
+  theme: "dark" | "light";
+  basemap: Basemap;
+  mode: "2d" | "3d";
+  layers: MapLayers;
+  heightMode: HeightMode;
+  exaggeration: number;
+  buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
+  selectedLane: number | null;
+  flags: MarkerPoint[];
+  findings: MarkerPoint[];
+  flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
+  fitKey: number;
+  onPick: (info: PickingInfo) => void;
+  onCursor: (lonLat: [number, number] | null) => void;
+  cursorCrosshair: boolean;
+}
+
+const STYLE_URL: Record<Exclude<Basemap, "none">, string> = {
+  liberty: "https://tiles.openfreemap.org/styles/liberty",
+  positron: "https://tiles.openfreemap.org/styles/positron",
+  dark: "https://tiles.openfreemap.org/styles/dark",
+};
+const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
+const TERRAIN_SOURCE = "odrv-terrain";
+const BUILDINGS = "odrv-buildings-3d";
+
+/** OSM buildings extruded from the OpenMapTiles `building` layer (render_height / render_min_height) */
+function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | undefined {
+  const own = map.getLayer("building-3d") ? "building-3d" : null;
+  if (!own && !map.getLayer(BUILDINGS) && map.getSource("openmaptiles")) {
+    map.addLayer({
+      id: BUILDINGS, type: "fill-extrusion", source: "openmaptiles", "source-layer": "building", minzoom: 13,
+      paint: {
+        "fill-extrusion-color": "#a9adb5",
+        "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
+        "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+        "fill-extrusion-opacity": 0.75,
+      },
+    });
+  }
+  for (const id of [own, BUILDINGS])
+    if (id && map.getLayer(id)) {
+      map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+      map.setPaintProperty(id, "fill-extrusion-opacity", opacity);
+    }
+  return own ?? (map.getLayer(BUILDINGS) ? BUILDINGS : undefined);
+}
+
+function ensureTerrain(map: MlMap, on: boolean, exaggeration: number) {
+  if (on && !map.getSource(TERRAIN_SOURCE))
+    map.addSource(TERRAIN_SOURCE, {
+      type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 15,
+      tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+      attribution: "Terrain: Mapzen / AWS Open Data (Terrarium)",
+    });
+  map.setTerrain(on ? { source: TERRAIN_SOURCE, exaggeration } : null);
+}
+
+const sub = (a: Uint32Array, n: number) => a.subarray(0, n);
+
+// MapLibre 6 ships its tile worker as a separate ES module: the bundler serves it, MapLibre is told where
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
+
+/**
+ * deck.gl 9.4's interleaved MapboxOverlay reads map.transform.{height, elevation, _nearZ, _farZ}, internals MapLibre 6
+ * no longer exposes (MapLibre 5 did, but carries GHSA-jrc7-96c5-q579). Supplied from public API: the canvas CSS height
+ * and getCameraTargetElevation(); near / far planes come from MapLibre's custom-layer render parameters instead.
+ * Remove when @deck.gl/mapbox supports MapLibre 6.
+ */
+function deckTransformCompat(map: MlMap) {
+  if ((map as unknown as { transform?: unknown }).transform) return;
+  Object.defineProperty(map, "transform", {
+    configurable: true,
+    get: () => ({ height: map.getCanvas().clientHeight, elevation: map.getCameraTargetElevation(), _nearZ: undefined, _farZ: undefined }),
+  });
+}
+
+export default function MapView(p: MapViewProps) {
+  const host = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<MlMap | null>(null);
+  const overlay = useRef<MapboxOverlay | null>(null);
+  const propsRef = useRef(p);
+  // the OpenDRIVE layers draw before the buildings: translucent buildings then blend over the roads behind them
+  const [beforeId, setBeforeId] = useState<string | undefined>(undefined);
+  useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
+
+  // map + overlay, once
+  useEffect(() => {
+    const map = new maplibregl.Map({
+      container: host.current!, style: STYLE_URL.dark, center: [0, 20], zoom: 1.5, maxPitch: 85,
+      attributionControl: { compact: true }, canvasContextAttributes: { antialias: true },
+    });
+    deckTransformCompat(map);
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+    map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+    const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info) => propsRef.current.onPick(info) });
+    map.addControl(ov);
+    map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
+    map.on("mouseout", () => propsRef.current.onCursor(null));
+    map.on("style.load", () => {
+      setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings, propsRef.current.buildingOpacity));
+      ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
+    });
+    mapRef.current = map;
+    overlay.current = ov;
+    if (import.meta.env.DEV) (window as unknown as { odrvMap?: MlMap }).odrvMap = map; // debugging aid in dev builds
+    return () => { map.remove(); mapRef.current = null; overlay.current = null; };
+  }, []);
+
+  // basemap style
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
+    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : STYLE_URL[p.basemap]);
+  }, [p.basemap, p.theme]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map?.isStyleLoaded()) setBeforeId(ensureBuildings(map, p.layers.buildings, p.buildingOpacity));
+  }, [p.layers.buildings, p.buildingOpacity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map?.isStyleLoaded()) ensureTerrain(map, p.layers.terrain, p.exaggeration);
+  }, [p.layers.terrain, p.exaggeration]);
+
+  // camera: 2D looks straight down, 3D tilts
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.easeTo({ pitch: p.mode === "3d" ? 60 : 0, bearing: p.mode === "3d" ? map.getBearing() : 0, duration: 600 });
+    if (p.mode === "2d") { map.dragRotate.disable(); map.touchZoomRotate.disableRotation(); }
+    else { map.dragRotate.enable(); map.touchZoomRotate.enableRotation(); }
+  }, [p.mode]);
+
+  useEffect(() => {
+    const map = mapRef.current, r = p.render;
+    if (!map || !r || !Number.isFinite(r.bounds[0])) return;
+    map.fitBounds([[r.bounds[0], r.bounds[1]], [r.bounds[2], r.bounds[3]]], { padding: 48, duration: 0, pitch: p.mode === "3d" ? 60 : 0 });
+  }, [p.fitKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && p.flyTo) map.flyTo({ center: [p.flyTo.lon, p.flyTo.lat], zoom: Math.max(map.getZoom(), p.flyTo.zoom ?? 19), duration: 700 });
+  }, [p.flyTo?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const c = mapRef.current?.getCanvas();
+    if (c) c.style.cursor = p.cursorCrosshair ? "crosshair" : "";
+  }, [p.cursorCrosshair]);
+
+  // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights)
+  const modelMatrix = useMemo(() => {
+    const r = p.render;
+    const ex = p.heightMode === "flat" ? 0 : p.exaggeration;
+    const base = p.heightMode === "relative" && r ? r.zGround : 0;
+    return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + (p.heightMode === "flat" ? 0.05 : 0), 1]);
+  }, [p.render, p.heightMode, p.exaggeration]);
+
+  const layers = useMemo(() => {
+    const r = p.render;
+    const out = [];
+    if (r) {
+      const L = r.lanes, n = L.meta.length;
+      if (p.layers.lanes)
+        out.push(new SolidPolygonLayer({
+          id: "lanes",
+          data: { length: n, startIndices: sub(L.starts, n), attributes: { getPolygon: { value: L.positions, size: 3 } } },
+          _normalize: false, _full3d: true, extruded: false, pickable: true, autoHighlight: true,
+          highlightColor: [255, 255, 255, 60], modelMatrix,
+          getFillColor: (_: unknown, { index }: { index: number }) => laneColor(L.meta[index], p.theme, index === p.selectedLane),
+          updateTriggers: { getFillColor: [p.theme, p.selectedLane] },
+        }));
+      if (p.layers.borders)
+        out.push(new PathLayer({
+          id: "lane-borders",
+          data: { length: n, startIndices: sub(L.starts, n), attributes: { getPath: { value: L.positions, size: 3 } } },
+          _pathType: "loop", getColor: p.theme === "dark" ? [0, 0, 0, 90] : [40, 44, 52, 70], getWidth: 1, widthUnits: "pixels", modelMatrix,
+        }));
+      const M = r.marks, nm = M.meta.length;
+      if (p.layers.marks && nm)
+        out.push(new PathLayer({
+          id: "marks",
+          data: { length: nm, startIndices: sub(M.starts, nm), attributes: { getPath: { value: M.positions, size: 3 } } },
+          _pathType: "open", widthUnits: "meters", widthMinPixels: 1, modelMatrix,
+          getWidth: (_: unknown, { index }: { index: number }) => M.meta[index].width,
+          getColor: (_: unknown, { index }: { index: number }) => (M.meta[index].color === "yellow" ? [245, 196, 66, 255] : [245, 247, 250, 255]),
+          getDashArray: (_: unknown, { index }: { index: number }) => (M.meta[index].broken ? [25, 75] : [0, 0]),
+          dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        }));
+      const R = r.refs, nr = R.meta.length;
+      if (p.layers.refs && nr)
+        out.push(new PathLayer({
+          id: "refs",
+          data: { length: nr, startIndices: sub(R.starts, nr), attributes: { getPath: { value: R.positions, size: 3 } } },
+          _pathType: "open", getColor: [232, 76, 255, 220], getWidth: 1.5, widthUnits: "pixels", modelMatrix,
+        }));
+      const O = r.objects, no = O.meta.length;
+      if (p.layers.objects && no)
+        out.push(new SolidPolygonLayer({
+          id: "objects",
+          data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
+          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix,
+        }));
+      const P = r.points;
+      if (p.layers.signals && P.meta.length)
+        out.push(new ScatterplotLayer({
+          id: "signals",
+          data: { length: P.meta.length, attributes: { getPosition: { value: P.positions, size: 3 } } },
+          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: [10, 12, 16, 255],
+          lineWidthUnits: "pixels", getLineWidth: 1, lineWidthMaxPixels: 1,
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            P.meta[index].kind === "object" ? [180, 140, 255, 230] : P.meta[index].dynamic ? [37, 194, 110, 255] : [255, 107, 107, 255],
+          pickable: true, modelMatrix, parameters: { depthCompare: "always" },
+        }));
+    }
+    const markers = (id: string, pts: MarkerPoint[], radius: number) => [
+      new ScatterplotLayer<MarkerPoint>({
+        id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + 3 : radius), radiusUnits: "pixels",
+        getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? [255, 255, 255, 255] : [10, 12, 16, 255]),
+        lineWidthUnits: "pixels", getLineWidth: (d) => (d.selected ? 2.5 : 1.5), pickable: true, billboard: true,
+        parameters: { depthCompare: "always" }, updateTriggers: { getRadius: pts, getLineColor: pts },
+      }),
+      new TextLayer<MarkerPoint>({
+        id: id + "-label", data: pts.filter((d) => d.label), getPosition: (d) => [d.lon, d.lat], getText: (d) => d.label!,
+        getSize: 11, getColor: [12, 14, 18, 255], fontWeight: 700, billboard: true, parameters: { depthCompare: "always" },
+      }),
+    ];
+    // beforeId is a MapboxOverlay (interleaved) layer prop, not part of the layers' own prop types
+    for (let i = 0; i < out.length; i++) out[i] = out[i].clone({ beforeId } as never);
+    if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
+    if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
+    return out;
+  }, [p.render, p.layers, p.theme, p.selectedLane, p.flags, p.findings, modelMatrix, beforeId]);
+
+  useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
+
+  return <div ref={host} className="map" />;
+}

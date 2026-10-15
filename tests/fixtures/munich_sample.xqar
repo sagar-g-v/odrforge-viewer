@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CheckerResults><CheckerBundle><Checker checkerId="check_asam_xodr_road_geometry_contact_point">
+<Issue issueId="0" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[811]"/>
+          <InertialLocation x="-861.5837452377582" y="-250.78871861539855" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="1" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[811]"/>
+          <InertialLocation x="-848.4213919352387" y="-240.10779041071842" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="2" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[812]"/>
+          <InertialLocation x="-848.4213919352387" y="-240.10779041071842" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="3" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[812]"/>
+          <InertialLocation x="-860.1124160209309" y="-229.24039172138885" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="4" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[813]"/>
+          <InertialLocation x="-860.1124160209309" y="-229.24039172138885" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="5" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[813]"/>
+          <InertialLocation x="-873.020927675" y="-239.95788952" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="6" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[814]"/>
+          <InertialLocation x="-873.020927675" y="-239.95788952" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="7" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[814]"/>
+          <InertialLocation x="-861.5837452377582" y="-250.78871861539855" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="8" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[816]"/>
+          <InertialLocation x="-879.0732073192534" y="-483.5510030407156" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="9" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[816]"/>
+          <InertialLocation x="-869.817903268" y="-473.524545139" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="10" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[820]"/>
+          <InertialLocation x="-888.0759355901264" y="-471.33985983440573" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="11" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[821]"/>
+          <InertialLocation x="-869.817903268" y="-473.524545139" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="12" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[822]"/>
+          <InertialLocation x="-869.817903268" y="-473.524545139" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="13" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[822]"/>
+          <InertialLocation x="-879.0732073192534" y="-483.5510030407156" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="14" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[824]"/>
+          <InertialLocation x="-879.0732073192534" y="-483.5510030407156" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="15" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[824]"/>
+          <InertialLocation x="-869.817903268" y="-473.524545139" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="16" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[825]"/>
+          <InertialLocation x="-869.817903268" y="-473.524545139" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="17" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[825]"/>
+          <InertialLocation x="-877.8738131127332" y="-461.66442470123354" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="18" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[826]"/>
+          <InertialLocation x="-877.8738131127332" y="-461.66442470123354" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="19" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[826]"/>
+          <InertialLocation x="-888.0759355901264" y="-471.33985983440573" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="20" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[827]"/>
+          <InertialLocation x="-888.0759355901264" y="-471.33985983440573" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="21" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[827]"/>
+          <InertialLocation x="-879.0732073192534" y="-483.5510030407156" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="22" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[837]"/>
+          <InertialLocation x="-455.4896877533353" y="247.04708722337995" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="23" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[837]"/>
+          <InertialLocation x="-478.460990252" y="240.051668427" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="24" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[843]"/>
+          <InertialLocation x="-480.4443361179093" y="240.30899578835619" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="25" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[843]"/>
+          <InertialLocation x="-509.3511361600009" y="248.13099116400087" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="26" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[852]"/>
+          <InertialLocation x="-856.5132990925462" y="412.86137368400375" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="27" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[852]"/>
+          <InertialLocation x="-850.675264095" y="421.954659869" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="28" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[856]"/>
+          <InertialLocation x="-819.1776416738052" y="379.9446127035102" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="29" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[856]"/>
+          <InertialLocation x="-805.523766901" y="385.124539306" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="30" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[858]"/>
+          <InertialLocation x="-819.1776416738052" y="379.9446127035102" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="31" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[858]"/>
+          <InertialLocation x="-830.540798399" y="383.590329677" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="32" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[862]"/>
+          <InertialLocation x="-924.5853337312188" y="455.3592012569157" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="33" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[862]"/>
+          <InertialLocation x="-915.8786032788322" y="473.0588483760247" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="34" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[868]"/>
+          <InertialLocation x="-908.620545288" y="432.466073483" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="35" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[868]"/>
+          <InertialLocation x="-898.361290208" y="437.781285545" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="36" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[872]"/>
+          <InertialLocation x="-901.8105692050245" y="451.8722119299543" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="37" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[872]"/>
+          <InertialLocation x="-908.620545288" y="432.466073483" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="38" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[873]"/>
+          <InertialLocation x="-901.8105692050245" y="451.8722119299543" z="0.0"/>
+        </Locations>
+      </Issue>
+<Issue issueId="39" description="The road reference line does not begin at the contact point of its predecessor or successor." level="1" ruleUID="asam.net:xodr:1.7.0:road.geometry.contact_point">
+        <Locations description="The road reference line does not begin at the contact point of its predecessor or successor.">
+          <XMLLocation xpath="/OpenDRIVE/road[873]"/>
+          <InertialLocation x="-898.361290208" y="437.781285545" z="0.0"/>
+        </Locations>
+      </Issue>
+</Checker></CheckerBundle></CheckerResults>
