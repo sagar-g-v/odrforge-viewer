@@ -18,6 +18,7 @@ export interface SidePanelProps {
   heightMode: HeightMode; setHeightMode: (h: HeightMode) => void;
   exaggeration: number; setExaggeration: (n: number) => void;
   buildingOpacity: number; setBuildingOpacity: (n: number) => void;
+  roadOpacity: number; setRoadOpacity: (n: number) => void;
   flags: Flag[]; flagStoreKind: string; selectedFlag: number | null; onFlag: (f: Flag) => void; onEditFlag: (f: Flag) => void;
   showDeleted: boolean; setShowDeleted: (b: boolean) => void; onExportFlags: () => void;
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
@@ -55,6 +56,10 @@ function LayersTab(p: SidePanelProps) {
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />
         <Toggle label="Signals" on={L.signals} set={set("signals")} />
         <Toggle label="Objects (crosswalks …)" on={L.objects} set={set("objects")} />
+        <label className="field row" title="Lane surfaces, junction areas and objects; road marks and outlines stay opaque">
+          <span>Road opacity {Math.round(p.roadOpacity * 100)}%</span>
+          <input type="range" min={0.1} max={1} step={0.05} value={p.roadOpacity} onChange={(e) => p.setRoadOpacity(+e.target.value)} />
+        </label>
       </section>
       <section>
         <h3>Map</h3>

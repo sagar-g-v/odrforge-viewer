@@ -36,6 +36,7 @@ export interface MapViewProps {
   heightMode: HeightMode;
   exaggeration: number;
   buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
+  roadOpacity: number; // 0..1: lane surfaces, junction areas and objects (marks and outlines stay opaque)
   selectedLane: number | null;
   selectedJunction: number | null;
   flags: MarkerPoint[];
@@ -249,7 +250,7 @@ export default function MapView(p: MapViewProps) {
         // junction areas under the lanes: exact boundaries solid, approximate hulls dashed and fainter
         const jData = { length: nj, startIndices: sub(J.starts, nj), attributes: { getPolygon: { value: J.positions, size: 3 } } };
         out.push(new SolidPolygonLayer({
-          id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix,
+          id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) =>
             index === p.selectedJunction ? [90, 169, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
           updateTriggers: { getFillColor: [p.selectedJunction] },
@@ -261,7 +262,7 @@ export default function MapView(p: MapViewProps) {
           id: "lanes",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPolygon: { value: L.positions, size: 3 } } },
           _normalize: false, _full3d: true, extruded: false, pickable: true, autoHighlight: true,
-          highlightColor: [255, 255, 255, 60], modelMatrix,
+          highlightColor: [255, 255, 255, 60], modelMatrix, opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) => laneColor(L.meta[index], p.theme, index === p.selectedLane),
           updateTriggers: { getFillColor: [p.theme, p.selectedLane] },
         }));
@@ -306,7 +307,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new SolidPolygonLayer({
           id: "objects",
           data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
-          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix,
+          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, opacity: p.roadOpacity,
         }));
       const P = r.points;
       if (p.layers.signals && P.meta.length)
@@ -338,6 +339,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
   }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
+      p.roadOpacity,
       p.basemap, p.imagery, p.proj, view]);
 
   useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
