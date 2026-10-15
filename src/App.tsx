@@ -36,6 +36,8 @@ export default function App() {
   const [buildingOpacity, setBuildingOpacity] = useState(0.5);
   const [roadOpacity, setRoadOpacity] = useState(() => Number(store("odrv.roadOpacity")) || 0.85);
   useEffect(() => { store("odrv.roadOpacity", String(roadOpacity)); }, [roadOpacity]);
+  const [dim, setDim] = useState(() => Number(store("odrv.dim")) || 0);
+  useEffect(() => { store("odrv.dim", String(dim)); }, [dim]);
   const [panelOpen, setPanelOpen] = useState(true);
   const [tab, setTab] = useState<Tab>("layers");
   const [server, setServer] = useState(params.get("server") || store("odrv.server") || "http://127.0.0.1:8766");
@@ -308,7 +310,7 @@ export default function App() {
           basemap={basemap} setBasemap={setBasemap} heightMode={heightMode} setHeightMode={setHeightMode}
           exaggeration={exaggeration} setExaggeration={setExaggeration}
           buildingOpacity={buildingOpacity} setBuildingOpacity={setBuildingOpacity}
-          roadOpacity={roadOpacity} setRoadOpacity={setRoadOpacity}
+          roadOpacity={roadOpacity} setRoadOpacity={setRoadOpacity} dim={dim} setDim={setDim}
           flags={flags} flagStoreKind={flagStoreKind} selectedFlag={selectedFlag}
           onFlag={(f) => { setSelectedFlag(f.id); const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
           onEditFlag={(f) => setDraft({ flag: f, isNew: false, where: where(f) })}
@@ -328,7 +330,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (

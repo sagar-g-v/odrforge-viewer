@@ -39,6 +39,7 @@ export interface MapViewProps {
   exaggeration: number;
   buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
   roadOpacity: number; // 0..1: lane surfaces, junction areas and objects (marks and outlines stay opaque)
+  dim: number; // 0..0.9: darkens the base map (not the OpenDRIVE layers)
   selectedLane: number | null;
   selectedJunction: number | null;
   selectedFeature: { kind: string; road: number; index: number } | null;
@@ -123,6 +124,24 @@ function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | und
   return extrusion;
 }
 
+const DIM = "odrv-dim";
+/**
+ * Background dim: a black world-covering fill over the base map, kept just under the first deck.gl (custom) layer and
+ * our building layers, so the OpenDRIVE layers stay at full strength.
+ */
+function ensureDim(map: MlMap, dim: number) {
+  if (!map.getSource(DIM))
+    map.addSource(DIM, { type: "geojson", data: { type: "Feature", properties: {}, geometry: { type: "Polygon",
+      coordinates: [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]] } } });
+  const order = map.getStyle()?.layers ?? [];
+  const firstOwn = order.find((l) => (l.type as string) === "custom" || l.id === FOOTPRINT || l.id === BUILDINGS || l.id === "building-3d");
+  if (!map.getLayer(DIM)) map.addLayer({ id: DIM, type: "fill", source: DIM, paint: { "fill-color": "#000000", "fill-opacity": dim } }, firstOwn?.id);
+  else {
+    if (firstOwn && order.findIndex((l) => l.id === DIM) > order.findIndex((l) => l.id === firstOwn.id)) map.moveLayer(DIM, firstOwn.id);
+    map.setPaintProperty(DIM, "fill-opacity", dim);
+  }
+}
+
 function ensureTerrain(map: MlMap, on: boolean, exaggeration: number) {
   if (on && !map.getSource(TERRAIN_SOURCE))
     map.addSource(TERRAIN_SOURCE, {
@@ -192,6 +211,7 @@ export default function MapView(p: MapViewProps) {
       if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
+      ensureDim(map, propsRef.current.dim);
     });
     mapRef.current = map;
     overlay.current = ov;
@@ -212,6 +232,11 @@ export default function MapView(p: MapViewProps) {
     const map = mapRef.current;
     if (map?.isStyleLoaded()) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity));
   }, [p.layers.buildings, p.buildingOpacity, p.mode]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map?.isStyleLoaded()) ensureDim(map, p.dim);
+  }, [p.dim]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -274,6 +299,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new BitmapLayer({
           id: `img-${t.id}`, image: t.url, bounds: t.bounds as never, textureParameters: { minFilter: "linear", magFilter: "linear" },
           parameters: { depthWriteEnabled: false, depthCompare: "always" },
+          tintColor: [Math.round(255 * (1 - p.dim)), Math.round(255 * (1 - p.dim)), Math.round(255 * (1 - p.dim))],
         }));
     if (r) {
       const J = r.junctions, nj = J.meta.length;
@@ -433,7 +459,7 @@ export default function MapView(p: MapViewProps) {
     return out;
   }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
       p.mode,
-      p.roadOpacity,
+      p.roadOpacity, p.dim,
       p.basemap, p.imagery, p.proj, view]);
 
   useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);

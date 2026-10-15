@@ -1,15 +1,13 @@
 // Left panel: layers & display, review flags, checker findings.
 import { useMemo, useState } from "react";
 import type { Basemap, HeightMode, MapLayers } from "../map/MapView";
-import { LEGEND, legendColor } from "../map/palette";
+import { OdrLegend, OsmLegend } from "./Legend";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
 import type { LocalImagery } from "../map/localImagery";
 
 export type Tab = "layers" | "flags" | "findings";
-
-const rgba = (c: number[]) => `rgba(${c[0]},${c[1]},${c[2]},${c[3] / 255})`;
 
 export interface SidePanelProps {
   tab: Tab; setTab: (t: Tab) => void; net: Network | null; imagery: LocalImagery | null; theme: "dark" | "light";
@@ -19,6 +17,7 @@ export interface SidePanelProps {
   exaggeration: number; setExaggeration: (n: number) => void;
   buildingOpacity: number; setBuildingOpacity: (n: number) => void;
   roadOpacity: number; setRoadOpacity: (n: number) => void;
+  dim: number; setDim: (n: number) => void;
   flags: Flag[]; flagStoreKind: string; selectedFlag: number | null; onFlag: (f: Flag) => void; onEditFlag: (f: Flag) => void;
   showDeleted: boolean; setShowDeleted: (b: boolean) => void; onExportFlags: () => void;
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
@@ -30,6 +29,35 @@ function Toggle({ label, on, set, hint }: { label: string; on: boolean; set: (v:
     <label className="toggle" title={hint}>
       <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} />
       <span>{label}</span>
+    </label>
+  );
+}
+
+/** a collapsible group of controls; its open / closed state is remembered per browser */
+function Section({ id, title, children, defaultOpen = true, hint }: { id: string; title: string; children: React.ReactNode; defaultOpen?: boolean; hint?: string }) {
+  const key = `odrv.section.${id}`;
+  const [open, setOpen] = useState(() => {
+    try { const v = localStorage.getItem(key); return v === null ? defaultOpen : v === "1"; } catch { return defaultOpen; }
+  });
+  return (
+    <details className="group" open={open} onToggle={(e) => {
+      const o = (e.currentTarget as HTMLDetailsElement).open;
+      setOpen(o);
+      try { localStorage.setItem(key, o ? "1" : "0"); } catch { /* storage blocked */ }
+    }}>
+      <summary title={hint}><span>{title}</span></summary>
+      <div className="group-body">{children}</div>
+    </details>
+  );
+}
+
+function Slider({ label, value, min, max, step, onChange, disabled, format }: {
+  label: string; value: number; min: number; max: number; step: number; onChange: (v: number) => void; disabled?: boolean; format?: (v: number) => string;
+}) {
+  return (
+    <label className="field row">
+      <span>{label} <b className="val">{format ? format(value) : `${Math.round(value * 100)}%`}</b></span>
+      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(+e.target.value)} />
     </label>
   );
 }
@@ -47,26 +75,41 @@ function LayersTab(p: SidePanelProps) {
           <div><b>{s.lengthKm.toFixed(1)}</b><span>km</span></div>
         </section>
       )}
-      <section>
-        <h3>OpenDRIVE</h3>
+      <Section id="odr" title="OpenDRIVE layers">
+        <div className="sub-title">Road</div>
         <Toggle label="Lanes" on={L.lanes} set={set("lanes")} />
-        <Toggle label="Junction areas" on={L.junctions} set={set("junctions")} hint="Solid: the file's <boundary> (OpenDRIVE 1.8 §12.10); dashed: approximate outline of the connecting roads" />
         <Toggle label="Road marks" on={L.marks} set={set("marks")} />
         <Toggle label="Lane borders" on={L.borders} set={set("borders")} />
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />
+        <div className="sub-title">Junctions</div>
+        <Toggle label="Junction areas" on={L.junctions} set={set("junctions")} hint="Solid: the file's <boundary> (OpenDRIVE 1.8 §12.10); dashed: approximate outline of the connecting roads" />
+        <Toggle label="Cross paths" on={L.crossPaths} set={set("crossPaths")} hint="Pedestrian crossings in junctions (OpenDRIVE 1.8 crossPath)" />
+        <div className="sub-title">Furniture & structures</div>
         <Toggle label="Signals (signs, lights, stop lines)" on={L.signals} set={set("signals")} />
         <Toggle label="Objects (trees, poles, barriers, crosswalks)" on={L.objects} set={set("objects")} />
         <Toggle label="Bridges & tunnels" on={L.structures} set={set("structures")} />
-        <Toggle label="Cross paths" on={L.crossPaths} set={set("crossPaths")} hint="Pedestrian crossings in junctions (OpenDRIVE 1.8 crossPath)" />
-        <label className="field row" title="Lane surfaces, junction areas and objects; road marks and outlines stay opaque">
-          <span>Road opacity {Math.round(p.roadOpacity * 100)}%</span>
-          <input type="range" min={0.1} max={1} step={0.05} value={p.roadOpacity} onChange={(e) => p.setRoadOpacity(+e.target.value)} />
-        </label>
-      </section>
-      <section>
-        <h3>Map</h3>
+        <div className="sub-title">Review</div>
+        <Toggle label="Flags" on={L.flags} set={set("flags")} />
+        <Toggle label="Findings" on={L.findings} set={set("findings")} />
+      </Section>
+      <Section id="road-display" title="Road display">
+        <Slider label="Road opacity" value={p.roadOpacity} min={0.1} max={1} step={0.05} onChange={p.setRoadOpacity} />
+        <div className="sub-title">Heights</div>
+        <div className="seg">
+          {(["flat", "relative", "absolute"] as HeightMode[]).map((h) => (
+            <button key={h} className={p.heightMode === h ? "on" : ""} onClick={() => p.setHeightMode(h)}>{h}</button>
+          ))}
+        </div>
+        <p className="muted small">
+          {p.heightMode === "flat" ? "Roads drawn on the ground (z ignored)." : p.heightMode === "relative"
+            ? `Typical road height on the ground${p.net ? ` (median z ${p.net.render.zGround.toFixed(1)} m; range ${p.net.render.zRange[0].toFixed(1)} … ${p.net.render.zRange[1].toFixed(1)} m)` : ""}.`
+            : "File heights as metres above the map datum — use with Terrain."}
+        </p>
+        <Slider label="Height exaggeration" value={p.exaggeration} min={1} max={10} step={1} onChange={p.setExaggeration} format={(v) => `× ${v}`} />
+      </Section>
+      <Section id="basemap" title="Base map">
         <label className="field row">
-          <span>Basemap</span>
+          <span>Map</span>
           <select value={p.basemap} onChange={(e) => p.setBasemap(e.target.value as Basemap)}>
             <option value="osm">OpenStreetMap (standard)</option>
             <option value="satellite-live">Satellite (live, Esri World Imagery)</option>
@@ -80,43 +123,21 @@ function LayersTab(p: SidePanelProps) {
         {p.basemap === "satellite-live" && (
           <p className="muted small">Live satellite imagery streamed from Esri World Imagery (online, all areas; age and resolution vary by place).</p>
         )}
-        {p.basemap === "satellite" && (
-          <p className="muted small">
-            {p.imagery?.satellite
-              ? `${p.imagery.satellite.name.replace(/\s*\(offline,?\s*/i, " (")} over this network; Esri World Imagery elsewhere.`
-              : "Esri World Imagery (online). Networks from the review server with an OdrForge basemap folder add their offline HD orthophoto."}
-          </p>
+        {p.basemap === "satellite" && p.imagery?.satellite && (
+          <p className="muted small">{`${p.imagery.satellite.name.replace(/\s*\(offline,?\s*/i, " (")} over this network; Esri World Imagery elsewhere.`}</p>
         )}
+        <Slider label="Background dim" value={p.dim} min={0} max={0.9} step={0.05} onChange={p.setDim} />
+        <div className="sub-title">3D</div>
         <Toggle label="3D buildings (in 3D view)" on={L.buildings} set={set("buildings")} />
-        <label className="field row">
-          <span>Building opacity {Math.round(p.buildingOpacity * 100)}%</span>
-          <input type="range" min={0.1} max={1} step={0.05} value={p.buildingOpacity} onChange={(e) => p.setBuildingOpacity(+e.target.value)} disabled={!L.buildings} />
-        </label>
+        <Slider label="Building opacity" value={p.buildingOpacity} min={0.1} max={1} step={0.05} onChange={p.setBuildingOpacity} disabled={!L.buildings} />
         <Toggle label="Terrain" on={L.terrain} set={set("terrain")} hint="Mapzen Terrarium elevation tiles (AWS Open Data)" />
-      </section>
-      <section>
-        <h3>Road heights</h3>
-        <div className="seg">
-          {(["flat", "relative", "absolute"] as HeightMode[]).map((h) => (
-            <button key={h} className={p.heightMode === h ? "on" : ""} onClick={() => p.setHeightMode(h)}>{h}</button>
-          ))}
-        </div>
-        <p className="muted small">
-          {p.heightMode === "flat" ? "Roads drawn on the ground (z ignored)." : p.heightMode === "relative"
-            ? `Typical road height on the ground${p.net ? ` (median z ${p.net.render.zGround.toFixed(1)} m; range ${p.net.render.zRange[0].toFixed(1)} … ${p.net.render.zRange[1].toFixed(1)} m)` : ""}.`
-            : "File heights as metres above the map datum — use with Terrain."}
-        </p>
-        <label className="field row">
-          <span>Height × {p.exaggeration}</span>
-          <input type="range" min={1} max={10} step={1} value={p.exaggeration} onChange={(e) => p.setExaggeration(+e.target.value)} />
-        </label>
-      </section>
-      <section>
-        <h3>Lane types</h3>
-        <div className="legend">
-          {LEGEND.map((t) => <span key={t}><i style={{ background: rgba(legendColor(t, p.theme)) }} />{t}</span>)}
-        </div>
-      </section>
+      </Section>
+      <Section id="legend-odr" title="Legend · OpenDRIVE" defaultOpen={false}>
+        <OdrLegend theme={p.theme} />
+      </Section>
+      <Section id="legend-osm" title="Legend · OpenStreetMap" defaultOpen={false}>
+        <OsmLegend basemap={p.basemap} />
+      </Section>
     </>
   );
 }
