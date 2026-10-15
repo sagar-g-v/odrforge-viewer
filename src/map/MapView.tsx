@@ -69,6 +69,7 @@ const SATELLITE_STYLE: StyleSpecification = {
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 const TERRAIN_SOURCE = "odrv-terrain";
 const BUILDINGS = "odrv-buildings-3d";
+const BOUNDS_MARGIN = 200; // m beyond the network the camera may move
 
 /** OSM buildings extruded from the OpenMapTiles `building` layer (render_height / render_min_height) */
 function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | undefined {
@@ -193,6 +194,17 @@ export default function MapView(p: MapViewProps) {
     if (p.mode === "2d") { map.dragRotate.disable(); map.touchZoomRotate.disableRotation(); }
     else { map.dragRotate.enable(); map.touchZoomRotate.enableRotation(); }
   }, [p.mode]);
+
+  // the camera stays over the network: its extent plus BOUNDS_MARGIN on every side (no map tiles or imagery are
+  // fetched for areas far from the roads under review)
+  useEffect(() => {
+    const map = mapRef.current, r = p.render;
+    if (!map) return;
+    if (!r || !Number.isFinite(r.bounds[0])) { map.setMaxBounds(null); return; }
+    const [w, s, e, n] = r.bounds, lat = (s + n) / 2;
+    const dLat = BOUNDS_MARGIN / 111320, dLon = BOUNDS_MARGIN / (111320 * Math.cos((lat * Math.PI) / 180));
+    map.setMaxBounds([[w - dLon, s - dLat], [e + dLon, n + dLat]]);
+  }, [p.render]);
 
   useEffect(() => {
     const map = mapRef.current, r = p.render;
