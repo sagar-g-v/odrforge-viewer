@@ -115,6 +115,13 @@ function junction(n: XmlNode): Junction {
       contactPoint: c.attrs.contactPoint ?? "",
       laneLinks: kids(c, "laneLink").map((ll) => ({ from: num(ll, "from"), to: num(ll, "to") })),
     })),
+    boundary: kids(kid(n, "boundary"), "segment").map((g) => ({
+      type: g.attrs.type === "joint" ? "joint" : "lane", roadId: g.attrs.roadId ?? "",
+      boundaryLane: num(g, "boundaryLane"), sStart: g.attrs.sStart ?? "start", sEnd: g.attrs.sEnd ?? "end",
+      contactPoint: g.attrs.contactPoint ?? "end",
+      jointLaneStart: g.attrs.jointLaneStart !== undefined ? num(g, "jointLaneStart") : null,
+      jointLaneEnd: g.attrs.jointLaneEnd !== undefined ? num(g, "jointLaneEnd") : null,
+    })),
   };
 }
 

@@ -7,6 +7,7 @@ import { parseOpenDrive } from "../src/xodr/parse";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseXml } from "../src/xodr/xml";
+import { boundaryRing } from "../src/xodr/junctions";
 
 const geom = (o: Partial<Geom>): Geom => ({
   s: 0, x: 0, y: 0, hdg: 0, length: 10, kind: "line", k0: 0, k1: 0,
@@ -85,6 +86,25 @@ describe("lane borders against OdrForge's reference sampler (tools/inspect/odrge
     expect(n).toBeGreaterThan(2000);
     expect(worst).toBeLessThan(5e-3);
     expect(worstZ).toBeLessThan(1e-3);
+  });
+  it("every junction <boundary> (1.8.0 §12.10) becomes a closed, non-degenerate outline", () => {
+    const byId = new Map(od.roads.map((r) => [r.id, r]));
+    const withBoundary = od.junctions.filter((j) => j.boundary.length);
+    expect(withBoundary.length).toBe(21);
+    for (const j of withBoundary) {
+      const ring = boundaryRing(j, byId)!;
+      expect(ring).not.toBeNull();
+      expect(ring.every((p) => p.every(Number.isFinite))).toBe(true);
+      let area = 0; // shoelace
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        area += a[0] * b[1] - b[0] * a[1];
+      }
+      expect(Math.abs(area) / 2).toBeGreaterThan(10); // m², a real junction area
+    }
+    const r = buildRender(od, makeProjector(od.header.geoReference).forward);
+    expect(r.junctions.meta.filter((m) => m.exact).length).toBe(21);
+    expect(r.junctions.meta.length).toBe(od.junctions.length); // the others as approximate hulls
   });
   it("builds render buffers for every road with a geoReference", () => {
     const proj = makeProjector(od.header.geoReference);

@@ -33,6 +33,7 @@ Open a network in one of three ways:
 |---|---|
 | **2D / 3D** (`V`) | top-down review or tilted 3D with OSM buildings (opacity slider keeps roads behind them visible) |
 | **Road heights** | *flat* (ignore z), *relative* (median road height on the ground), *absolute* (with **Terrain**) |
+| **Junction areas** | the file's `<boundary>` (OpenDRIVE 1.8 §12.10: lane segments along a lane's outer border, joints across the arm ends) solid; files without one get an approximate dashed outline (hull of the connecting roads). Click one, or search `j 103` |
 | **Inspector** | click a lane: s / t, width, border offsets, surface z, superelevation, lane links, heights, road marks, road links, junction arms, OSM source ways |
 | **Flags** (`F`) | click where something is wrong, pick a category, describe it; replies from `flags.py` show in the list |
 | **Findings** | load `.xqar` (ASAM qc-opendrive) and `invariants.json` (OdrForge); grouped by rule, toggle per rule, click to fly |

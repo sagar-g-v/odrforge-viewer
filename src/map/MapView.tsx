@@ -17,7 +17,7 @@ export type Basemap = "liberty" | "positron" | "dark" | "none";
 export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
-  lanes: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
+  lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
@@ -33,6 +33,7 @@ export interface MapViewProps {
   exaggeration: number;
   buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
   selectedLane: number | null;
+  selectedJunction: number | null;
   flags: MarkerPoint[];
   findings: MarkerPoint[];
   flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
@@ -184,11 +185,24 @@ export default function MapView(p: MapViewProps) {
     const base = p.heightMode === "relative" && r ? r.zGround : 0;
     return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + (p.heightMode === "flat" ? 0.05 : 0), 1]);
   }, [p.render, p.heightMode, p.exaggeration]);
+  // junction outlines float 0.3 m above the surface: the joints across the arms stay visible over the lanes and curbs
+  const outlineMatrix = useMemo(() => new Matrix4(modelMatrix).translate([0, 0, 0.3]), [modelMatrix]);
 
   const layers = useMemo(() => {
     const r = p.render;
     const out = [];
     if (r) {
+      const J = r.junctions, nj = J.meta.length;
+      if (p.layers.junctions && nj) {
+        // junction areas under the lanes: exact boundaries solid, approximate hulls dashed and fainter
+        const jData = { length: nj, startIndices: sub(J.starts, nj), attributes: { getPolygon: { value: J.positions, size: 3 } } };
+        out.push(new SolidPolygonLayer({
+          id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix,
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            index === p.selectedJunction ? [90, 169, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
+          updateTriggers: { getFillColor: [p.selectedJunction] },
+        }));
+      }
       const L = r.lanes, n = L.meta.length;
       if (p.layers.lanes)
         out.push(new SolidPolygonLayer({
@@ -215,6 +229,18 @@ export default function MapView(p: MapViewProps) {
           getColor: (_: unknown, { index }: { index: number }) => (M.meta[index].color === "yellow" ? [245, 196, 66, 255] : [245, 247, 250, 255]),
           getDashArray: (_: unknown, { index }: { index: number }) => (M.meta[index].broken ? [25, 75] : [0, 0]),
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        }));
+      // junction outlines above lanes and marks: the area reads at a glance (fill stays under the lanes)
+      if (p.layers.junctions && nj)
+        out.push(new PathLayer({
+          id: "junction-outlines",
+          data: { length: nj, startIndices: sub(J.starts, nj), attributes: { getPath: { value: J.positions, size: 3 } } },
+          _pathType: "loop", widthUnits: "pixels", modelMatrix: outlineMatrix,
+          getWidth: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? 3.5 : 2.2),
+          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? [90, 169, 255, 255] : [245, 184, 74, 230]),
+          getDashArray: (_: unknown, { index }: { index: number }) => (J.meta[index].exact ? [0, 0] : [4, 3]),
+          dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+          updateTriggers: { getWidth: [p.selectedJunction], getColor: [p.selectedJunction] },
         }));
       const R = r.refs, nr = R.meta.length;
       if (p.layers.refs && nr)
@@ -259,7 +285,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
-  }, [p.render, p.layers, p.theme, p.selectedLane, p.flags, p.findings, modelMatrix, beforeId]);
+  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId]);
 
   useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
 

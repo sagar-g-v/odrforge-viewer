@@ -3,6 +3,7 @@
 import { curvatureAt, evalRoad } from "./geometry";
 import { laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
 import type { OpenDrive, Road } from "./model";
+import { boundaryRing, hull, type JunctionMeta } from "./junctions";
 
 export type Project = (x: number, y: number) => [number, number];
 
@@ -17,6 +18,7 @@ export interface RenderData {
   marks: Binary & { meta: MarkMeta[] };
   refs: Binary & { meta: number[] }; // road index
   objects: Binary & { meta: PointMeta[] };
+  junctions: Binary & { meta: JunctionMeta[] }; // closed outlines: the file's <boundary>, else an approximate hull
   points: { positions: Float64Array; meta: PointMeta[] };
   bounds: [number, number, number, number]; // lon/lat
   zRange: [number, number];
@@ -77,6 +79,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   const lanes = new Buf(), marks = new Buf(), refs = new Buf(), objs = new Buf();
   const laneMeta: LaneMeta[] = [], markMeta: MarkMeta[] = [], refMeta: number[] = [], objMeta: PointMeta[] = [];
   const pts: number[] = [], ptMeta: PointMeta[] = [];
+  const junctionPts = new Map<string, [number, number, number][]>(); // connecting-road lane borders per junction
   const off = od.header.offset, co = Math.cos(off.hdg), so = Math.sin(off.hdg);
   // file coordinates -> inertial (1.8.0 §6.3 header offset) -> lon / lat
   const geo = (x: number, y: number): [number, number] => project(co * x - so * y + off.x, so * x + co * y + off.y);
@@ -121,6 +124,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
         laneMeta.push({ road: ri, section: k, lane: l.id, type: l.type, junction: road.junction !== "-1" });
         nLanes++;
         // ring: inner border forward, outer border back (heights: §11.10 inner / outer raise)
+        const jp = road.junction !== "-1" ? (junctionPts.get(road.junction) ?? junctionPts.set(road.junction, []).get(road.junction)!) : null;
         idx.forEach((i, j) => {
           const b = borders[j].get(l.id)!, [hIn] = laneHeight(l, S[i] - sec.s);
           const [x, y] = ptAt(i, b.inner);
@@ -129,7 +133,9 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
         for (let j = idx.length - 1; j >= 0; j--) {
           const i = idx[j], b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s);
           const [x, y] = ptAt(i, b.outer);
-          at(x, y, surfaceZ(road, S[i], b.outer) + hOut, lanes);
+          const z = surfaceZ(road, S[i], b.outer) + hOut;
+          at(x, y, z, lanes);
+          if (jp && (j % 3 === 0 || j === 0 || j === idx.length - 1)) jp.push([x, y, z]);
         }
         // road marks on the lane's outer border (1.8.0 §11.8), one path per <roadMark> record
         l.marks.forEach((m, mi) => {
@@ -193,8 +199,22 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     });
   });
 
+  // junction areas: the <boundary> outline (1.8.0 §12.10) where the file has one, else the hull of its connecting roads
+  const juncs = new Buf(), juncMeta: JunctionMeta[] = [];
+  const byId = new Map(od.roads.map((r) => [r.id, r]));
+  for (const j of od.junctions) {
+    let ring = j.boundary.length ? boundaryRing(j, byId) : null;
+    const exact = !!ring && ring.length >= 3;
+    if (!exact) ring = hull(junctionPts.get(j.id) ?? []);
+    if (!ring || ring.length < 3) continue;
+    juncs.begin();
+    juncMeta.push({ id: j.id, exact, connections: j.connections.length, type: j.type });
+    for (const [x, y, z] of ring) at(x, y, z - 0.03, juncs); // just under the lanes
+  }
+
   const L = lanes.done();
   return {
+    junctions: { ...juncs.done(), meta: juncMeta },
     zGround: medianZ(L.positions),
     lanes: { ...L, meta: laneMeta },
     marks: { ...marks.done(), meta: markMeta },

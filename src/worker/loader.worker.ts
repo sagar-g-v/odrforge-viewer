@@ -27,7 +27,7 @@ self.onmessage = (e: MessageEvent<LoadRequest>) => {
   }
 };
 
-function post(id: number, result: Record<string, unknown>, r: { lanes: { positions: Float64Array; starts: Uint32Array }; marks: { positions: Float64Array; starts: Uint32Array }; refs: { positions: Float64Array; starts: Uint32Array }; objects: { positions: Float64Array; starts: Uint32Array }; points: { positions: Float64Array } }) {
-  const transfer = [r.lanes, r.marks, r.refs, r.objects].flatMap((b) => [b.positions.buffer, b.starts.buffer]).concat([r.points.positions.buffer]);
+function post(id: number, result: Record<string, unknown>, r: { lanes: { positions: Float64Array; starts: Uint32Array }; marks: { positions: Float64Array; starts: Uint32Array }; refs: { positions: Float64Array; starts: Uint32Array }; objects: { positions: Float64Array; starts: Uint32Array }; junctions: { positions: Float64Array; starts: Uint32Array }; points: { positions: Float64Array } }) {
+  const transfer = [r.lanes, r.marks, r.refs, r.objects, r.junctions].flatMap((b) => [b.positions.buffer, b.starts.buffer]).concat([r.points.positions.buffer]);
   (self as unknown as Worker).postMessage({ id, result }, transfer as Transferable[]);
 }

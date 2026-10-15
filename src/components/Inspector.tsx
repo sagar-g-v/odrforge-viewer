@@ -77,3 +77,40 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
     </aside>
   );
 }
+
+/** a junction area: type, boundary source, connections and the arms they join */
+export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
+  net: Network; index: number; onClose: () => void; onFlag: () => void; onGoRoad: (id: string) => void;
+}) {
+  const m = net.render.junctions.meta[index];
+  const j = net.od?.junctions.find((q) => q.id === m.id);
+  const arms = j ? [...new Set(j.connections.map((c) => c.incomingRoad))] : [];
+  const connecting = net.roads.filter((r) => r.junction === m.id);
+  const turns = j?.connections.reduce((n, c) => n + c.laneLinks.length, 0) ?? 0;
+  return (
+    <aside className="inspector">
+      <header className="drawer-head">
+        <div>
+          <div className="eyebrow">Junction{j ? ` · ${j.type}` : ""}</div>
+          <h2>Junction {m.id}{j?.name ? ` · ${j.name}` : ""}</h2>
+        </div>
+        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}>✕</button>
+      </header>
+      <section>
+        <h3>Area</h3>
+        <Row k="outline" v={m.exact ? "<boundary> (OpenDRIVE 1.8 §12.10)" : "approximate (hull of connecting roads)"} />
+        {j && <Row k="boundary segments" v={j.boundary.length ? `${j.boundary.filter((b) => b.type === "lane").length} lane, ${j.boundary.filter((b) => b.type === "joint").length} joint` : "none"} />}
+      </section>
+      <section>
+        <h3>Connections</h3>
+        {j && <Row k="connections" v={j.connections.length} />}
+        {j && <Row k="lane links" v={turns} />}
+        <Row k="connecting roads" v={connecting.length} />
+        {arms.length > 0 && <Row k="incoming arms" v={arms.map((id) => <a key={id} onClick={() => onGoRoad(id)}>{id} </a>)} />}
+      </section>
+      <footer className="drawer-foot">
+        <button className="btn primary" onClick={onFlag}>⚑ Flag this junction</button>
+      </footer>
+    </aside>
+  );
+}

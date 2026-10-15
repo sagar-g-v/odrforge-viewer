@@ -40,7 +40,7 @@ function LayersTab(p: SidePanelProps) {
       {p.net && s && (
         <section className="card stats">
           <div><b>{s.roads.toLocaleString()}</b><span>roads</span></div>
-          <div><b>{s.junctions.toLocaleString()}</b><span>junctions</span></div>
+          <div title={`${p.net.render.junctions.meta.filter((j) => j.exact).length} with a <boundary>`}><b>{s.junctions.toLocaleString()}</b><span>junctions</span></div>
           <div><b>{s.lanes.toLocaleString()}</b><span>lanes</span></div>
           <div><b>{s.lengthKm.toFixed(1)}</b><span>km</span></div>
         </section>
@@ -48,6 +48,7 @@ function LayersTab(p: SidePanelProps) {
       <section>
         <h3>OpenDRIVE</h3>
         <Toggle label="Lanes" on={L.lanes} set={set("lanes")} />
+        <Toggle label="Junction areas" on={L.junctions} set={set("junctions")} hint="Solid: the file's <boundary> (OpenDRIVE 1.8 §12.10); dashed: approximate outline of the connecting roads" />
         <Toggle label="Road marks" on={L.marks} set={set("marks")} />
         <Toggle label="Lane borders" on={L.borders} set={set("borders")} />
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />

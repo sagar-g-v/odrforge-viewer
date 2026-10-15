@@ -1,7 +1,7 @@
 import type { PickingInfo } from "@deck.gl/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
-import Inspector, { type Selection } from "./components/Inspector";
+import Inspector, { JunctionInspector, type Selection } from "./components/Inspector";
 import SidePanel, { type Tab } from "./components/SidePanel";
 import { listServerFiles, useNetwork } from "./data/useNetwork";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
@@ -27,7 +27,7 @@ export default function App() {
   const [basemap, setBasemap] = useState<Basemap>(theme === "dark" ? "dark" : "liberty");
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
-    lanes: true, marks: true, borders: false, refs: false, signals: true, objects: true, buildings: true, terrain: false, flags: true, findings: true,
+    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, buildings: true, terrain: false, flags: true, findings: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -39,6 +39,7 @@ export default function App() {
   const [serverState, setServerState] = useState<"idle" | "ok" | "error">("idle");
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
   const [sel, setSel] = useState<Selection | null>(null);
+  const [selJ, setSelJ] = useState<{ index: number; x: number; y: number } | null>(null); // a junction area
   const [flags, setFlags] = useState<Flag[]>([]);
   const flagStore = useRef<FlagStore | null>(null);
   const [flagStoreKind, setFlagStoreKind] = useState<FlagStore["kind"]>("browser");
@@ -83,7 +84,7 @@ export default function App() {
   // a new network: fit, reset selection, load its flags
   useEffect(() => {
     if (!net) return;
-    setFitKey((k) => k + 1); setSel(null); setFindings([]); setSelectedFlag(null);
+    setFitKey((k) => k + 1); setSel(null); setSelJ(null); setFindings([]); setSelectedFlag(null);
     flagStore.current = net.fromServer ? serverStore(server, net.page) : browserStore(net.page);
     setFlagStoreKind(flagStore.current.kind);
     flagStore.current.load().then(setFlags).catch(() => {
@@ -160,12 +161,29 @@ export default function App() {
     }
     if (flagMode) { newFlagAt(x, y, s); return; }
     setSel(s);
+    setSelJ(!s && layer === "junctions" && info.index >= 0 ? { index: info.index, x, y } : null);
   }, [net, visibleFlags, flagMode, newFlagAt]);
 
   const goRoad = useCallback((q: string) => {
     if (!net) return;
     const k = q.trim().toLowerCase();
     if (!k) return;
+    // "j 103" / "junction 103": a junction area
+    const jm = k.match(/^j(?:unction)?\s*(\S+)$/);
+    if (jm) {
+      const ji = net.render.junctions.meta.findIndex((j) => j.id.toLowerCase() === jm[1]);
+      if (ji < 0) { setToast(`No junction area "${jm[1]}"`); return; }
+      const J = net.render.junctions, a = J.starts[ji], b = J.starts[ji + 1];
+      let lon = 0, lat = 0;
+      for (let v = a; v < b; v++) { lon += J.positions[3 * v]; lat += J.positions[3 * v + 1]; }
+      lon /= b - a;
+      lat /= b - a;
+      setFlyTo({ lon, lat, zoom: 19, key: Date.now() });
+      const [x, y] = net.proj.inverse(lon, lat);
+      setSel(null);
+      setSelJ({ index: ji, x, y });
+      return;
+    }
     const exact = net.roads.findIndex((r) => r.id.toLowerCase() === k);
     const idx = exact >= 0 ? exact : net.roads.findIndex((r) => r.name.toLowerCase().includes(k));
     if (idx < 0) { setToast(`No road "${q}"`); return; }
@@ -188,7 +206,7 @@ export default function App() {
       if (t?.closest?.("input, textarea, select, dialog")) return;
       if (e.key === "f" || e.key === "F" || e.key === "m" || e.key === "M") setFlagMode((v) => !v);
       else if (e.key === "v" || e.key === "V") setMode((m) => (m === "2d" ? "3d" : "2d"));
-      else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else setSel(null); }
+      else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else { setSel(null); setSelJ(null); } }
       else if (e.key === "/") { e.preventDefault(); document.getElementById("search")?.focus(); }
     };
     window.addEventListener("keydown", onKey);
@@ -239,7 +257,7 @@ export default function App() {
           <button className="btn" onClick={() => fileInput.current?.click()}>Open file…</button>
           <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => e.target.files?.[0] && openLocalFile(e.target.files[0])} />
         </div>
-        <input id="search" className="search" placeholder="Road id or name   /" value={search}
+        <input id="search" className="search" placeholder="Road id, name or j 103   /" value={search}
           onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
         <span className="grow" />
         <div className="seg" role="group" aria-label="View">
@@ -282,7 +300,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} selectedLane={sel?.laneIndex ?? null} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
@@ -298,6 +316,17 @@ export default function App() {
         {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
         {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
         {toast && <div className="toast" role="status">{toast}</div>}
+        {net && selJ && !sel && (
+          <JunctionInspector net={net} index={selJ.index} onClose={() => setSelJ(null)} onGoRoad={goRoad}
+            onFlag={() => {
+              const m = net.render.junctions.meta[selJ.index];
+              const f: Flag = {
+                id: nextFlagId(flags), x: selJ.x, y: selJ.y, road: null, lane: null, laneType: null, junction: m.id, s: null,
+                category: "junction", note: "", created: new Date().toISOString(), status: "open",
+              };
+              setDraft({ flag: f, isNew: true, where: `Junction ${m.id}` });
+            }} />
+        )}
         {net && sel && (
           <Inspector net={net} sel={sel} onClose={() => setSel(null)} onGoRoad={goRoad} onFlag={() => newFlagAt(sel.x, sel.y, sel)} />
         )}

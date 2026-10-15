@@ -54,7 +54,13 @@ export interface Road {
 
 export interface LaneLink { from: number; to: number; }
 export interface Connection { id: string; incomingRoad: string; connectingRoad: string; contactPoint: string; laneLinks: LaneLink[]; }
-export interface Junction { id: string; name: string; type: string; connections: Connection[]; }
+/** one <boundary> <segment> (1.8.0 §12.10): along a lane's outer border, or across a road end ("joint") */
+export interface BoundarySegment {
+  type: "lane" | "joint"; roadId: string;
+  boundaryLane: number; sStart: string; sEnd: string; // lane: s values or "start" / "end"
+  contactPoint: string; jointLaneStart: number | null; jointLaneEnd: number | null; // joint
+}
+export interface Junction { id: string; name: string; type: string; connections: Connection[]; boundary: BoundarySegment[]; }
 
 export interface Header {
   revMajor: number; revMinor: number; name: string; vendor: string; date: string;

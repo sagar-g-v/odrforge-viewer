@@ -2,6 +2,7 @@
 // Lanes are already sampled there (delta-coded page units, cm), with per-point heights since OdrForge 2fdb8d3.
 import type { Projector } from "./geo";
 import { medianZ, type LaneMeta, type MarkMeta, type RenderData } from "./build";
+import { hull } from "./junctions";
 
 const LANE_TYPES = ["driving", "sidewalk", "biking", "parking", "shoulder", "border", "median", "bidirectional", "other", "none"];
 
@@ -83,6 +84,23 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
     for (let i = 0; i < xy.length / 2; i++) put(refPos, xy[2 * i], xy[2 * i + 1], 0);
     refMeta.push(ri);
   }
+  // junction areas: hull of each junction's connecting-road lanes (the export carries no boundary outlines)
+  const jPts = new Map<string, [number, number, number][]>();
+  laneMeta.forEach((m, k) => {
+    const jid = d.roads[m.road][2];
+    if (jid === "-1") return;
+    const list = jPts.get(jid) ?? jPts.set(jid, []).get(jid)!;
+    const end = k + 1 < laneStarts.length ? laneStarts[k + 1] : lanePos.length / 3;
+    for (let v = laneStarts[k]; v < end; v += 3) list.push([lanePos[3 * v], lanePos[3 * v + 1], lanePos[3 * v + 2]]);
+  });
+  const jPos: number[] = [], jStarts: number[] = [], jMeta: { id: string; exact: boolean; connections: number; type: string }[] = [];
+  for (const [id, ps] of jPts) {
+    const ring = hull(ps);
+    if (ring.length < 3) continue;
+    jStarts.push(jPos.length / 3);
+    for (const [lon, lat, z] of ring) jPos.push(lon, lat, z - 0.03);
+    jMeta.push({ id, exact: false, connections: 0, type: "" });
+  }
   const bin = (pos: number[], starts: number[]) => ({ positions: Float64Array.from(pos), starts: Uint32Array.from([...starts, pos.length / 3]) });
   const roads = d.roads.map((r) => ({ id: r[0], name: r[1], junction: r[2], length: r[3] }));
   return {
@@ -91,6 +109,7 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
       marks: { ...bin(markPos, markStarts), meta: markMeta },
       refs: { ...bin(refPos, refStarts), meta: refMeta },
       objects: { positions: new Float64Array(0), starts: Uint32Array.from([0]), meta: [] },
+      junctions: { ...bin(jPos, jStarts), meta: jMeta },
       points: { positions: new Float64Array(0), meta: [] },
       bounds: [minLon, minLat, maxLon, maxLat],
       zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],
