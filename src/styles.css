@@ -167,3 +167,7 @@ input[type=range] { accent-color: var(--accent); width: 150px; }
   .search, input.server { display: none; }
   .brand .muted { display: none; }
 }
+
+.imagery-credit { position: absolute; left: 110px; bottom: 8px; z-index: 3; max-width: calc(100% - 420px); padding: 2px 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--muted); font-size: 11px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: auto; }

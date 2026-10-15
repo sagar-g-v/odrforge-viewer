@@ -8,6 +8,7 @@ import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoin
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
 import { probe } from "./xodr/query";
+import { findLocalImagery, type LocalImagery } from "./map/localImagery";
 
 const STATUS_COLOR: Record<string, [number, number, number, number]> = {
   open: [245, 184, 74, 255], fixed: [62, 207, 142, 255], question: [90, 169, 255, 255], wontfix: [140, 146, 158, 255],
@@ -39,6 +40,7 @@ export default function App() {
   const [serverState, setServerState] = useState<"idle" | "ok" | "error">("idle");
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
   const [sel, setSel] = useState<Selection | null>(null);
+  const [imagery, setImagery] = useState<LocalImagery | null>(null); // offline HD orthophoto on the server
   const [selJ, setSelJ] = useState<{ index: number; x: number; y: number } | null>(null); // a junction area
   const [flags, setFlags] = useState<Flag[]>([]);
   const flagStore = useRef<FlagStore | null>(null);
@@ -93,6 +95,12 @@ export default function App() {
       flagStore.current.load().then(setFlags);
       setToast("Review server unreachable: flags are kept in this browser.");
     });
+    setImagery(null);
+    if (net.fromServer)
+      findLocalImagery(server, net.page).then((img) => {
+        setImagery(img);
+        if (img?.satellite) setToast(`HD imagery available: ${img.satellite.name} - choose "HD satellite" under Layers`);
+      });
     if (net.fromServer) {
       const u = new URL(location.href);
       u.searchParams.set("server", server); u.searchParams.set("file", net.name);
@@ -277,7 +285,7 @@ export default function App() {
 
       {panelOpen && (
         <SidePanel
-          tab={tab} setTab={setTab} net={net} theme={theme} layers={layers} setLayers={setLayers}
+          tab={tab} setTab={setTab} net={net} imagery={imagery} theme={theme} layers={layers} setLayers={setLayers}
           basemap={basemap} setBasemap={setBasemap} heightMode={heightMode} setHeightMode={setHeightMode}
           exaggeration={exaggeration} setExaggeration={setExaggeration}
           buildingOpacity={buildingOpacity} setBuildingOpacity={setBuildingOpacity}
@@ -299,7 +307,7 @@ export default function App() {
 
       <main className="stage">
         <MapView
-          render={net?.render ?? null} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
+          render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
           exaggeration={exaggeration} buildingOpacity={buildingOpacity} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />

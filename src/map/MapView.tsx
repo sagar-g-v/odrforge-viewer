@@ -1,7 +1,7 @@
 // The map: MapLibre GL (OpenFreeMap vector tiles, OSM 3D buildings, terrain) with the OpenDRIVE layers drawn by
 // deck.gl interleaved into the same WebGL context, so buildings and roads share one depth buffer.
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { BitmapLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import type { PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
@@ -12,8 +12,10 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RenderData } from "../xodr/build";
 import { laneColor, type Rgba } from "./palette";
+import { visibleTiles, type LocalImagery } from "./localImagery";
+import type { Projector } from "../xodr/geo";
 
-export type Basemap = "liberty" | "positron" | "dark" | "none";
+export type Basemap = "liberty" | "positron" | "dark" | "satellite" | "none";
 export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
@@ -25,6 +27,8 @@ export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba
 
 export interface MapViewProps {
   render: RenderData | null;
+  proj: Projector | null; // file coordinates <-> lon / lat (local imagery tiles)
+  imagery: LocalImagery | null; // the network's offline HD orthophoto, if the review server has one
   theme: "dark" | "light";
   basemap: Basemap;
   mode: "2d" | "3d";
@@ -43,10 +47,24 @@ export interface MapViewProps {
   cursorCrosshair: boolean;
 }
 
-const STYLE_URL: Record<Exclude<Basemap, "none">, string> = {
+const STYLE_URL: Record<Exclude<Basemap, "none" | "satellite">, string> = {
   liberty: "https://tiles.openfreemap.org/styles/liberty",
   positron: "https://tiles.openfreemap.org/styles/positron",
   dark: "https://tiles.openfreemap.org/styles/dark",
+};
+// satellite: Esri World Imagery under everything (online, any area), with the OpenFreeMap vector source kept so the
+// 3D buildings still extrude; the network's offline HD orthophoto (if any) is drawn over it by deck.gl
+const SATELLITE_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    esri: {
+      type: "raster", tileSize: 256, maxzoom: 19,
+      tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+    },
+    openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
+  },
+  layers: [{ id: "bg", type: "background", paint: { "background-color": "#0b0d10" } }, { id: "esri", type: "raster", source: "esri" }],
 };
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 const TERRAIN_SOURCE = "odrv-terrain";
@@ -110,6 +128,8 @@ export default function MapView(p: MapViewProps) {
   const propsRef = useRef(p);
   // the OpenDRIVE layers draw before the buildings: translucent buildings then blend over the roads behind them
   const [beforeId, setBeforeId] = useState<string | undefined>(undefined);
+  // the view (file-coordinate box, metres per screen pixel) the imagery tiles are chosen for; updated when the camera rests
+  const [view, setView] = useState<{ box: [number, number, number, number]; mpp: number } | null>(null);
   useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
 
   // map + overlay, once
@@ -125,6 +145,18 @@ export default function MapView(p: MapViewProps) {
     map.addControl(ov);
     map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
     map.on("mouseout", () => propsRef.current.onCursor(null));
+    const updateView = () => {
+      const pr = propsRef.current.proj;
+      if (!pr) return;
+      const b = map.getBounds(), c = map.getCenter();
+      const pts = [b.getSouthWest(), b.getNorthWest(), b.getNorthEast(), b.getSouthEast()].map((q) => pr.inverse(q.lng, q.lat));
+      const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+      // MapLibre's 512 px tiles: metres per pixel = circumference * cos(lat) / (512 * 2^zoom)
+      const mpp = (40075016.686 * Math.cos((c.lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
+      setView({ box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], mpp });
+    };
+    map.on("moveend", updateView);
+    map.on("load", updateView);
     map.on("style.load", () => {
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings, propsRef.current.buildingOpacity));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
@@ -140,7 +172,7 @@ export default function MapView(p: MapViewProps) {
     const map = mapRef.current;
     if (!map) return;
     const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
-    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : STYLE_URL[p.basemap]);
+    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "satellite" ? SATELLITE_STYLE : STYLE_URL[p.basemap]);
   }, [p.basemap, p.theme]);
 
   useEffect(() => {
@@ -191,6 +223,14 @@ export default function MapView(p: MapViewProps) {
   const layers = useMemo(() => {
     const r = p.render;
     const out = [];
+    // offline HD orthophoto tiles under everything (no depth writes: the roads at ground level draw over them)
+    const pyr = p.imagery?.satellite;
+    const tiles = p.basemap === "satellite" && p.imagery && pyr && p.proj && view ? visibleTiles(p.imagery, pyr, p.proj, view.box, view.mpp) : [];
+    for (const t of tiles)
+        out.push(new BitmapLayer({
+          id: `img-${t.id}`, image: t.url, bounds: t.bounds as never, textureParameters: { minFilter: "linear", magFilter: "linear" },
+          parameters: { depthWriteEnabled: false, depthCompare: "always" },
+        }));
     if (r) {
       const J = r.junctions, nj = J.meta.length;
       if (p.layers.junctions && nj) {
@@ -285,9 +325,22 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
-  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId]);
+  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
+      p.basemap, p.imagery, p.proj, view]);
 
   useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
 
-  return <div ref={host} className="map" />;
+  // a new network: compute the view once the map has fitted it
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && p.proj) map.fire("moveend");
+  }, [p.proj]);
+
+  const credit = p.basemap === "satellite" && p.imagery?.satellite ? p.imagery.satellite.attribution ?? p.imagery.satellite.name : null;
+  return (
+    <>
+      <div ref={host} className="map" />
+      {credit && <div className="imagery-credit" title={p.imagery!.satellite!.name}>{p.imagery!.satellite!.name.replace(/\s*\(offline,?\s*/i, " (")} · {credit}</div>}
+    </>
+  );
 }

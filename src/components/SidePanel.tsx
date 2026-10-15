@@ -5,13 +5,14 @@ import { LEGEND, legendColor } from "../map/palette";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
+import type { LocalImagery } from "../map/localImagery";
 
 export type Tab = "layers" | "flags" | "findings";
 
 const rgba = (c: number[]) => `rgba(${c[0]},${c[1]},${c[2]},${c[3] / 255})`;
 
 export interface SidePanelProps {
-  tab: Tab; setTab: (t: Tab) => void; net: Network | null; theme: "dark" | "light";
+  tab: Tab; setTab: (t: Tab) => void; net: Network | null; imagery: LocalImagery | null; theme: "dark" | "light";
   layers: MapLayers; setLayers: (l: MapLayers) => void;
   basemap: Basemap; setBasemap: (b: Basemap) => void;
   heightMode: HeightMode; setHeightMode: (h: HeightMode) => void;
@@ -63,9 +64,17 @@ function LayersTab(p: SidePanelProps) {
             <option value="liberty">OSM Liberty (3D buildings)</option>
             <option value="positron">OSM Positron (light)</option>
             <option value="dark">OSM Dark</option>
+            <option value="satellite">{p.imagery?.satellite ? `HD satellite (${p.imagery.satellite.res} m local + Esri)` : "Satellite (Esri World Imagery)"}</option>
             <option value="none">None</option>
           </select>
         </label>
+        {p.basemap === "satellite" && (
+          <p className="muted small">
+            {p.imagery?.satellite
+              ? `${p.imagery.satellite.name.replace(/\s*\(offline,?\s*/i, " (")} over this network; Esri World Imagery elsewhere.`
+              : "Esri World Imagery (online). Networks from the review server with an OdrForge basemap folder add their offline HD orthophoto."}
+          </p>
+        )}
         <Toggle label="3D buildings" on={L.buildings} set={set("buildings")} />
         <label className="field row">
           <span>Building opacity {Math.round(p.buildingOpacity * 100)}%</span>

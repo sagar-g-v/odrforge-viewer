@@ -50,6 +50,9 @@ Open a network in one of three ways:
 - MapLibre GL 6 with deck.gl 9.4: deck.gl's interleaved overlay still reads `map.transform`, which MapLibre 6 no
   longer exposes; `src/map/MapView.tsx` supplies the four values it needs from public API (remove when deck.gl
   supports MapLibre 6). MapLibre 5 is avoided: it carries GHSA-jrc7-96c5-q579.
+- HD satellite: the network's offline orthophoto made by OdrForge's `tools/make_basemap.py` (official 0.2 – 0.6 m
+  imagery, e.g. Bavaria DOP40, Hessen DOP20, USGS NAIP), found next to the network on the review server and drawn as
+  georeferenced tiles at the zoom-appropriate pyramid level; Esri World Imagery (online) everywhere else.
 - Basemaps: [OpenFreeMap](https://openfreemap.org) vector tiles (OpenMapTiles schema, © OpenStreetMap
   contributors); terrain: Mapzen Terrarium tiles (AWS Open Data). No API keys.
 
