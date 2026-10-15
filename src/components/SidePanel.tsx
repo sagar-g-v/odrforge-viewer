@@ -66,13 +66,18 @@ function LayersTab(p: SidePanelProps) {
         <label className="field row">
           <span>Basemap</span>
           <select value={p.basemap} onChange={(e) => p.setBasemap(e.target.value as Basemap)}>
-            <option value="liberty">OSM Liberty (3D buildings)</option>
+            <option value="osm">OpenStreetMap (standard)</option>
+            <option value="satellite-live">Satellite (live, Esri World Imagery)</option>
+            {p.imagery?.satellite && <option value="satellite">{`HD satellite (offline ${p.imagery.satellite.res} m)`}</option>}
+            <option value="liberty">OSM Liberty (vector)</option>
             <option value="positron">OSM Positron (light)</option>
             <option value="dark">OSM Dark</option>
-            <option value="satellite">{p.imagery?.satellite ? `HD satellite (${p.imagery.satellite.res} m local + Esri)` : "Satellite (Esri World Imagery)"}</option>
             <option value="none">None</option>
           </select>
         </label>
+        {p.basemap === "satellite-live" && (
+          <p className="muted small">Live satellite imagery streamed from Esri World Imagery (online, all areas; age and resolution vary by place).</p>
+        )}
         {p.basemap === "satellite" && (
           <p className="muted small">
             {p.imagery?.satellite
@@ -80,7 +85,7 @@ function LayersTab(p: SidePanelProps) {
               : "Esri World Imagery (online). Networks from the review server with an OdrForge basemap folder add their offline HD orthophoto."}
           </p>
         )}
-        <Toggle label="3D buildings" on={L.buildings} set={set("buildings")} />
+        <Toggle label="3D buildings (in 3D view)" on={L.buildings} set={set("buildings")} />
         <label className="field row">
           <span>Building opacity {Math.round(p.buildingOpacity * 100)}%</span>
           <input type="range" min={0.1} max={1} step={0.05} value={p.buildingOpacity} onChange={(e) => p.setBuildingOpacity(+e.target.value)} disabled={!L.buildings} />

@@ -25,7 +25,8 @@ const store = (k: string, v?: string) => {
 export default function App() {
   const params = useMemo(() => new URLSearchParams(location.search), []);
   const [theme, setTheme] = useState<"dark" | "light">((store("odrv.theme") as "dark" | "light") || "dark");
-  const [basemap, setBasemap] = useState<Basemap>(theme === "dark" ? "dark" : "liberty");
+  const [basemap, setBasemap] = useState<Basemap>(() => (store("odrv.basemap") as Basemap) || "osm");
+  useEffect(() => { store("odrv.basemap", basemap); }, [basemap]);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
     lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, buildings: true, terrain: false, flags: true, findings: true,
@@ -43,6 +44,8 @@ export default function App() {
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
   const [sel, setSel] = useState<Selection | null>(null);
   const [imagery, setImagery] = useState<LocalImagery | null>(null); // offline HD orthophoto on the server
+  // the offline option exists only with local imagery: fall back to live satellite for a network without it
+  useEffect(() => { if (!imagery?.satellite) setBasemap((b) => (b === "satellite" ? "satellite-live" : b)); }, [imagery]);
   const [selJ, setSelJ] = useState<{ index: number; x: number; y: number } | null>(null); // a junction area
   const [flags, setFlags] = useState<Flag[]>([]);
   const flagStore = useRef<FlagStore | null>(null);
@@ -270,6 +273,11 @@ export default function App() {
         <input id="search" className="search" placeholder="Road id, name or j 103   /" value={search}
           onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
         <span className="grow" />
+        <div className="seg" role="group" aria-label="Basemap">
+          <button className={basemap === "osm" ? "on" : ""} onClick={() => setBasemap("osm")} title="OpenStreetMap">Map</button>
+          <button className={basemap.startsWith("satellite") ? "on" : ""} title="Live satellite (Esri World Imagery); offline HD imagery under Layers"
+            onClick={() => setBasemap("satellite-live")}>Satellite</button>
+        </div>
         <div className="seg" role="group" aria-label="View">
           <button className={mode === "2d" ? "on" : ""} onClick={() => setMode("2d")}>2D</button>
           <button className={mode === "3d" ? "on" : ""} onClick={() => setMode("3d")}>3D</button>
@@ -281,7 +289,6 @@ export default function App() {
         <button className="icon-btn" aria-label="Toggle theme" title="Theme" onClick={() => {
           const t = theme === "dark" ? "light" : "dark";
           setTheme(t);
-          setBasemap((b) => (b === "dark" && t === "light" ? "liberty" : b === "liberty" && t === "dark" ? "dark" : b));
         }}>◐</button>
       </header>
 

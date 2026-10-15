@@ -15,7 +15,8 @@ import { laneColor, type Rgba } from "./palette";
 import { visibleTiles, type LocalImagery } from "./localImagery";
 import type { Projector } from "../xodr/geo";
 
-export type Basemap = "liberty" | "positron" | "dark" | "satellite" | "none";
+// satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
+export type Basemap = "osm" | "liberty" | "positron" | "dark" | "satellite" | "satellite-live" | "none";
 export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
@@ -48,7 +49,7 @@ export interface MapViewProps {
   cursorCrosshair: boolean;
 }
 
-const STYLE_URL: Record<Exclude<Basemap, "none" | "satellite">, string> = {
+const STYLE_URL: Record<Exclude<Basemap, "osm" | "none" | "satellite" | "satellite-live">, string> = {
   liberty: "https://tiles.openfreemap.org/styles/liberty",
   positron: "https://tiles.openfreemap.org/styles/positron",
   dark: "https://tiles.openfreemap.org/styles/dark",
@@ -66,6 +67,19 @@ const SATELLITE_STYLE: StyleSpecification = {
     openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
   },
   layers: [{ id: "bg", type: "background", paint: { "background-color": "#0b0d10" } }, { id: "esri", type: "raster", source: "esri" }],
+};
+// the standard OpenStreetMap map (openstreetmap.org raster tiles, tile usage policy: attribution, light use), with the
+// OpenFreeMap vector source kept for the 3D buildings
+const OSM_STYLE: StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster", tileSize: 256, maxzoom: 19, tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+    },
+    openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
+  },
+  layers: [{ id: "bg", type: "background", paint: { "background-color": "#f2efe9" } }, { id: "osm", type: "raster", source: "osm" }],
 };
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 const TERRAIN_SOURCE = "odrv-terrain";
@@ -160,7 +174,7 @@ export default function MapView(p: MapViewProps) {
     map.on("moveend", updateView);
     map.on("load", updateView);
     map.on("style.load", () => {
-      setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings, propsRef.current.buildingOpacity));
+      setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
     });
     mapRef.current = map;
@@ -174,13 +188,14 @@ export default function MapView(p: MapViewProps) {
     const map = mapRef.current;
     if (!map) return;
     const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
-    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "satellite" ? SATELLITE_STYLE : STYLE_URL[p.basemap]);
+    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "osm" ? OSM_STYLE
+      : p.basemap.startsWith("satellite") ? SATELLITE_STYLE : STYLE_URL[p.basemap as keyof typeof STYLE_URL]);
   }, [p.basemap, p.theme]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map?.isStyleLoaded()) setBeforeId(ensureBuildings(map, p.layers.buildings, p.buildingOpacity));
-  }, [p.layers.buildings, p.buildingOpacity]);
+    if (map?.isStyleLoaded()) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity));
+  }, [p.layers.buildings, p.buildingOpacity, p.mode]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -31,6 +31,7 @@ Open a network in one of three ways:
 
 | | |
 |---|---|
+| **Map / Satellite** | top bar: the standard OpenStreetMap map (default) or live satellite (Esri World Imagery); more styles and the offline HD orthophoto under Layers |
 | **2D / 3D** (`V`) | top-down review or tilted 3D with OSM buildings (opacity slider keeps roads behind them visible) |
 | **Road heights** | *flat* (ignore z), *relative* (median road height on the ground), *absolute* (with **Terrain**) |
 | **Junction areas** | the file's `<boundary>` (OpenDRIVE 1.8 §12.10: lane segments along a lane's outer border, joints across the arm ends) solid; files without one get an approximate dashed outline (hull of the connecting roads). Click one, or search `j 103` |
