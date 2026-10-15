@@ -1,6 +1,6 @@
 // .xodr text -> OpenDrive model. Element and attribute names follow the ASAM OpenDRIVE 1.8.1 XSD; 1.4 files read
 // the same (their extra / missing attributes default as below).
-import type { Geom, Junction, Lane, LaneSection, Link, OpenDrive, Poly3, Road, RoadObject, Signal } from "./model";
+import type { Controller, Geom, Junction, Lane, LaneSection, Link, OpenDrive, Poly3, Road, RoadObject, Signal } from "./model";
 import { kid, kids, num, parseXml, type XmlNode } from "./xml";
 
 const poly = (n: XmlNode, sAttr = "s"): Poly3 => ({ s: num(n, sAttr), a: num(n, "a"), b: num(n, "b"), c: num(n, "c"), d: num(n, "d") });
@@ -48,6 +48,11 @@ function lane(n: XmlNode): Lane {
     heights: byS(kids(n, "height").map((h) => ({ s: num(h, "sOffset"), inner: num(h, "inner"), outer: num(h, "outer") }))),
     marks: byS(kids(n, "roadMark").map((m) => ({
       s: num(m, "sOffset"), type: m.attrs.type ?? "none", color: m.attrs.color ?? "standard", width: num(m, "width", 0.12),
+      weight: m.attrs.weight ?? "standard", laneChange: m.attrs.laneChange ?? "",
+      lines: kids(kid(m, "type"), "line").map((l) => ({
+        length: num(l, "length"), space: num(l, "space"), tOffset: num(l, "tOffset"), sOffset: num(l, "sOffset"),
+        width: num(l, "width", num(m, "width", 0.12)), color: l.attrs.color ?? m.attrs.color ?? "standard", rule: l.attrs.rule ?? "",
+      })),
     }))),
     pred: pred ? num(pred, "id") : null, succ: succ ? num(succ, "id") : null, speed: sp,
   };
@@ -69,6 +74,11 @@ function signal(n: XmlNode): Signal {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", s: num(n, "s"), t: num(n, "t"), zOffset: num(n, "zOffset"),
     dynamic: n.attrs.dynamic === "yes", orientation: n.attrs.orientation ?? "none", type: n.attrs.type ?? "",
     subtype: n.attrs.subtype ?? "", country: n.attrs.country ?? "", value: Number.isFinite(v) ? v : null, unit: n.attrs.unit ?? "",
+    height: num(n, "height"), width: num(n, "width"), hOffset: num(n, "hOffset"), text: n.attrs.text ?? "",
+    validity: kids(n, "validity").map((x) => ({ fromLane: num(x, "fromLane"), toLane: num(x, "toLane") })),
+    dependencies: kids(n, "dependency").map((x) => ({ id: x.attrs.id ?? "", type: x.attrs.type ?? "" })),
+    references: kids(n, "reference").map((x) => ({ elementType: x.attrs.elementType ?? "", elementId: x.attrs.elementId ?? "", type: x.attrs.type ?? "" })),
+    semantics: (kid(n, "semantics")?.children ?? []).map((x) => [x.tag, ...Object.entries(x.attrs).map(([k, val]) => `${k}=${val}`)].join(" ")),
   };
 }
 
@@ -77,7 +87,12 @@ function object(n: XmlNode): RoadObject {
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", type: n.attrs.type ?? "", s: num(n, "s"), t: num(n, "t"),
     zOffset: num(n, "zOffset"), hdg: num(n, "hdg"), length: num(n, "length"), width: num(n, "width"),
-    radius: num(n, "radius"), height: num(n, "height"),
+    radius: num(n, "radius"), height: num(n, "height"), subtype: n.attrs.subtype ?? "",
+    repeats: kids(n, "repeat").map((r) => ({
+      s: num(r, "s"), length: num(r, "length"), distance: num(r, "distance"), tStart: num(r, "tStart"), tEnd: num(r, "tEnd"),
+      heightStart: num(r, "heightStart"), heightEnd: num(r, "heightEnd"), zOffsetStart: num(r, "zOffsetStart"), zOffsetEnd: num(r, "zOffsetEnd"),
+      widthStart: num(r, "widthStart"), widthEnd: num(r, "widthEnd"), lengthStart: num(r, "lengthStart"), lengthEnd: num(r, "lengthEnd"),
+    })),
     outline: kids(outline, "cornerLocal").map((c) => ({ u: num(c, "u"), v: num(c, "v"), z: num(c, "z") })),
   };
 }
@@ -103,6 +118,10 @@ function road(n: XmlNode): Road {
     sections: byS(kids(lanes, "laneSection").map(section)),
     signals: kids(kid(n, "signals"), "signal").map(signal),
     objects: kids(kid(n, "objects"), "object").map(object),
+    structures: [
+      ...kids(kid(n, "objects"), "bridge").map((b) => ({ kind: "bridge" as const, id: b.attrs.id ?? "", name: b.attrs.name ?? "", s: num(b, "s"), length: num(b, "length"), type: b.attrs.type ?? "" })),
+      ...kids(kid(n, "objects"), "tunnel").map((b) => ({ kind: "tunnel" as const, id: b.attrs.id ?? "", name: b.attrs.name ?? "", s: num(b, "s"), length: num(b, "length"), type: b.attrs.type ?? "" })),
+    ],
     userData,
   };
 }
@@ -115,6 +134,15 @@ function junction(n: XmlNode): Junction {
       contactPoint: c.attrs.contactPoint ?? "",
       laneLinks: kids(c, "laneLink").map((ll) => ({ from: num(ll, "from"), to: num(ll, "to") })),
     })),
+    crossPaths: kids(n, "crossPath").map((c) => {
+      const ll = (x: XmlNode | undefined) => (x ? { s: num(x, "s"), from: num(x, "from"), to: num(x, "to") } : null);
+      return {
+        id: c.attrs.id ?? "", crossingRoad: c.attrs.crossingRoad ?? "", roadAtStart: c.attrs.roadAtStart ?? "", roadAtEnd: c.attrs.roadAtEnd ?? "",
+        startLaneLink: ll(kid(c, "startLaneLink")), endLaneLink: ll(kid(c, "endLaneLink")),
+      };
+    }),
+    priorities: kids(n, "priority").map((p) => ({ high: p.attrs.high ?? "", low: p.attrs.low ?? "" })),
+    controllers: kids(n, "controller").map((c) => ({ id: c.attrs.id ?? "", type: c.attrs.type ?? "", sequence: c.attrs.sequence ?? "" })),
     boundary: kids(kid(n, "boundary"), "segment").map((g) => ({
       type: g.attrs.type === "joint" ? "joint" : "lane", roadId: g.attrs.roadId ?? "",
       boundaryLane: num(g, "boundaryLane"), sStart: g.attrs.sStart ?? "start", sEnd: g.attrs.sEnd ?? "end",
@@ -140,5 +168,9 @@ export function parseOpenDrive(text: string): OpenDrive {
     },
     roads: kids(od, "road").map(road),
     junctions: kids(od, "junction").map(junction),
+    controllers: kids(od, "controller").map((c): Controller => ({
+      id: c.attrs.id ?? "", name: c.attrs.name ?? "", sequence: c.attrs.sequence ?? "",
+      controls: kids(c, "control").map((x) => ({ signalId: x.attrs.signalId ?? "", type: x.attrs.type ?? "" })),
+    })),
   };
 }

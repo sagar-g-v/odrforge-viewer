@@ -3,6 +3,13 @@
 import type { Projector } from "./geo";
 import { medianZ, type LaneMeta, type MarkMeta, type RenderData } from "./build";
 import { hull } from "./junctions";
+import type { Features } from "./features";
+
+const emptyFeatures = (): Features => {
+  const none = { positions: new Float64Array(0), starts: Uint32Array.from([0]) };
+  return { columns: [], boxes: { ...none, elevations: new Float32Array(0), colors: new Uint8Array(0), meta: [] },
+    labels: { positions: new Float64Array(0), texts: [] }, structures: { ...none, meta: [] }, crossPaths: { ...none, meta: [] } };
+};
 
 const LANE_TYPES = ["driving", "sidewalk", "biking", "parking", "shoulder", "border", "median", "bidirectional", "other", "none"];
 
@@ -75,7 +82,9 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
     const xy = decode(p, unit, ox, oy);
     markStarts.push(markPos.length / 3);
     for (let i = 0; i < xy.length / 2; i++) put(markPos, xy[2 * i], xy[2 * i + 1], 0.02);
-    markMeta.push({ road: -1, color: color === 1 ? "yellow" : "white", broken: style === 2 || style === 6, double: style >= 3 && style <= 6, width: 0.12 });
+    // viz.cpp codes: style 1 solid, 2 broken, 3 - 6 two-line types, 7 dots / other; colour 1 yellow, 2 blue, 3 red, 4 green
+    const rgba: [number, number, number, number][] = [[245, 247, 250, 255], [245, 196, 66, 255], [70, 130, 230, 255], [220, 60, 60, 255], [60, 170, 90, 255]];
+    markMeta.push({ road: -1, color: rgba[color] ?? rgba[0], width: 0.12, dash: style === 2 || style === 6 ? [3, 9] : style === 7 ? [0.12, 1.08] : null });
   }
   const refPos: number[] = [], refStarts: number[] = [], refMeta: number[] = [];
   for (const [ri, p] of d.refs) {
@@ -110,6 +119,7 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
       refs: { ...bin(refPos, refStarts), meta: refMeta },
       objects: { positions: new Float64Array(0), starts: Uint32Array.from([0]), meta: [] },
       junctions: { ...bin(jPos, jStarts), meta: jMeta },
+      features: emptyFeatures(),
       points: { positions: new Float64Array(0), meta: [] },
       bounds: [minLon, minLat, maxLon, maxLat],
       zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],

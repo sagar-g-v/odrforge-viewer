@@ -1,7 +1,7 @@
 import type { PickingInfo } from "@deck.gl/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
-import Inspector, { JunctionInspector, type Selection } from "./components/Inspector";
+import Inspector, { FeatureInspector, JunctionInspector, type Selection } from "./components/Inspector";
 import SidePanel, { type Tab } from "./components/SidePanel";
 import { listServerFiles, useNetwork } from "./data/useNetwork";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
@@ -29,7 +29,7 @@ export default function App() {
   useEffect(() => { store("odrv.basemap", basemap); }, [basemap]);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
-    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, buildings: true, terrain: false, flags: true, findings: true,
+    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, structures: true, crossPaths: true, buildings: true, terrain: false, flags: true, findings: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -44,8 +44,7 @@ export default function App() {
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
   const [sel, setSel] = useState<Selection | null>(null);
   const [imagery, setImagery] = useState<LocalImagery | null>(null); // offline HD orthophoto on the server
-  // the offline option exists only with local imagery: fall back to live satellite for a network without it
-  useEffect(() => { if (!imagery?.satellite) setBasemap((b) => (b === "satellite" ? "satellite-live" : b)); }, [imagery]);
+  const [selF, setSelF] = useState<{ kind: string; road: number; index: number } | null>(null); // a signal, object, structure, cross path
   const [selJ, setSelJ] = useState<{ index: number; x: number; y: number } | null>(null); // a junction area
   const [flags, setFlags] = useState<Flag[]>([]);
   const flagStore = useRef<FlagStore | null>(null);
@@ -91,7 +90,7 @@ export default function App() {
   // a new network: fit, reset selection, load its flags
   useEffect(() => {
     if (!net) return;
-    setFitKey((k) => k + 1); setSel(null); setSelJ(null); setFindings([]); setSelectedFlag(null);
+    setFitKey((k) => k + 1); setSel(null); setSelJ(null); setSelF(null); setFindings([]); setSelectedFlag(null);
     flagStore.current = net.fromServer ? serverStore(server, net.page) : browserStore(net.page);
     setFlagStoreKind(flagStore.current.kind);
     flagStore.current.load().then(setFlags).catch(() => {
@@ -101,9 +100,12 @@ export default function App() {
       setToast("Review server unreachable: flags are kept in this browser.");
     });
     setImagery(null);
+    if (!net.fromServer) setBasemap((b) => (b === "satellite" ? "satellite-live" : b));
     if (net.fromServer)
       findLocalImagery(server, net.page).then((img) => {
         setImagery(img);
+        // the offline option exists only with local imagery: live satellite for a network without it
+        if (!img?.satellite) setBasemap((b) => (b === "satellite" ? "satellite-live" : b));
         if (img?.satellite) setToast(`HD imagery available: ${img.satellite.name} - choose "HD satellite" under Layers`);
       });
     if (net.fromServer) {
@@ -166,6 +168,13 @@ export default function App() {
       return;
     }
     const [x, y] = net.proj.inverse(info.coordinate[0], info.coordinate[1]);
+    // road furniture, bridges / tunnels, cross paths: the feature inspector
+    const F = net.render.features;
+    const fm = layer === "boxes" ? F.boxes.meta[info.index] : layer.startsWith("col-") ? F.columns.find((c) => `col-${c.radius}` === layer)?.meta[info.index]
+      : layer === "structures" ? F.structures.meta[info.index] : layer === "cross-paths" ? F.crossPaths.meta[info.index]
+      : layer === "signals" ? net.render.points.meta[info.index]
+      : layer === "objects" ? net.render.objects.meta[info.index] : undefined;
+    if (fm && !flagMode) { setSelF({ kind: fm.kind, road: fm.road, index: fm.index }); setSel(null); setSelJ(null); return; }
     let s: Selection | null = null;
     if (layer === "lanes" && info.index >= 0) {
       const m = net.render.lanes.meta[info.index];
@@ -174,6 +183,7 @@ export default function App() {
     }
     if (flagMode) { newFlagAt(x, y, s); return; }
     setSel(s);
+    setSelF(null);
     setSelJ(!s && layer === "junctions" && info.index >= 0 ? { index: info.index, x, y } : null);
   }, [net, visibleFlags, flagMode, newFlagAt]);
 
@@ -219,7 +229,7 @@ export default function App() {
       if (t?.closest?.("input, textarea, select, dialog")) return;
       if (e.key === "f" || e.key === "F" || e.key === "m" || e.key === "M") setFlagMode((v) => !v);
       else if (e.key === "v" || e.key === "V") setMode((m) => (m === "2d" ? "3d" : "2d"));
-      else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else { setSel(null); setSelJ(null); } }
+      else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else { setSel(null); setSelJ(null); setSelF(null); } }
       else if (e.key === "/") { e.preventDefault(); document.getElementById("search")?.focus(); }
     };
     window.addEventListener("keydown", onKey);
@@ -318,7 +328,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
@@ -334,7 +344,10 @@ export default function App() {
         {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
         {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
         {toast && <div className="toast" role="status">{toast}</div>}
-        {net && selJ && !sel && (
+        {net && selF && (
+          <FeatureInspector net={net} sel={selF} onClose={() => setSelF(null)} onGoRoad={goRoad} />
+        )}
+        {net && selJ && !sel && !selF && (
           <JunctionInspector net={net} index={selJ.index} onClose={() => setSelJ(null)} onGoRoad={goRoad}
             onFlag={() => {
               const m = net.render.junctions.meta[selJ.index];

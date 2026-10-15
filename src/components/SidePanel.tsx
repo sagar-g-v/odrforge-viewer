@@ -54,8 +54,10 @@ function LayersTab(p: SidePanelProps) {
         <Toggle label="Road marks" on={L.marks} set={set("marks")} />
         <Toggle label="Lane borders" on={L.borders} set={set("borders")} />
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />
-        <Toggle label="Signals" on={L.signals} set={set("signals")} />
-        <Toggle label="Objects (crosswalks …)" on={L.objects} set={set("objects")} />
+        <Toggle label="Signals (signs, lights, stop lines)" on={L.signals} set={set("signals")} />
+        <Toggle label="Objects (trees, poles, barriers, crosswalks)" on={L.objects} set={set("objects")} />
+        <Toggle label="Bridges & tunnels" on={L.structures} set={set("structures")} />
+        <Toggle label="Cross paths" on={L.crossPaths} set={set("crossPaths")} hint="Pedestrian crossings in junctions (OpenDRIVE 1.8 crossPath)" />
         <label className="field row" title="Lane surfaces, junction areas and objects; road marks and outlines stay opaque">
           <span>Road opacity {Math.round(p.roadOpacity * 100)}%</span>
           <input type="range" min={0.1} max={1} step={0.05} value={p.roadOpacity} onChange={(e) => p.setRoadOpacity(+e.target.value)} />

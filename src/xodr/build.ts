@@ -2,13 +2,15 @@
 // Sampling: every element and record boundary, at most 2 m apart, closer on curves (chord error <= 1 cm).
 import { curvatureAt, evalRoad } from "./geometry";
 import { laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
-import type { OpenDrive, Road } from "./model";
+import type { OpenDrive, Road, RoadMark } from "./model";
+import { FeatureBuilder, type Features, type Rgba } from "./features";
 import { boundaryRing, hull, type JunctionMeta } from "./junctions";
 
 export type Project = (x: number, y: number) => [number, number];
 
 export interface LaneMeta { road: number; section: number; lane: number; type: string; junction: boolean; }
-export interface MarkMeta { road: number; color: "white" | "yellow"; broken: boolean; double: boolean; width: number; }
+/** one drawn mark line: colour, width (m), dash (m on, m off) or null for a continuous line */
+export interface MarkMeta { road: number; color: Rgba; width: number; dash: [number, number] | null; }
 export interface PointMeta { road: number; index: number; kind: "signal" | "object"; dynamic: boolean; label: string; }
 
 export interface Binary { positions: Float64Array; starts: Uint32Array; } // starts: vertex index of each item, plus the total
@@ -19,6 +21,7 @@ export interface RenderData {
   refs: Binary & { meta: number[] }; // road index
   objects: Binary & { meta: PointMeta[] };
   junctions: Binary & { meta: JunctionMeta[] }; // closed outlines: the file's <boundary>, else an approximate hull
+  features: Features; // signals, objects, bridges / tunnels, cross paths as 3D shapes
   points: { positions: Float64Array; meta: PointMeta[] };
   bounds: [number, number, number, number]; // lon/lat
   zRange: [number, number];
@@ -73,7 +76,43 @@ export function medianZ(pos: Float64Array): number {
   return zs[zs.length >> 1];
 }
 
-const markColor = (c: string): "white" | "yellow" => (c === "yellow" || c === "orange" ? "yellow" : "white");
+// road mark colours (1.8.0 e_roadMarkColor); "standard" is white
+const MARK_COLOR: Record<string, Rgba> = {
+  standard: [245, 247, 250, 255], white: [245, 247, 250, 255], yellow: [245, 196, 66, 255], blue: [70, 130, 230, 255],
+  green: [60, 170, 90, 255], red: [220, 60, 60, 255], orange: [240, 150, 40, 255], violet: [150, 90, 210, 255], black: [25, 25, 25, 255],
+};
+const markColor = (c: string): Rgba => MARK_COLOR[c] ?? MARK_COLOR.standard;
+// display defaults where OpenDRIVE leaves the pattern to the country: broken 3 m on / 9 m off, Botts' dots every 1.2 m
+const BROKEN: [number, number] = [3, 9], DOTS: [number, number] = [0.12, 1.08];
+
+export interface MarkLineSpec { off: number; color: Rgba; width: number; dash: [number, number] | null; }
+/**
+ * The lines of one <roadMark> (1.8.0 §11.8): its explicit <type><line> elements (tOffset, length / space), else the
+ * lines its type names. Two-line types are ordered "from inside to outside, centre lane from left to right"
+ * (1.9.0 Annex A, e_roadMarkType); `inside` is the t direction of the inside (+1 / -1), 0 for the centre lane.
+ */
+export function markLines(m: RoadMark, inside: number): MarkLineSpec[] {
+  const w = m.width > 0 ? m.width : 0.12;
+  if (m.lines.length)
+    return m.lines.map((l) => ({ off: l.tOffset, color: markColor(l.color), width: l.width > 0 ? l.width : w, dash: l.space > 0 ? [l.length, l.space] : null }));
+  const one = (t: string, off: number): MarkLineSpec | null => {
+    if (t === "solid" || t === "edge" || t === "custom") return { off, color: markColor(m.color), width: w, dash: null };
+    if (t === "broken") return { off, color: markColor(m.color), width: w, dash: BROKEN };
+    if (t === "botts dots") return { off, color: markColor(m.color), width: Math.max(w, 0.1), dash: DOTS };
+    if (t === "curb") return { off, color: [150, 152, 156, 255], width: Math.max(w, 0.15), dash: null };
+    if (t === "grass") return { off, color: [70, 150, 70, 255], width: Math.max(w, 0.3), dash: null };
+    return null;
+  };
+  if (m.type === "none" || !m.type) return [];
+  if (m.type === "botts dots") return [one("botts dots", 0)!];
+  const parts = m.type.split(" ");
+  if (parts.length === 2) {
+    const first = inside === 0 ? 1 : inside, d = w; // lines w apart (centre to centre 2 w)
+    return [one(parts[0], first * d), one(parts[1], -first * d)].filter((x): x is MarkLineSpec => !!x);
+  }
+  const single = one(m.type, 0);
+  return single ? [single] : [];
+}
 
 export function buildRender(od: OpenDrive, project: Project): RenderData {
   const lanes = new Buf(), marks = new Buf(), refs = new Buf(), objs = new Buf();
@@ -83,6 +122,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   const off = od.header.offset, co = Math.cos(off.hdg), so = Math.sin(off.hdg);
   // file coordinates -> inertial (1.8.0 §6.3 header offset) -> lon / lat
   const geo = (x: number, y: number): [number, number] => project(co * x - so * y + off.x, so * x + co * y + off.y);
+  const features = new FeatureBuilder(geo, off.z);
   let minLon = Infinity, minLat = Infinity, maxLon = -Infinity, maxLat = -Infinity, zMin = Infinity, zMax = -Infinity;
   let nLanes = 0, len = 0;
   const at = (x: number, y: number, z: number, b: Buf) => {
@@ -137,34 +177,36 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
           at(x, y, z, lanes);
           if (jp && (j % 3 === 0 || j === 0 || j === idx.length - 1)) jp.push([x, y, z]);
         }
-        // road marks on the lane's outer border (1.8.0 §11.8), one path per <roadMark> record
+        // road marks on the lane's outer border (1.8.0 §11.8): every line of every <roadMark> record
         l.marks.forEach((m, mi) => {
-          if (m.type === "none" || m.type === "curb" || m.type === "grass" || m.type === "edge") return;
           const a = sec.s + m.s, e = mi + 1 < l.marks.length ? sec.s + l.marks[mi + 1].s : s1;
           const seg = idx.map((i, j) => [i, j] as const).filter(([i]) => S[i] >= a - 1e-9 && S[i] <= e + 1e-9);
           if (seg.length < 2) return;
-          marks.begin();
-          markMeta.push({ road: ri, color: markColor(m.color), broken: m.type.startsWith("broken"), double: m.type.includes(" "), width: m.width || 0.12 });
-          for (const [i, j] of seg) {
-            const b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s);
-            const [x, y] = ptAt(i, b.outer);
-            at(x, y, surfaceZ(road, S[i], b.outer) + hOut + 0.02, marks);
+          for (const ln of markLines(m, l.id < 0 ? 1 : -1)) {
+            marks.begin();
+            markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
+            for (const [i, j] of seg) {
+              const b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s), t = b.outer + ln.off;
+              const [x, y] = ptAt(i, t);
+              at(x, y, surfaceZ(road, S[i], t) + hOut + 0.02, marks);
+            }
           }
         });
       }
-      // centre lane marks on lane 0
+      // centre lane marks on lane 0 (two-line types from left to right)
       const c = sec.center;
       if (c) c.marks.forEach((m, mi) => {
-        if (m.type === "none") return;
         const a = sec.s + m.s, e = mi + 1 < c.marks.length ? sec.s + c.marks[mi + 1].s : s1;
         const seg = idx.filter((i) => S[i] >= a - 1e-9 && S[i] <= e + 1e-9);
         if (seg.length < 2) return;
-        marks.begin();
-        markMeta.push({ road: ri, color: markColor(m.color), broken: m.type.startsWith("broken"), double: m.type.includes(" "), width: m.width || 0.12 });
-        for (const i of seg) {
-          const t = laneOffsetAt(road, S[i]);
-          const [x, y] = ptAt(i, t);
-          at(x, y, surfaceZ(road, S[i], t) + 0.02, marks);
+        for (const ln of markLines(m, 0)) {
+          marks.begin();
+          markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
+          for (const i of seg) {
+            const t = laneOffsetAt(road, S[i]) + ln.off;
+            const [x, y] = ptAt(i, t);
+            at(x, y, surfaceZ(road, S[i], t) + 0.02, marks);
+          }
         }
       });
     });
@@ -182,22 +224,20 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
       const x0 = p.x - o.t * Math.sin(p.hdg), y0 = p.y + o.t * Math.cos(p.hdg);
       const h = p.hdg + o.hdg, z0 = surfaceZ(road, o.s, o.t) + o.zOffset;
       let corners = o.outline;
-      if (!corners.length && o.length > 0 && o.width > 0) {
+      if (!corners.length && o.length > 0 && o.width > 0 && o.height <= 0.05) { // flat: a marking area
         const L = o.length / 2, W = o.width / 2;
         corners = [{ u: -L, v: -W, z: 0 }, { u: L, v: -W, z: 0 }, { u: L, v: W, z: 0 }, { u: -L, v: W, z: 0 }];
       }
-      if (corners.length >= 3) {
+      if (corners.length >= 3 && !o.repeats.length) {
         objs.begin();
         objMeta.push({ road: ri, index: oi, kind: "object", dynamic: false, label: o.name || o.type });
         for (const cn of corners)
           at(x0 + cn.u * Math.cos(h) - cn.v * Math.sin(h), y0 + cn.u * Math.sin(h) + cn.v * Math.cos(h), z0 + cn.z + 0.01, objs);
-      } else {
-        const [lon, lat] = geo(x0, y0);
-        pts.push(lon, lat, z0 + off.z);
-        ptMeta.push({ road: ri, index: oi, kind: "object", dynamic: false, label: o.name || o.type });
       }
     });
+    features.addRoad(road, ri);
   });
+  features.addCrossPaths(od, new Map(od.roads.map((r, i) => [r.id, i])));
 
   // junction areas: the <boundary> outline (1.8.0 §12.10) where the file has one, else the hull of its connecting roads
   const juncs = new Buf(), juncMeta: JunctionMeta[] = [];
@@ -215,6 +255,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   const L = lanes.done();
   return {
     junctions: { ...juncs.done(), meta: juncMeta },
+    features: features.finish(),
     zGround: medianZ(L.positions),
     lanes: { ...L, meta: laneMeta },
     marks: { ...marks.done(), meta: markMeta },

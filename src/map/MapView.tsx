@@ -1,7 +1,7 @@
 // The map: MapLibre GL (OpenFreeMap vector tiles, OSM 3D buildings, terrain) with the OpenDRIVE layers drawn by
 // deck.gl interleaved into the same WebGL context, so buildings and roads share one depth buffer.
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { BitmapLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { BitmapLayer, ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import type { PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
@@ -21,6 +21,7 @@ export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
   lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
+  structures: boolean; crossPaths: boolean;
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
@@ -40,6 +41,7 @@ export interface MapViewProps {
   roadOpacity: number; // 0..1: lane surfaces, junction areas and objects (marks and outlines stay opaque)
   selectedLane: number | null;
   selectedJunction: number | null;
+  selectedFeature: { kind: string; road: number; index: number } | null;
   flags: MarkerPoint[];
   findings: MarkerPoint[];
   flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
@@ -308,8 +310,12 @@ export default function MapView(p: MapViewProps) {
           data: { length: nm, startIndices: sub(M.starts, nm), attributes: { getPath: { value: M.positions, size: 3 } } },
           _pathType: "open", widthUnits: "meters", widthMinPixels: 1, modelMatrix,
           getWidth: (_: unknown, { index }: { index: number }) => M.meta[index].width,
-          getColor: (_: unknown, { index }: { index: number }) => (M.meta[index].color === "yellow" ? [245, 196, 66, 255] : [245, 247, 250, 255]),
-          getDashArray: (_: unknown, { index }: { index: number }) => (M.meta[index].broken ? [25, 75] : [0, 0]),
+          getColor: (_: unknown, { index }: { index: number }) => M.meta[index].color,
+          // dash pattern in metres -> multiples of the line width (PathStyleExtension units)
+          getDashArray: (_: unknown, { index }: { index: number }) => {
+            const m = M.meta[index];
+            return m.dash ? [m.dash[0] / m.width, m.dash[1] / m.width] : [0, 0];
+          },
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       // junction outlines above lanes and marks: the area reads at a glance (fill stays under the lanes)
@@ -338,8 +344,66 @@ export default function MapView(p: MapViewProps) {
           data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
           _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, opacity: p.roadOpacity,
         }));
+      // road furniture in 3D (signals, objects), bridges / tunnels and cross paths (xodr/features.ts)
+      const F = r.features, selF = p.selectedFeature;
+      const isSel = (m: { kind: string; road: number; index: number }) => !!selF && m.kind === selF.kind && m.road === selF.road && m.index === selF.index;
+      const showFeature = (m: { kind: string }) => (m.kind === "signal" ? p.layers.signals : p.layers.objects);
+      if (p.layers.structures && F.structures.meta.length) {
+        const S = F.structures, ns = S.meta.length;
+        out.push(new SolidPolygonLayer({
+          id: "structures", data: { length: ns, startIndices: sub(S.starts, ns), attributes: { getPolygon: { value: S.positions, size: 3 } } },
+          _normalize: false, extruded: true, pickable: true, modelMatrix, wireframe: true,
+          getElevation: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? 4.5 : 0.05),
+          getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? [90, 169, 255, 120] : S.meta[index].tunnel ? [110, 112, 122, 70] : [70, 130, 230, 70]),
+          getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? [90, 92, 100, 220] : [70, 130, 230, 230]),
+          updateTriggers: { getFillColor: [selF] },
+        }));
+      }
+      if (p.layers.crossPaths && F.crossPaths.meta.length) {
+        const X = F.crossPaths, nx = X.meta.length;
+        out.push(new PathLayer({
+          id: "cross-paths", data: { length: nx, startIndices: sub(X.starts, nx), attributes: { getPath: { value: X.positions, size: 3 } } },
+          _pathType: "open", widthUnits: "pixels", getWidth: 2.5, getColor: [0, 205, 255, 235], pickable: true, modelMatrix,
+          getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        }));
+      }
+      F.columns.forEach((c) => {
+        const keep = c.meta.map((m) => showFeature(m));
+        if (!keep.some(Boolean)) return;
+        out.push(new ColumnLayer({
+          id: `col-${c.radius}`, data: { length: c.meta.length, attributes: {
+            getPosition: { value: c.positions, size: 3 }, getElevation: { value: c.elevations, size: 1 } } },
+          radius: c.radius, diskResolution: c.radius >= 0.5 ? 14 : 8, extruded: true, pickable: true, modelMatrix,
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? [90, 169, 255, 255]
+              : [c.colors[4 * index], c.colors[4 * index + 1], c.colors[4 * index + 2], c.colors[4 * index + 3]],
+          updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects] },
+        }));
+      });
+      if (F.boxes.meta.length) {
+        const B = F.boxes, nb = B.meta.length;
+        out.push(new SolidPolygonLayer({
+          id: "boxes", data: { length: nb, startIndices: sub(B.starts, nb), attributes: { getPolygon: { value: B.positions, size: 3 } } },
+          _normalize: false, extruded: true, pickable: true, modelMatrix,
+          getElevation: (_: unknown, { index }: { index: number }) => (showFeature(B.meta[index]) ? B.elevations[index] : 0),
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            !showFeature(B.meta[index]) ? [0, 0, 0, 0] : isSel(B.meta[index]) ? [90, 169, 255, 255]
+              : [B.colors[4 * index], B.colors[4 * index + 1], B.colors[4 * index + 2], B.colors[4 * index + 3]],
+          updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects], getElevation: [p.layers.signals, p.layers.objects] },
+        }));
+      }
+      if (p.layers.signals && F.labels.texts.length) {
+        const Lb = F.labels;
+        out.push(new TextLayer({
+          id: "sign-labels", data: { length: Lb.texts.length, attributes: { getPosition: { value: Lb.positions, size: 3 } } },
+          getText: (_: unknown, { index }: { index: number }) => Lb.texts[index], getSize: 12, sizeMaxPixels: 16, sizeMinPixels: 0,
+          getColor: [20, 22, 26, 255], background: true, getBackgroundColor: [255, 255, 255, 230], backgroundPadding: [3, 1],
+          fontWeight: 700, billboard: true, modelMatrix, characterSet: "auto",
+        }));
+      }
       const P = r.points;
-      if (p.layers.signals && P.meta.length)
+      // signal dots for the top-down view; in 3D the boards and lights themselves show (xodr/features.ts)
+      if (p.layers.signals && P.meta.length && p.mode === "2d")
         out.push(new ScatterplotLayer({
           id: "signals",
           data: { length: P.meta.length, attributes: { getPosition: { value: P.positions, size: 3 } } },
@@ -367,7 +431,8 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
-  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
+  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
+      p.mode,
       p.roadOpacity,
       p.basemap, p.imagery, p.proj, view]);
 
