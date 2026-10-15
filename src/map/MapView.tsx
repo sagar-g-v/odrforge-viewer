@@ -84,6 +84,7 @@ const OSM_STYLE: StyleSpecification = {
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 const TERRAIN_SOURCE = "odrv-terrain";
 const BUILDINGS = "odrv-buildings-3d";
+const FOOTPRINT = "odrv-buildings-footprint", FOOTPRINT_EDGE = "odrv-buildings-edge"; // bottom face and border
 const BOUNDS_MARGIN = 200; // m beyond the network the camera may move
 
 /** OSM buildings extruded from the OpenMapTiles `building` layer (render_height / render_min_height) */
@@ -100,12 +101,24 @@ function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | und
       },
     });
   }
+  const extrusion = own ?? (map.getLayer(BUILDINGS) ? BUILDINGS : undefined);
+  // the bottom face and border of every building on the ground, under the extrusion (and the roads, which deck.gl
+  // inserts right before the extrusion): where a building stands stays readable through a translucent block
+  if (extrusion && map.getSource("openmaptiles") && !map.getLayer(FOOTPRINT)) {
+    const src = { source: "openmaptiles", "source-layer": "building", minzoom: 13 } as const;
+    map.addLayer({ id: FOOTPRINT, type: "fill", ...src, paint: { "fill-color": "#ffb347", "fill-opacity": 0.28 } }, extrusion);
+    map.addLayer({
+      id: FOOTPRINT_EDGE, type: "line", ...src,
+      paint: { "line-color": "#ff9f1c", "line-width": ["interpolate", ["linear"], ["zoom"], 15, 0.8, 19, 2.2], "line-opacity": 0.95 },
+    }, extrusion);
+  }
   for (const id of [own, BUILDINGS])
     if (id && map.getLayer(id)) {
       map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
       map.setPaintProperty(id, "fill-extrusion-opacity", opacity);
     }
-  return own ?? (map.getLayer(BUILDINGS) ? BUILDINGS : undefined);
+  for (const id of [FOOTPRINT, FOOTPRINT_EDGE]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+  return extrusion;
 }
 
 function ensureTerrain(map: MlMap, on: boolean, exaggeration: number) {
@@ -174,6 +187,7 @@ export default function MapView(p: MapViewProps) {
     map.on("moveend", updateView);
     map.on("load", updateView);
     map.on("style.load", () => {
+      if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
     });
