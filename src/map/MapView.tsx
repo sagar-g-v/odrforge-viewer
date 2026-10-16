@@ -18,6 +18,7 @@ import { groundHeight, type GroundGrid } from "./odrz";
 import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid } from "./groundTiles";
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
+import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
 import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
 
@@ -112,7 +113,8 @@ const CARTO_RASTER_STYLE = (): StyleSpecification => ({
   version: 8,
   sources: {
     carto: {
-      type: "raster", tileSize: 256, maxzoom: 20, tiles: [`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_KEY)}`],
+      // CARTO's raster tiles end at z18 (z19 / z20 requests fail, checked 2026-10-17); MapLibre overzooms z18 beyond
+      type: "raster", tileSize: 256, maxzoom: 18, tiles: [`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_KEY)}`],
       attribution: '© <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
     },
     openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
@@ -138,7 +140,7 @@ const FOOTPRINT = "odrv-buildings-footprint", FOOTPRINT_EDGE = "odrv-buildings-e
 const BOUNDS_MARGIN = 200; // m beyond the network the camera may move
 
 /** OSM buildings extruded from the OpenMapTiles `building` layer (render_height / render_min_height) */
-function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | undefined {
+function ensureBuildings(map: MlMap, on: boolean, opacity: number, theme: "dark" | "light"): string | undefined {
   const own = map.getLayer("building-3d") ? "building-3d" : null;
   // styles without the OpenFreeMap source (CARTO's) get it for the building extrusions
   if (!own && !map.getSource("openmaptiles")) map.addSource("openmaptiles", { type: "vector", url: "https://tiles.openfreemap.org/planet" });
@@ -146,7 +148,7 @@ function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | und
     map.addLayer({
       id: BUILDINGS, type: "fill-extrusion", source: "openmaptiles", "source-layer": "building", minzoom: 13,
       paint: {
-        "fill-extrusion-color": "#a9adb5",
+        "fill-extrusion-color": theme === "dark" ? BUILDING.dark : BUILDING.light, // context: recedes into the theme's ground
         "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
         "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
         "fill-extrusion-opacity": 0.75,
@@ -158,16 +160,17 @@ function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | und
   // inserts right before the extrusion): where a building stands stays readable through a translucent block
   if (extrusion && map.getSource("openmaptiles") && !map.getLayer(FOOTPRINT)) {
     const src = { source: "openmaptiles", "source-layer": "building", minzoom: 13 } as const;
-    map.addLayer({ id: FOOTPRINT, type: "fill", ...src, paint: { "fill-color": "#ffb347", "fill-opacity": 0.28 } }, extrusion);
+    map.addLayer({ id: FOOTPRINT, type: "fill", ...src, paint: { "fill-color": OVERLAY.buildingFill, "fill-opacity": 0.28 } }, extrusion);
     map.addLayer({
       id: FOOTPRINT_EDGE, type: "line", ...src,
-      paint: { "line-color": "#ff9f1c", "line-width": ["interpolate", ["linear"], ["zoom"], 15, 0.8, 19, 2.2], "line-opacity": 0.95 },
+      paint: { "line-color": OVERLAY.buildingEdge, "line-width": ["interpolate", ["linear"], ["zoom"], 15, 0.8, 19, 2.2], "line-opacity": 0.95 },
     }, extrusion);
   }
   for (const id of [own, BUILDINGS])
     if (id && map.getLayer(id)) {
       map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
       map.setPaintProperty(id, "fill-extrusion-opacity", opacity);
+      if (id === BUILDINGS) map.setPaintProperty(id, "fill-extrusion-color", theme === "dark" ? BUILDING.dark : BUILDING.light);
     }
   for (const id of [FOOTPRINT, FOOTPRINT_EDGE]) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
   return extrusion;
@@ -312,7 +315,7 @@ export default function MapView(p: MapViewProps) {
     map.on("style.load", () => {
       styleReady.current = true;
       if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
-      setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
+      setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity, propsRef.current.theme));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration, terrainSrcRef.current);
       ensureDim(map, propsRef.current.dim);
       syncImageTiles(map, imgRef.current);
@@ -345,8 +348,8 @@ export default function MapView(p: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map && styleReady.current) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity));
-  }, [p.layers.buildings, p.buildingOpacity, p.mode]);
+    if (map && styleReady.current) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity, p.theme));
+  }, [p.layers.buildings, p.buildingOpacity, p.mode, p.theme]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -478,7 +481,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new SolidPolygonLayer({
           id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, parameters: depthBias("junctions"), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            index === p.selectedJunction ? [30, 155, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
+            index === p.selectedJunction ? withAlpha(OVERLAY.selected, 110) : J.meta[index].exact ? OVERLAY.junctionFill : OVERLAY.junctionFillApprox,
           updateTriggers: { getFillColor: [p.selectedJunction] },
         }));
       }
@@ -488,7 +491,7 @@ export default function MapView(p: MapViewProps) {
           id: "lanes",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPolygon: { value: L.positions, size: 3 } } },
           _normalize: false, _full3d: true, extruded: false, pickable: true, autoHighlight: true,
-          highlightColor: [255, 255, 255, 60], modelMatrix, parameters: depthBias("lanes"), opacity: p.roadOpacity,
+          highlightColor: OVERLAY.hover, modelMatrix, parameters: depthBias("lanes"), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) => laneColor(L.meta[index], p.theme, index === p.selectedLane),
           updateTriggers: { getFillColor: [p.theme, p.selectedLane] },
         }));
@@ -496,14 +499,14 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "lane-borders",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPath: { value: L.positions, size: 3 } } },
-          _pathType: "loop", getColor: p.theme === "dark" ? [0, 0, 0, 90] : [40, 44, 52, 70], getWidth: 1, widthUnits: "pixels", modelMatrix, parameters: depthBias("lane-borders"),
+          _pathType: "loop", getColor: p.theme === "dark" ? EDGE.laneDark : EDGE.laneLight, getWidth: 1, widthUnits: "pixels", modelMatrix, parameters: depthBias("lane-borders"),
         }));
       // driving direction (1.8.0 §11.2.1): flat arrows on the traffic lanes, over the lanes and under the marks' outlines
       const A = r.arrows, na = A.meta.length;
       if (p.layers.directions && p.layers.lanes && na)
         out.push(new SolidPolygonLayer({
           id: "lane-directions", data: { length: na, startIndices: sub(A.starts, na), attributes: { getPolygon: { value: A.positions, size: 3 } } },
-          _full3d: true, modelMatrix, parameters: depthBias("lane-directions"), getFillColor: [245, 247, 250, 200],
+          _full3d: true, modelMatrix, parameters: depthBias("lane-directions"), getFillColor: withAlpha(MARK.white, 200),
         }));
       const M = r.marks, nm = M.meta.length;
       if (p.layers.marks && nm)
@@ -527,7 +530,7 @@ export default function MapView(p: MapViewProps) {
           data: { length: nj, startIndices: sub(J.starts, nj), attributes: { getPath: { value: J.positions, size: 3 } } },
           _pathType: "loop", widthUnits: "pixels", modelMatrix, parameters: depthBias("junction-outlines"),
           getWidth: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? 3.5 : 2.2),
-          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? [30, 155, 255, 255] : [245, 184, 74, 230]),
+          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? OVERLAY.selected : OVERLAY.junctionEdge),
           getDashArray: (_: unknown, { index }: { index: number }) => (J.meta[index].exact ? [0, 0] : [4, 3]),
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
           updateTriggers: { getWidth: [p.selectedJunction], getColor: [p.selectedJunction] },
@@ -539,17 +542,17 @@ export default function MapView(p: MapViewProps) {
         const n2 = G.refLines.meta.length, nl = G.lines.meta.length, np = G.points.meta.length;
         if (nl) out.push(new PathLayer({
           id: "junction-grid", data: { length: nl, startIndices: sub(G.lines.starts, nl), attributes: { getPath: { value: G.lines.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 1, getColor: [80, 220, 200, 200], pickable: true, modelMatrix, parameters: depthBias("junction-grid"),
+          _pathType: "open", widthUnits: "pixels", getWidth: 1, getColor: OVERLAY.elevationLine, pickable: true, modelMatrix, parameters: depthBias("junction-grid"),
         }));
         if (np) out.push(new ScatterplotLayer({
           id: "junction-grid-points", data: { length: np, attributes: { getPosition: { value: G.points.positions, size: 3 } } },
-          getRadius: 2.5, radiusUnits: "pixels", getFillColor: [80, 220, 200, 255], stroked: true, getLineColor: [10, 16, 23, 255],
+          getRadius: 2.5, radiusUnits: "pixels", getFillColor: OVERLAY.elevation, stroked: true, getLineColor: EDGE.ring,
           lineWidthUnits: "pixels", getLineWidth: 1, pickable: true, modelMatrix, parameters: depthBias("junction-grid-points"),
         }));
         // the reference line last: the grid's centre points lie on it
         out.push(new PathLayer({
           id: "junction-ref-lines", data: { length: n2, startIndices: sub(G.refLines.starts, n2), attributes: { getPath: { value: G.refLines.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 3, getColor: [235, 64, 52, 255], pickable: true, modelMatrix, parameters: depthBias("junction-ref-lines"),
+          _pathType: "open", widthUnits: "pixels", getWidth: 3, getColor: OVERLAY.junctionRef, pickable: true, modelMatrix, parameters: depthBias("junction-ref-lines"),
           getDashArray: [6, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       }
@@ -558,20 +561,20 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "refs",
           data: { length: nr, startIndices: sub(R.starts, nr), attributes: { getPath: { value: R.positions, size: 3 } } },
-          _pathType: "open", getColor: [232, 76, 255, 220], getWidth: 1.5, widthUnits: "pixels", modelMatrix, parameters: depthBias("refs"),
+          _pathType: "open", getColor: OVERLAY.refLine, getWidth: 1.5, widthUnits: "pixels", modelMatrix, parameters: depthBias("refs"),
         }));
       const O = r.objects, no = O.meta.length;
       if (p.layers.objects && no)
         out.push(new SolidPolygonLayer({
           id: "objects",
           data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
-          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, parameters: depthBias("objects"), opacity: p.roadOpacity,
+          _full3d: true, getFillColor: ASSET.crosswalk, modelMatrix, parameters: depthBias("objects"), opacity: p.roadOpacity,
         }));
       const OL = r.objectLines, nol = OL.meta.length;
       if (p.layers.objects && nol)
         out.push(new PathLayer({
           id: "object-lines", data: { length: nol, startIndices: sub(OL.starts, nol), attributes: { getPath: { value: OL.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 2, getColor: [196, 160, 90, 255], pickable: true, modelMatrix, parameters: depthBias("object-lines"),
+          _pathType: "open", widthUnits: "pixels", getWidth: 2, getColor: ASSET.objectEdge, pickable: true, modelMatrix, parameters: depthBias("object-lines"),
         }));
       // road furniture in 3D (signals, objects), bridges / tunnels and cross paths (xodr/features.ts)
       const F = r.features, selF = p.selectedFeature;
@@ -583,8 +586,8 @@ export default function MapView(p: MapViewProps) {
           id: "structures", data: { length: ns, startIndices: sub(S.starts, ns), attributes: { getPolygon: { value: S.positions, size: 3 } } },
           _normalize: false, extruded: true, pickable: true, modelMatrix, parameters: depthBias("structures"), wireframe: true,
           getElevation: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? 4.5 : 0.05),
-          getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? [30, 155, 255, 120] : S.meta[index].tunnel ? [110, 112, 122, 70] : [70, 130, 230, 70]),
-          getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? [90, 92, 100, 220] : [70, 130, 230, 230]),
+          getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? STRUCTURE.selectedFill : S.meta[index].tunnel ? STRUCTURE.tunnelFill : STRUCTURE.bridgeFill),
+          getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? STRUCTURE.tunnelEdge : STRUCTURE.bridgeEdge), material: MATERIAL,
           updateTriggers: { getFillColor: [selF] },
         }));
       }
@@ -592,7 +595,7 @@ export default function MapView(p: MapViewProps) {
         const X = F.crossPaths, nx = X.meta.length;
         out.push(new PathLayer({
           id: "cross-paths", data: { length: nx, startIndices: sub(X.starts, nx), attributes: { getPath: { value: X.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 2.5, getColor: [0, 205, 255, 235], pickable: true, modelMatrix, parameters: depthBias("cross-paths"),
+          _pathType: "open", widthUnits: "pixels", getWidth: 2.5, getColor: OVERLAY.crossPath, pickable: true, modelMatrix, parameters: depthBias("cross-paths"),
           getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       }
@@ -602,9 +605,9 @@ export default function MapView(p: MapViewProps) {
         out.push(new ColumnLayer({
           id: `col-${c.radius}`, data: { length: c.meta.length, attributes: {
             getPosition: { value: c.positions, size: 3 }, getElevation: { value: c.elevations, size: 1 } } },
-          radius: c.radius, diskResolution: c.radius >= 0.5 ? 14 : 8, extruded: true, pickable: true, modelMatrix,
+          radius: c.radius, diskResolution: c.radius >= 0.5 ? 14 : 8, extruded: true, pickable: true, modelMatrix, material: MATERIAL,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? [30, 155, 255, 255]
+            !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? OVERLAY.selected
               : [c.colors[4 * index], c.colors[4 * index + 1], c.colors[4 * index + 2], c.colors[4 * index + 3]],
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects] },
         }));
@@ -613,10 +616,10 @@ export default function MapView(p: MapViewProps) {
         const B = F.boxes, nb = B.meta.length;
         out.push(new SolidPolygonLayer({
           id: "boxes", data: { length: nb, startIndices: sub(B.starts, nb), attributes: { getPolygon: { value: B.positions, size: 3 } } },
-          _normalize: false, extruded: true, pickable: true, modelMatrix,
+          _normalize: false, extruded: true, pickable: true, modelMatrix, material: MATERIAL,
           getElevation: (_: unknown, { index }: { index: number }) => (showFeature(B.meta[index]) ? B.elevations[index] : 0),
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            !showFeature(B.meta[index]) ? [0, 0, 0, 0] : isSel(B.meta[index]) ? [30, 155, 255, 255]
+            !showFeature(B.meta[index]) ? [0, 0, 0, 0] : isSel(B.meta[index]) ? OVERLAY.selected
               : [B.colors[4 * index], B.colors[4 * index + 1], B.colors[4 * index + 2], B.colors[4 * index + 3]],
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects], getElevation: [p.layers.signals, p.layers.objects] },
         }));
@@ -625,9 +628,9 @@ export default function MapView(p: MapViewProps) {
         const Lb = F.labels;
         out.push(new TextLayer({
           id: "sign-labels", data: { length: Lb.texts.length, attributes: { getPosition: { value: Lb.positions, size: 3 } } },
-          getText: (_: unknown, { index }: { index: number }) => Lb.texts[index], getSize: 12, sizeMaxPixels: 16, sizeMinPixels: 0,
-          getColor: [20, 22, 26, 255], background: true, getBackgroundColor: [255, 255, 255, 230], backgroundPadding: [3, 1],
-          fontWeight: 700, billboard: true, modelMatrix, characterSet: "auto",
+          getText: (_: unknown, { index }: { index: number }) => Lb.texts[index], getSize: LABEL.size, sizeMaxPixels: LABEL.sizeMaxPixels, sizeMinPixels: 0,
+          getColor: LABEL.ink, background: true, getBackgroundColor: LABEL.background, backgroundPadding: LABEL.padding,
+          backgroundBorderRadius: LABEL.borderRadius, fontFamily: LABEL.fontFamily, fontWeight: LABEL.fontWeight, billboard: true, modelMatrix, characterSet: "auto",
         }));
       }
       const P = r.points;
@@ -636,10 +639,10 @@ export default function MapView(p: MapViewProps) {
         out.push(new ScatterplotLayer({
           id: "signals",
           data: { length: P.meta.length, attributes: { getPosition: { value: P.positions, size: 3 } } },
-          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: [10, 16, 23, 255],
+          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: EDGE.ring,
           lineWidthUnits: "pixels", getLineWidth: 1, lineWidthMaxPixels: 1,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            P.meta[index].kind === "object" ? [180, 140, 255, 230] : P.meta[index].dynamic ? [37, 194, 110, 255] : [255, 107, 107, 255],
+            P.meta[index].kind === "object" ? MARKER.dot.object : P.meta[index].dynamic ? MARKER.dot.light : P.meta[index].stop ? MARKER.dot.stop : MARKER.dot.sign,
           pickable: true, modelMatrix, parameters: { depthCompare: "always" },
         }));
     }
@@ -649,30 +652,32 @@ export default function MapView(p: MapViewProps) {
       const nl = C.lanes.meta.length, nr = C.refs.meta.length;
       out.push(new PathLayer({
         id: "cmp-lanes", data: { length: nl, startIndices: sub(C.lanes.starts, nl), attributes: { getPath: { value: C.lanes.positions, size: 3 } } },
-        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 235], modelMatrix, parameters: depthBias("cmp-lanes"),
+        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: OVERLAY.compare, modelMatrix, parameters: depthBias("cmp-lanes"),
       }));
       if (nr) out.push(new PathLayer({
         id: "cmp-refs", data: { length: nr, startIndices: sub(C.refs.starts, nr), attributes: { getPath: { value: C.refs.positions, size: 3 } } },
-        _pathType: "open", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 255], modelMatrix, parameters: depthBias("cmp-refs"),
+        _pathType: "open", widthUnits: "pixels", getWidth: 1.5, getColor: withAlpha(OVERLAY.compare, 255), modelMatrix, parameters: depthBias("cmp-refs"),
         getDashArray: [4, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
       }));
     }
     const markers = (id: string, pts: MarkerPoint[], radius: number) => [
       new ScatterplotLayer<MarkerPoint>({
-        id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + 3 : radius), radiusUnits: "pixels",
-        getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? [255, 255, 255, 255] : [10, 16, 23, 255]),
-        lineWidthUnits: "pixels", getLineWidth: (d) => (d.selected ? 2.5 : 1.5), pickable: true, billboard: true,
+        id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + MARKER.selectedGrow : radius), radiusUnits: "pixels",
+        getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? EDGE.ringSelected : EDGE.ring),
+        lineWidthUnits: "pixels", getLineWidth: (d) => (d.selected ? MARKER.ringWidthSelected : MARKER.ringWidth), pickable: true, billboard: true,
         parameters: { depthCompare: "always" }, updateTriggers: { getRadius: pts, getLineColor: pts },
       }),
       new TextLayer<MarkerPoint>({
         id: id + "-label", data: pts.filter((d) => d.label), getPosition: (d) => [d.lon, d.lat], getText: (d) => d.label!,
-        getSize: 11, getColor: [12, 14, 18, 255], fontWeight: 700, billboard: true, parameters: { depthCompare: "always" },
+        getSize: LABEL.flagSize, getColor: LABEL.ink, fontFamily: LABEL.fontFamily, fontWeight: 700, billboard: true, parameters: { depthCompare: "always" },
+        background: true, getBackgroundColor: LABEL.background, backgroundPadding: LABEL.padding, backgroundBorderRadius: LABEL.borderRadius,
+        getPixelOffset: LABEL.flagOffset,
       }),
     ];
     // beforeId is a MapboxOverlay (interleaved) layer prop, not part of the layers' own prop types
     for (let i = 0; i < out.length; i++) out[i] = out[i].clone({ beforeId } as never);
-    if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
-    if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
+    if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, MARKER.findingRadius));
+    if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
       beforeId, p.mode, p.roadOpacity, cmpDraped]);

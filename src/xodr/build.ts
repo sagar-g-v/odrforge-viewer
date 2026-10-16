@@ -3,7 +3,8 @@
 import { curvatureAt, evalGeom, evalRoad, type Pose } from "./geometry";
 import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
 import type { Geom, OpenDrive, OutlineCorner, Road, RoadMark } from "./model";
-import { FeatureBuilder, type Features, type Rgba } from "./features";
+import { FeatureBuilder, signalKind, type Features, type Rgba } from "./features";
+import { MARK } from "../design/scene";
 import { boundaryRing, hull, type JunctionMeta } from "./junctions";
 
 export type Project = (x: number, y: number) => [number, number];
@@ -13,7 +14,7 @@ export interface LaneMeta { road: number; section: number; lane: number; type: s
 /** a driving-direction arrow on a lane: both = @direction="both" (or the deprecated type bidirectional), double-headed */
 export interface ArrowMeta { road: number; lane: number; forward: boolean; both: boolean; }
 export interface MarkMeta { road: number; color: Rgba; width: number; dash: [number, number] | null; }
-export interface PointMeta { road: number; index: number; kind: "signal" | "object"; dynamic: boolean; label: string; }
+export interface PointMeta { road: number; index: number; kind: "signal" | "object"; dynamic: boolean; label: string; stop?: boolean; }
 
 export interface Binary { positions: Float64Array; starts: Uint32Array; } // starts: vertex index of each item, plus the total
 
@@ -97,11 +98,8 @@ export function medianZ(pos: Float64Array): number {
   return zs[zs.length >> 1];
 }
 
-// road mark colours (1.8.0 e_roadMarkColor); "standard" is white
-const MARK_COLOR: Record<string, Rgba> = {
-  standard: [245, 247, 250, 255], white: [245, 247, 250, 255], yellow: [245, 196, 66, 255], blue: [70, 130, 230, 255],
-  green: [60, 170, 90, 255], red: [220, 60, 60, 255], orange: [240, 150, 40, 255], violet: [150, 90, 210, 255], black: [25, 25, 25, 255],
-};
+// road mark colours (1.8.0 e_roadMarkColor; "standard" is white): the design system's paint (design/scene.ts MARK)
+const MARK_COLOR: Record<string, Rgba> = MARK;
 const markColor = (c: string): Rgba => MARK_COLOR[c] ?? MARK_COLOR.standard;
 // display defaults where OpenDRIVE leaves the pattern to the country: broken 3 m on / 9 m off, Botts' dots every 1.2 m
 const BROKEN: [number, number] = [3, 9], DOTS: [number, number] = [0.12, 1.08];
@@ -120,8 +118,8 @@ export function markLines(m: RoadMark, inside: number): MarkLineSpec[] {
     if (t === "solid" || t === "edge" || t === "custom") return { off, color: markColor(m.color), width: w, dash: null };
     if (t === "broken") return { off, color: markColor(m.color), width: w, dash: BROKEN };
     if (t === "botts dots") return { off, color: markColor(m.color), width: Math.max(w, 0.1), dash: DOTS };
-    if (t === "curb") return { off, color: [150, 152, 156, 255], width: Math.max(w, 0.15), dash: null };
-    if (t === "grass") return { off, color: [70, 150, 70, 255], width: Math.max(w, 0.3), dash: null };
+    if (t === "curb") return { off, color: MARK.curb, width: Math.max(w, 0.15), dash: null };
+    if (t === "grass") return { off, color: MARK.grass, width: Math.max(w, 0.3), dash: null };
     return null;
   };
   if (m.type === "none" || !m.type) return [];
@@ -272,7 +270,8 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
       const x = p.x - sg.t * Math.sin(p.hdg), y = p.y + sg.t * Math.cos(p.hdg);
       const [lon, lat] = geo(x, y);
       pts.push(lon, lat, surfaceZ(road, sg.s, sg.t) + sg.zOffset + off.z);
-      ptMeta.push({ road: ri, index: si, kind: "signal", dynamic: sg.dynamic, label: sg.name || `${sg.type}${sg.subtype && sg.subtype !== "-1" ? "-" + sg.subtype : ""}` });
+      ptMeta.push({ road: ri, index: si, kind: "signal", dynamic: sg.dynamic, stop: signalKind(sg) === "stop",
+        label: sg.name || `${sg.type}${sg.subtype && sg.subtype !== "-1" ? "-" + sg.subtype : ""}` });
     });
     road.objects.forEach((o, oi) => {
       const p = evalRoad(road, o.s);

@@ -7,7 +7,7 @@ import { evalRoad } from "./geometry";
 import { laneBorders, laneOffsetAt, sectionIndex, surfaceZ } from "./lanes";
 import { sampleS } from "./build";
 import type { OpenDrive, Road, RoadObject, Signal } from "./model";
-import { ASSET, TREE } from "../design/scene";
+import { ASSET, SIGNAL, TREE } from "../design/scene";
 
 export interface FeatureRef { kind: "signal" | "object" | "structure" | "crossPath"; road: number; index: number; }
 export type Rgba = [number, number, number, number];
@@ -24,12 +24,11 @@ export interface Features {
   crossPaths: { positions: Float64Array; starts: Uint32Array; meta: FeatureRef[] };
 }
 
+// asset and regulatory colours: the design system's scene palette (design/scene.ts, docs/design-system.md §8)
 const C = {
-  trunk: [112, 82, 52, 255] as Rgba, crown: [62, 138, 66, 225] as Rgba, pole: [150, 155, 162, 255] as Rgba,
-  lamp: [255, 214, 120, 255] as Rgba, barrier: [182, 188, 196, 255] as Rgba, object: [196, 160, 90, 230] as Rgba,
-  housing: [32, 35, 42, 255] as Rgba, red: [235, 52, 52, 255] as Rgba, amber: [245, 170, 40, 255] as Rgba,
-  green: [46, 204, 98, 255] as Rgba, white: [246, 246, 246, 255] as Rgba, stop: [204, 32, 40, 255] as Rgba,
-  sign: [44, 98, 206, 255] as Rgba, line: [250, 250, 250, 255] as Rgba,
+  trunk: ASSET.trunk, crown: ASSET.crown, pole: ASSET.pole, lamp: ASSET.lamp, barrier: ASSET.barrier, object: ASSET.object,
+  housing: ASSET.housing, red: SIGNAL.red, amber: SIGNAL.amber, green: SIGNAL.green, white: SIGNAL.signWhite,
+  stop: SIGNAL.signStop, sign: SIGNAL.signInfo, line: SIGNAL.stopLine,
 };
 
 const SPEED = new Set(["274", "R2-1", "323", "670", "B14", "R4-1"]);

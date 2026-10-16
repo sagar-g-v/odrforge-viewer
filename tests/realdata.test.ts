@@ -20,15 +20,23 @@ const stats = (d: number[]) => { const a = d.map(Math.abs).sort((x, y) => x - y)
 for (const area of AREAS) {
   const xodr = `${DIR}/${area}_standard.xodr`;
   describe.skipIf(!existsSync(xodr))(`real data: ${area}`, () => {
-    const od = parseOpenDrive(readFileSync(xodr, "utf8"));
-    const proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward), L = r.lanes.positions;
+    // read lazily, inside the tests: a skipped describe's body still runs (to collect its tests) where the data is absent
+    let loaded: { proj: ReturnType<typeof makeProjector>; r: ReturnType<typeof buildRender>; L: Float64Array } | null = null;
+    const data = () => {
+      if (!loaded) {
+        const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
+        loaded = { proj, r, L: r.lanes.positions };
+      }
+      return loaded;
+    };
     const against = (g: GroundGrid) => {
+      const { proj, L } = data();
       const d: number[] = [];
       for (let v = 0; v < L.length / 3; v++) { const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]); const h = sampleGrid(g, x, y); if (Number.isFinite(h)) d.push(L[3 * v + 2] - h); }
       return stats(d);
     };
     it("the viewer finds a road-conformed grid for it, and every lane lies on that grid", () => {
-      const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`));
+      const { L } = data(), file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`));
       expect(file).toMatch(/_ground_conformed\.odrz$/);
       const s = against(grid(file!));
       expect(s.n).toBeGreaterThan(0.95 * (L.length / 3));
@@ -36,7 +44,7 @@ for (const area of AREAS) {
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.conformedMedian);
     });
     it("its heights are real (on the plain DEM grid, same frame and datum): drawn as they are over terrain, never draped", () => {
-      const g = grid(`${area}_ground.odrz`), s = against(g);
+      const { proj, r, L } = data(), g = grid(`${area}_ground.odrz`), s = against(g);
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.frameMedian);
       const ground = (lon: number, lat: number) => { const [x, y] = proj.inverse(lon, lat); return sampleGrid(g, x, y); };
       const real = hasRealHeights(L, ground);
