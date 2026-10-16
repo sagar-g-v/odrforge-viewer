@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LEGEND, legendColor, SELECTED } from "../src/map/palette";
-import { MARKER, OVERLAY, SIGNAL } from "../src/design/scene";
+import { MARK, MARKER, OVERLAY, SIGNAL } from "../src/design/scene";
 
 type RGB = [number, number, number];
 type RGBA = [number, number, number, number];
@@ -120,7 +120,7 @@ describe("design contract §3: lane colours (palette.ts = tokens.css, colour-bli
 // ---------- §3 / §8 one meaning per overlay hue ----------
 // distinct meanings drawn over the map; a hue may be shared only where the doc says so (listed in SHARED)
 const OVERLAYS: Record<string, RGB> = {
-  selected: rgb(OVERLAY.selected), junction: rgb(OVERLAY.junctionEdge), crossPath: rgb(OVERLAY.crossPath), junctionRef: rgb(OVERLAY.junctionRef),
+  selected: rgb(OVERLAY.selected), junction: rgb(OVERLAY.junctionEdge), crossPath: rgb(OVERLAY.crossPath), junctionRef: rgb(OVERLAY.junctionRef), refLine: rgb(OVERLAY.refLine),
   elevation: rgb(OVERLAY.elevation), compare: rgb(OVERLAY.compare),
   flagOpen: rgb(MARKER.flag.open), flagFixed: rgb(MARKER.flag.fixed), flagQuestion: rgb(MARKER.flag.question), flagWontfix: rgb(MARKER.flag.wontfix),
   findingError: rgb(MARKER.finding.error), findingWarning: rgb(MARKER.finding.warning), findingInfo: rgb(MARKER.finding.info),
@@ -130,7 +130,7 @@ const OVERLAYS: Record<string, RGB> = {
 const SHARED = [["junction", "flagOpen"], ["flagOpen", "findingWarning"], ["junction", "findingWarning"], ["flagQuestion", "findingInfo"]];
 const shared = (a: string, b: string) => SHARED.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
 const OVERLAY_MIN = 20; //    ΔE76 between two different meanings
-const UNIQUE_MIN: Record<string, number> = { compare: 30, crossPath: 25 }; // against everything else drawn (cross path vs elevation teal: 25.1)
+const UNIQUE_MIN: Record<string, number> = { compare: 30, crossPath: 25, refLine: 40 }; // against everything else drawn (cross path vs elevation teal: 25.1)
 const SELECTED_MIN = 25; //   selection against every lane colour and overlay
 
 describe("design contract §3/§8: one meaning per overlay hue (scene.ts, palette.ts)", () => {
@@ -148,9 +148,10 @@ describe("design contract §3/§8: one meaning per overlay hue (scene.ts, palett
     for (const theme of ["dark", "light"] as const) for (const t of LEGEND) out[`lane ${t} (${theme})`] = rgb(legendColor(t, theme));
     for (const [k, v] of Object.entries(SIGNAL)) out[`signal ${k}`] = rgb(v);
     for (const [k, v] of Object.entries(MARKER.dot)) out[`dot ${k}`] = rgb(v);
+    for (const [k, v] of Object.entries(MARK)) out[`mark ${k}`] = rgb(v);
     return out;
   };
-  for (const key of ["compare", "crossPath"]) {
+  for (const key of ["compare", "crossPath", "refLine"]) {
     it(`${key} is used for nothing else (ΔE ≥ ${UNIQUE_MIN[key]} from every lane, overlay, marker and signal colour)`, () => {
       const bad = Object.entries(everythingElse(key)).map(([k, v]) => [k, deltaE(OVERLAYS[key], v)] as const).filter(([, d]) => d < UNIQUE_MIN[key]);
       expect(bad.map(([k, d]) => `${k}: ${d.toFixed(1)}`)).toEqual([]);
@@ -158,7 +159,7 @@ describe("design contract §3/§8: one meaning per overlay hue (scene.ts, palett
   }
   it(`selection stands out from every lane colour and overlay (ΔE ≥ ${SELECTED_MIN}); palette.ts and scene.ts agree`, () => {
     expect(rgb(SELECTED)).toEqual(OVERLAYS.selected);
-    const bad = Object.entries(everythingElse("selected")).filter(([k]) => !k.startsWith("signal") && !k.startsWith("dot"))
+    const bad = Object.entries(everythingElse("selected")).filter(([k]) => !k.startsWith("signal") && !k.startsWith("dot") && !k.startsWith("mark "))
       .map(([k, v]) => [k, deltaE(OVERLAYS.selected, v)] as const).filter(([, d]) => d < SELECTED_MIN);
     expect(bad.map(([k, d]) => `${k}: ${d.toFixed(1)}`)).toEqual([]);
   });

@@ -67,7 +67,7 @@ export const OVERLAY = {
   junctionRef: [255, 77, 0, 255] as Rgba, // vermilion #ff4d00
   elevation: [80, 220, 200, 255] as Rgba, elevationLine: [80, 220, 200, 200] as Rgba,
   compare: [255, 64, 200, 235] as Rgba, //           magenta: comparison B only
-  refLine: [232, 76, 255, 220] as Rgba, //           road reference lines (off by default); hue close to compare: design to decide
+  refLine: [208, 255, 20, 230] as Rgba, //      chartreuse #d0ff14: road reference lines (drawn on the lanes: 3.1:1 on light, 6.5:1 on dark driving)
   buildingFill: "#ffb347", buildingEdge: "#ff9f1c",
 };
 

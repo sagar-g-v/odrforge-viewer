@@ -48,6 +48,7 @@
   --data-junction: #f5b84a;        /* junction <boundary> fill (alpha .28) and outline */
   --data-crosspath: #00e5ff;       /* junction cross path, dashed */
   --data-junction-ref: #ff4d00;    /* junction reference line, dashed */
+  --data-ref-line: #d0ff14;        /* road reference lines (chartreuse, drawn on the lanes) */
   --data-elevation: #50dcc8;
   --data-junction-fill: rgba(245, 184, 74, .28);       /* elevation grid */
   --data-compare: #ff40c8;         /* comparison B outlines (magenta, used nowhere else) */
