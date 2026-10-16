@@ -98,3 +98,16 @@ Both include a 0.10 m lift, from MapLibre's terrain mesh on 40 % slopes. Munich 
   Guarded by `tests/exact.test.ts` ("superelevation sign").
 - **Object outlines** (`cornerLocal` / `cornerRoad`), **elevation grids** and the **junction reference line** are drawn
   as given. Guarded by `tests/outlines.test.ts` and `tests/grid.test.ts`.
+
+## 7. Design contract (colour)
+
+These rules live in `docs/design-system.md` §9 and are guarded by `tests/design.test.ts`. The test reads
+`src/design/tokens.css`, `src/map/palette.ts` and `src/design/scene.ts` and checks:
+
+- WCAG AA contrast in both themes: text ≥ 4.5:1, control boundaries and focus ≥ 3:1;
+- the lane sets, the colour-blind ΔE minimums, and that `palette.ts` equals the `--lane-*` tokens;
+- one meaning per overlay hue: compare magenta and cross-path cyan are used for nothing else, selection stands out from
+  every lane, and sign and object dots never look like findings.
+
+The numbers were measured on the proven palette (2026-10-17). The same rule applies as everywhere above: change the
+colour, not the limit.
