@@ -168,6 +168,8 @@ button.chip { cursor: pointer; border-color: var(--line); background: transparen
 .chip.status-question, .chip.info { background: var(--info-soft); color: var(--info); border-color: transparent; }
 .chip.level-error, .chip.err { background: var(--err-soft); color: var(--err); border-color: transparent; }
 .chip.accent { background: var(--accent-soft); color: var(--accent); }
+.chip.virtual { background: var(--virtual-soft); color: var(--virtual); border-color: transparent; }
+.drawer-head .chip { display: inline-block; margin-top: var(--space-3); }
 
 /* lists (flags, findings, compare differences) */
 .list { display: flex; flex-direction: column; gap: var(--space-3); }

@@ -46,6 +46,7 @@
   /* ---------- map data colours (same in both themes; tuned for OSM raster, satellite and the dark vector map) ---------- */
   --data-selected: #1e9bff;        /* selected lane / junction / feature */
   --data-junction: #f5b84a;        /* junction <boundary> fill (alpha .28) and outline */
+  --data-junction-virtual: #7c5cff;  /* virtual junctions: iris, hatched fill */
   --data-crosspath: #00e5ff;       /* junction cross path, dashed */
   --data-junction-ref: #ff4d00;    /* junction reference line, dashed */
   --data-ref-line: #d0ff14;        /* road reference lines (chartreuse, drawn on the lanes) */
@@ -70,6 +71,7 @@
   --warn: var(--sun-400); --warn-soft: var(--sun-900); --warn-solid: var(--sun-400); --warn-ink: var(--sun-ink);
   --err: var(--clay-400); --err-soft: var(--clay-900);
   --info: var(--sky-400); --info-soft: var(--sky-900);
+  --virtual: #b3a3ff; --virtual-soft: #1f1a45; /* virtual-junction chip: iris, text-safe (7.4:1) */
   --focus: var(--sky-400);
   --surface-glass: rgba(11, 26, 52, .82); --err-line: rgba(255, 123, 112, .45); --ok-halo: rgba(124, 201, 90, .25);
   /* top bar: the night sky, with the meadow horizon line */
@@ -95,6 +97,7 @@
   --warn: var(--sun-700); --warn-soft: var(--sun-100); --warn-solid: var(--sun-400); --warn-ink: var(--sun-ink);
   --err: var(--clay-700); --err-soft: var(--clay-100);
   --info: var(--sky-600); --info-soft: #e3effb;
+  --virtual: #5b3fd6; --virtual-soft: #ece8ff; /* virtual-junction chip: iris, text-safe (5.6:1) */
   --focus: var(--sky-600);
   --surface-glass: rgba(255, 255, 255, .82); --err-line: rgba(196, 43, 43, .45); --ok-halo: rgba(43, 115, 23, .25);
   /* top bar: the day sky, zenith to sky, with the meadow horizon line */

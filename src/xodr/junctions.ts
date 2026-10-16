@@ -5,7 +5,12 @@ import { laneBorders, laneOffsetAt, sectionIndex, surfaceZ } from "./lanes";
 import { sampleS } from "./build";
 import type { OpenDrive, Road } from "./model";
 
-export interface JunctionMeta { id: string; exact: boolean; connections: number; type: string; }
+/**
+ * outline: "boundary" = the file's <boundary> (1.8.0 §12.10); "span" = a virtual junction's stretch of its main road
+ * (mainRoad, sStart..sEnd, §12.5), full width; "hull" = approximate (convex hull of the connecting-road lanes).
+ * exact = the file defines the outline (boundary or span): drawn solid, a hull dashed.
+ */
+export interface JunctionMeta { id: string; exact: boolean; outline: "boundary" | "span" | "hull"; connections: number; type: string; }
 
 type P3 = [number, number, number]; // file x, y, z
 
@@ -75,6 +80,23 @@ export function boundaryRing(j: OpenDrive["junctions"][number], byId: Map<string
     if (next && d2(ring[0], next) < d2(ring[1], next)) [ring[0], ring[1]] = [ring[1], ring[0]];
   }
   return ring;
+}
+
+/**
+ * A virtual junction's area (1.8.0 §12.5: mainRoad, sStart, sEnd; it lies on the main road, which it does not split):
+ * the main road between sStart and sEnd, from its outermost left border to its outermost right border. Null when the
+ * road is unknown or the span empty. Without it the hull of the junction's connecting roads (often one crossing path)
+ * collapsed to a line across the road: no area to draw.
+ */
+export function virtualSpanRing(j: OpenDrive["junctions"][number], byId: Map<string, Road>): P3[] | null {
+  const road = j.mainRoad !== null ? byId.get(j.mainRoad) : undefined;
+  if (!road || j.sStart === null || j.sEnd === null || !Number.isFinite(j.sStart) || !Number.isFinite(j.sEnd)) return null;
+  const s0 = Math.max(0, Math.min(j.sStart, j.sEnd)), s1 = Math.min(road.length, Math.max(j.sStart, j.sEnd));
+  if (s1 - s0 < 1e-6) return null;
+  const S = [s0, ...sampleS(road).filter((s) => s > s0 + 1e-6 && s < s1 - 1e-6), s1];
+  const left = S.map((s) => at(road, s, crossSection(road, s)[1]));
+  const right = S.map((s) => at(road, s, crossSection(road, s)[0])).reverse();
+  return [...left, ...right];
 }
 
 /** convex hull (monotone chain) of 2D points carrying z; the approximate area of a junction without a boundary */

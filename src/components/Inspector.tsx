@@ -1,5 +1,7 @@
 // Right-hand drawer: the clicked road and lane (s, t, width, height, links, material, speed, access, OSM source ways).
 import type { Network } from "../data/useNetwork";
+import { JUNCTION } from "../design/scene";
+import { isVirtual } from "../map/junctionStyle";
 import type { UserData } from "../xodr/model";
 import { Icon } from "./Icon";
 import type { LaneProbe } from "../xodr/query";
@@ -147,12 +149,14 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         <div>
           <div className="eyebrow">Junction{j ? ` · ${j.type}` : ""}</div>
           <h2>Junction {m.id}{j?.name ? ` · ${j.name}` : ""}</h2>
+          {isVirtual(m) && <span className="chip virtual">{JUNCTION.label.virtual}</span>}
         </div>
         <button className="icon-btn" aria-label="Close inspector" onClick={onClose}><Icon name="x" /></button>
       </header>
       <section>
         <h3>Area</h3>
-        <Row k="outline" v={m.exact ? "<boundary> (OpenDRIVE 1.8 §12.10)" : "approximate (hull of connecting roads)"} />
+        <Row k="outline" v={m.outline === "boundary" ? "<boundary> (OpenDRIVE 1.8 §12.10)"
+          : m.outline === "span" ? `main road ${j?.mainRoad}, s ${f(j?.sStart ?? NaN)} – ${f(j?.sEnd ?? NaN)} m (§12.5)` : "approximate (hull of connecting roads)"} />
         {j && <Row k="boundary segments" v={j.boundary.length ? `${j.boundary.filter((b) => b.type === "lane").length} lane, ${j.boundary.filter((b) => b.type === "joint").length} joint` : "none"} />}
         {j && j.refLine.length > 0 && <Row k="reference line (§12.9)"
           v={`${j.refLine.map((g) => g.kind).join(", ")} · ${f(j.refLine.reduce((a, g) => a + g.length, 0))} m · hdg ${f((j.refLine[0].hdg * 180) / Math.PI, 1)}°`} />}

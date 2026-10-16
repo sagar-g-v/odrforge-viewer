@@ -108,6 +108,8 @@ export interface CrossPath {
 export interface ElevationGrid { gridSpacing: number; sStart: number; rows: { center: number[]; left: number[]; right: number[] }[]; }
 export interface Junction {
   id: string; name: string; type: string; connections: Connection[]; boundary: BoundarySegment[];
+  // virtual junction (1.5+, 1.8.0 §12.5): the main road it lies on and its span there; null where not given
+  mainRoad: string | null; sStart: number | null; sEnd: number | null;
   crossPaths: CrossPath[]; priorities: { high: string; low: string }[]; controllers: { id: string; type: string; sequence: string }[];
   refLine: Geom[]; // <planView> (1.8.0 §12.9): the junction reference line, one <line>
   elevationGrid: ElevationGrid | null;

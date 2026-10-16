@@ -103,7 +103,9 @@ describe("lane borders against OdrForge's reference sampler (tools/inspect/odrge
       expect(Math.abs(area) / 2).toBeGreaterThan(10); // m², a real junction area
     }
     const r = buildRender(od, makeProjector(od.header.geoReference).forward);
-    expect(r.junctions.meta.filter((m) => m.exact).length).toBe(21);
+    expect(r.junctions.meta.filter((m) => m.outline === "boundary").length).toBe(21);
+    expect(r.junctions.meta.filter((m) => m.outline === "span").length).toBe(4); // the 4 virtual junctions (§12.5): main-road spans
+    expect(r.junctions.meta.filter((m) => m.exact).length).toBe(25);
     expect(r.junctions.meta.length).toBe(od.junctions.length); // the others as approximate hulls
   });
   it("builds render buffers for every road with a geoReference", () => {

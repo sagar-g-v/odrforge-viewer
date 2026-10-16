@@ -160,7 +160,7 @@ Rules:
 
 1. **Lanes are opaque** (alpha ~0.92), so their colour is read against the neighbouring lanes, not against the basemap. Each theme has its own set: muted fills on dark, lighter pastels on the OSM raster.
 2. **Overlays are saturated, mid-light hues** that do not occur in any basemap. Lines are at least 1.5px. Markers have a 1.5px `#0a1017` halo, which turns white when selected.
-3. **Each overlay hue has one meaning.** Magenta is only compare-B. Cyan is only cross paths. Chartreuse is only road reference lines. Amber is only junction areas and open flags.
+3. **Each overlay hue has one meaning.** Magenta is only compare-B. Cyan is only cross paths. Chartreuse is only road reference lines. Amber is only real junction areas and open flags. Iris is only virtual junctions.
 4. **Road marks and signals keep real-world colours**: white, yellow, and the red/amber/green signal heads.
 5. **Each theme has its own map.** The top bar's Map draws the OSM raster in the light theme and the near-black dark vector map in the dark theme (`tests/basemap.test.ts`). Lane opacity defaults to 1 (the lane alpha .92 above); the Road opacity slider only lowers it on request.
 
@@ -209,7 +209,8 @@ are deliberately close (a junction lane is a driving lane), and the junction-are
 | Role | Colour | Over OSM | Over satellite | Over dark map |
 |---|---|---|---|---|
 | selected lane/junction/feature | `#1e9bff` (was `#5aa9ff`) | ✔ | ✔ | ✔ |
-| junction area fill / outline | `#f5b84a` at α .28 / 1 | ✔ | ✔ | ✔ |
+| real junction (default, direct, crossing): fill / outline | `#f5b84a` solid tint at α .28 / 1 | ✔ | ✔ | ✔ |
+| **virtual junction**: fill / outline | `#7c5cff` iris, **45° hatch** (3px stripes, 5px gap) at α .55 / 1 | ✔ | ✔ | ✔ |
 | cross path (dashed) | `#00e5ff` (was `#00cdff`: ΔE 16.7 from the sky info markers) | ✔ | ✔ | ✔ |
 | road reference lines | `#d0ff14` chartreuse (on the lanes: 3.1:1 light, 6.5:1 dark driving; was `#e84cff`, too close to compare magenta) | ✔ | ✔ | ✔ |
 | junction reference line (dashed) | `#ff4d00` vermilion (was `#eb4034`: ΔE 16.1 from error findings) | ✔ | ✔ | ✔ |
@@ -228,6 +229,37 @@ pairs that collide for colour-blind users never rely on colour alone, because th
 - flag vs finding: the flag has a number label, the finding a plain dot
 - open vs fixed: carried in the list chip text as well
 - error vs warning: the finding chip text
+
+### Junctions: real and virtual
+
+OpenDRIVE 1.8.0 §12 has four junction types:
+
+- `default`, `direct` and `crossing` are real places where roads meet.
+- `virtual` (§12.5) is a logical junction on a through road, such as a driveway or a parking entry, with no physical
+  intersection.
+
+A reviewer must tell the two apart at a glance, so each property is carried by its own visual channel:
+
+| Channel | Says | Real junction | Virtual junction |
+|---|---|---|---|
+| Hue | the type | amber `#f5b84a` | iris `#7c5cff` |
+| Fill form | the type (works for every kind of colour vision) | solid tint, α .28 (hull .15) | 45° hatch, α .55 (hull .35) |
+| Line style | the outline's source | solid = an outline the file defines, dashed 4/3 = approximate hull | same; a virtual junction without `<boundary>` is its main road's span `sStart`..`sEnd` (§12.5), full width, solid |
+| Edge | | 2px; selected 3px `#1e9bff` | same |
+| Legend / inspector | | "junction" with the type in the inspector | "virtual junction", iris chip in the inspector head |
+
+Values: `JUNCTION` and `OVERLAY.virtual*` in `scene.ts`, plus `--data-junction-virtual`. Real vs virtual stays ΔE ≥ 40 in
+every vision mode (guarded). The hatch is a `FillStyleExtension` procedural pattern (`@deck.gl/extensions`), fixed on screen.
+
+Wiring (`src/map/junctionStyle.ts`, guarded by `tests/junctionStyle.test.ts` and `tests/virtualJunction.test.ts`):
+
+- A virtual junction lies on its through road, so a fill under the opaque lanes would never show. Real fills stay under
+  the lanes (`junctions`); the virtual hatch is its own layer over the lanes (`junctions-virtual`, draw order 4), and the
+  lanes show between the stripes.
+- Its area is the main road between `sStart` and `sEnd` (`mainRoad`, 1.5+, §12.5). The hull of its connecting roads
+  (often one crossing path) collapsed to a line, with nothing to hatch.
+- The chip text uses text-safe iris tokens (`--virtual` / `--virtual-soft`: 7.4:1 dark, 5.6:1 light); raw `#7c5cff` reaches
+  only 3.99:1 on the dark surface.
 
 ## 4. Scales
 
@@ -424,10 +456,12 @@ test in the same commit.
 | Compare magenta against every lane, overlay, marker and signal colour | ΔE ≥ 30 | n/a |
 | Cross-path cyan against the same | ΔE ≥ 25 | vs elevation teal 25.1 |
 | Road reference-line chartreuse against the same | ΔE ≥ 40 | vs light median lane 44.2 |
+| Virtual-junction iris against the same | ΔE ≥ 24 | vs violet road paint 24.7 |
+| Real vs virtual junction, in every vision mode | ΔE ≥ 40 | normal 148, deuteranopia 143, protanopia 139, tritanopia 62 |
 | Selection against every lane colour and overlay; `palette.ts` and `scene.ts` agree | ΔE ≥ 25 | 25.6 |
 | 2D sign and object dots against every finding colour | ΔE ≥ 20 | n/a |
 
-\* The documented shares: amber for junction areas and open flags; the attention family (open flag, warning finding);
+\* The documented shares: amber for real junction areas and open flags; the attention family (open flag, warning finding);
 sky for question flags and info findings.
 
 `DESIGN_REPORT=1 npx vitest run tests/design.test.ts --silent=false` prints the measured numbers.

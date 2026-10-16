@@ -2,18 +2,22 @@
 // and what the base map shows (OpenStreetMap Carto's key colours; satellite imagery has no legend).
 import type { ConcreteBasemap as Basemap } from "../map/basemap";
 import { LEGEND, legendColor } from "../map/palette";
-import { ASSET, EDGE, MARK, MARKER, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
+import { ASSET, EDGE, JUNCTION, MARK, MARKER, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
 
 const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
 
 type Swatch =
-  | { kind: "fill"; color: string; border?: string }
+  | { kind: "fill"; color: string; border?: string; hatch?: boolean }
   | { kind: "line"; color: string; dash?: boolean; double?: boolean; width?: number }
   | { kind: "dot"; color: string; ring?: string }
   | { kind: "light" } | { kind: "arrow" };
 
 function Sw({ s }: { s: Swatch }) {
-  if (s.kind === "fill") return <i className="sw" style={{ background: s.color, borderColor: s.border ?? "var(--line-2)" }} />;
+  if (s.kind === "fill")
+    return <i className="sw" style={{
+      // a hatched area: 45° stripes as the map draws them (JUNCTION.hatch: 3px line, 5px gap)
+      background: s.hatch ? `repeating-linear-gradient(135deg, ${s.color} 0 ${JUNCTION.hatch.line}px, transparent ${JUNCTION.hatch.line}px ${JUNCTION.hatch.line + JUNCTION.hatch.gap}px)` : s.color,
+      borderColor: s.border ?? "var(--line-2)" }} />;
   if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? css(EDGE.ring) }} />;
   if (s.kind === "arrow")
     return <i className="sw arrow"><svg viewBox="0 0 16 10" width="16" height="10"><path d="M1 3.6h9V1l5 4-5 4V6.4H1z" fill="#f5f7fa" stroke="#45607b" strokeWidth=".6" /></svg></i>;
@@ -38,8 +42,10 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
     <>
       <Group title="Lane types" items={LEGEND.map((t) => [t, { kind: "fill", color: css(legendColor(t, theme)) }])} />
       <Group title="Junctions" items={[
-        ["junction area (<boundary>)", { kind: "fill", color: css(OVERLAY.junctionFill), border: css(OVERLAY.junctionEdge) }],
-        ["approximate area", { kind: "line", color: css(OVERLAY.junctionEdge), dash: true, width: 2 }],
+        [JUNCTION.label.real, { kind: "fill", color: css(OVERLAY.junctionFill), border: css(OVERLAY.junctionEdge) }],
+        [JUNCTION.label.virtual, { kind: "fill", color: css(OVERLAY.virtualFill), border: css(OVERLAY.virtualEdge), hatch: true }],
+        ["<boundary> outline (solid)", { kind: "line", color: css(OVERLAY.junctionEdge), width: 2 }],
+        ["approximate outline (dashed)", { kind: "line", color: css(OVERLAY.junctionEdge), dash: true, width: 2 }],
         ["cross path", { kind: "line", color: css(OVERLAY.crossPath), dash: true, width: 2 }],
         ["junction reference line", { kind: "line", color: css(OVERLAY.junctionRef), dash: true, width: 2 }],
         ["elevation grid point / line", { kind: "dot", color: css(OVERLAY.elevation) }],

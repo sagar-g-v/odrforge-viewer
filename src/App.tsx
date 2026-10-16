@@ -9,6 +9,7 @@ import { listServerFiles, useNetwork } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
 import { storedBasemap } from "./map/basemap";
+import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
 import { probe } from "./xodr/query";
@@ -258,7 +259,8 @@ export default function App() {
     setSelF(null);
     // a junction area, or its reference line / elevation grid
     const G = net.render.grids;
-    const ji = layer === "junctions" ? info.index : layer === "junction-ref-lines" ? G.refLines.meta[info.index]
+    const ji = layer === "junctions" ? info.index : layer === "junctions-virtual" ? virtualJunctions(net.render.junctions).index[info.index] ?? -1
+      : layer === "junction-ref-lines" ? G.refLines.meta[info.index]
       : layer === "junction-grid" ? G.lines.meta[info.index] : layer === "junction-grid-points" ? G.points.meta[info.index] : -1;
     setSelJ(!s && ji !== undefined && ji >= 0 ? { index: ji, x, y } : null);
   }, [net, visibleFlags, flagMode, newFlagAt]);

@@ -5,7 +5,7 @@ import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetA
 import type { Geom, OpenDrive, OutlineCorner, Road, RoadMark } from "./model";
 import { FeatureBuilder, signalKind, type Features, type Rgba } from "./features";
 import { MARK } from "../design/scene";
-import { boundaryRing, hull, type JunctionMeta } from "./junctions";
+import { boundaryRing, hull, virtualSpanRing, type JunctionMeta } from "./junctions";
 
 export type Project = (x: number, y: number) => [number, number];
 
@@ -310,16 +310,17 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   });
   features.addCrossPaths(od, new Map(od.roads.map((r, i) => [r.id, i])));
 
-  // junction areas: the <boundary> outline (1.8.0 §12.10) where the file has one, else the hull of its connecting roads
+  // junction areas: the <boundary> outline (1.8.0 §12.10) where the file has one, a virtual junction's main-road span
+  // (§12.5) next, else the hull of its connecting roads
   const juncs = new Buf(), juncMeta: JunctionMeta[] = [];
   const byId = new Map(od.roads.map((r) => [r.id, r]));
   for (const j of od.junctions) {
-    let ring = j.boundary.length ? boundaryRing(j, byId) : null;
-    const exact = !!ring && ring.length >= 3;
-    if (!exact) ring = hull(junctionPts.get(j.id) ?? []);
+    let ring = j.boundary.length ? boundaryRing(j, byId) : null, outline: JunctionMeta["outline"] = "boundary";
+    if (!ring || ring.length < 3) { ring = j.type.toLowerCase() === "virtual" ? virtualSpanRing(j, byId) : null; outline = "span"; }
+    if (!ring || ring.length < 3) { ring = hull(junctionPts.get(j.id) ?? []); outline = "hull"; }
     if (!ring || ring.length < 3) continue;
     juncs.begin();
-    juncMeta.push({ id: j.id, exact, connections: j.connections.length, type: j.type });
+    juncMeta.push({ id: j.id, exact: outline !== "hull", outline, connections: j.connections.length, type: j.type });
     for (const [x, y, z] of ring) at(x, y, z, juncs); // drawn under the lanes by depth bias (MapView)
   }
 

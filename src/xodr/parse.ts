@@ -148,6 +148,8 @@ function junction(n: XmlNode): Junction {
   const grid = kid(n, "elevationGrid");
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", type: n.attrs.type ?? "default",
+    mainRoad: n.attrs.mainRoad ?? null,
+    sStart: n.attrs.sStart !== undefined ? Number(n.attrs.sStart) : null, sEnd: n.attrs.sEnd !== undefined ? Number(n.attrs.sEnd) : null,
     connections: kids(n, "connection").map((c) => ({
       id: c.attrs.id ?? "", incomingRoad: c.attrs.incomingRoad ?? "", connectingRoad: c.attrs.connectingRoad ?? "",
       contactPoint: c.attrs.contactPoint ?? "",

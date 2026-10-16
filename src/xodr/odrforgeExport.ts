@@ -2,7 +2,7 @@
 // Lanes are already sampled there (delta-coded page units, cm), with per-point heights since OdrForge 2fdb8d3.
 import type { Projector } from "./geo";
 import { medianZ, type LaneMeta, type MarkMeta, type RenderData } from "./build";
-import { hull } from "./junctions";
+import { hull, type JunctionMeta } from "./junctions";
 import type { Features } from "./features";
 
 const emptyFeatures = (): Features => {
@@ -102,13 +102,13 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
     const end = k + 1 < laneStarts.length ? laneStarts[k + 1] : lanePos.length / 3;
     for (let v = laneStarts[k]; v < end; v += 3) list.push([lanePos[3 * v], lanePos[3 * v + 1], lanePos[3 * v + 2]]);
   });
-  const jPos: number[] = [], jStarts: number[] = [], jMeta: { id: string; exact: boolean; connections: number; type: string }[] = [];
+  const jPos: number[] = [], jStarts: number[] = [], jMeta: JunctionMeta[] = [];
   for (const [id, ps] of jPts) {
     const ring = hull(ps);
     if (ring.length < 3) continue;
     jStarts.push(jPos.length / 3);
     for (const [lon, lat, z] of ring) jPos.push(lon, lat, z - 0.03);
-    jMeta.push({ id, exact: false, connections: 0, type: "" });
+    jMeta.push({ id, exact: false, outline: "hull", connections: 0, type: "" });
   }
   const bin = (pos: number[], starts: number[]) => ({ positions: Float64Array.from(pos), starts: Uint32Array.from([...starts, pos.length / 3]) });
   const roads = d.roads.map((r) => ({ id: r[0], name: r[1], junction: r[2], length: r[3] }));

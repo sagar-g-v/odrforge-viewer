@@ -63,12 +63,27 @@ export const OVERLAY = {
   selected: [30, 155, 255, 255] as Rgba, //          #1e9bff
   hover: [255, 255, 255, 60] as Rgba, //             deck autoHighlight
   junctionFill: [245, 184, 74, 70] as Rgba, junctionFillApprox: [245, 184, 74, 38] as Rgba, junctionEdge: [245, 184, 74, 230] as Rgba,
+  // virtual junctions (1.8.0 §12.5: a logical junction on a through road, no physical intersection): iris, hatched
+  virtualFill: [124, 92, 255, 140] as Rgba, virtualFillApprox: [124, 92, 255, 90] as Rgba, virtualEdge: [124, 92, 255, 235] as Rgba, // #7c5cff
   crossPath: [0, 229, 255, 235] as Rgba, //   #00e5ff
   junctionRef: [255, 77, 0, 255] as Rgba, // vermilion #ff4d00
   elevation: [80, 220, 200, 255] as Rgba, elevationLine: [80, 220, 200, 200] as Rgba,
   compare: [255, 64, 200, 235] as Rgba, //           magenta: comparison B only
   refLine: [208, 255, 20, 230] as Rgba, //      chartreuse #d0ff14: road reference lines (drawn on the lanes: 3.1:1 on light, 6.5:1 on dark driving)
   buildingFill: "#ffb347", buildingEdge: "#ff9f1c",
+};
+
+/**
+ * How a junction area is drawn. Hue says what it is: amber = a real junction (default, direct, crossing), iris = virtual.
+ * Fill form says it too: real = solid tint, virtual = 45° hatch (so it reads on any lane or ground and in every vision mode).
+ * Line style says where the outline comes from: solid = the file's <boundary>, dashed = the approximate hull.
+ * Selected: 3px edge in OVERLAY.selected, fill tinted selected; the type keeps its fill form.
+ */
+export const JUNCTION = {
+  kind: (type: string): "real" | "virtual" => (type.toLowerCase() === "virtual" ? "virtual" : "real"),
+  edgeWidth: 2, edgeWidthSelected: 3, approxDash: [4, 3] as [number, number],
+  hatch: { angle: 45, line: 3, gap: 5 }, // px: stripes of the iris fill colour (FillStyleExtension pattern, or a stripe texture)
+  label: { real: "junction", virtual: "virtual junction" },
 };
 
 /** thin edges and halos, per theme */

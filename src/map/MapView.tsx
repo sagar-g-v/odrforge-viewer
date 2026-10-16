@@ -3,7 +3,8 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { diskResolution } from "../xodr/features";
-import { PathStyleExtension } from "@deck.gl/extensions";
+import { FillStyleExtension, PathStyleExtension } from "@deck.gl/extensions";
+import { JUNCTION_PATTERNS, junctionDash, junctionEdge, junctionEdgeWidth, junctionFill, junctionPattern, isVirtual, virtualJunctions } from "./junctionStyle";
 import type { Layer, PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MlMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
@@ -314,6 +315,7 @@ export default function MapView(p: MapViewProps) {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
     const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey) });
+    if (import.meta.env.DEV) (window as unknown as { odrvDeck?: MapboxOverlay }).odrvDeck = ov; // dev: inspect the deck layers
     map.addControl(ov);
     map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
     map.on("mouseout", () => propsRef.current.onCursor(null));
@@ -500,12 +502,13 @@ export default function MapView(p: MapViewProps) {
     if (r) {
       const J = r.junctions, nj = J.meta.length;
       if (p.layers.junctions && nj) {
-        // junction areas under the lanes: exact boundaries solid, approximate hulls dashed and fainter
+        // junction areas (map/junctionStyle.ts): a real junction is an amber solid tint under the lanes; a virtual one (on its
+        // through road) is not filled there but hatched in iris over the lanes (junctions-virtual, after the lanes)
         const jData = { length: nj, startIndices: sub(J.starts, nj), attributes: { getPolygon: { value: J.positions, size: 3 } } };
         out.push(new SolidPolygonLayer({
           id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, parameters: depthBias("junctions"), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            index === p.selectedJunction ? withAlpha(OVERLAY.selected, 110) : J.meta[index].exact ? OVERLAY.junctionFill : OVERLAY.junctionFillApprox,
+            isVirtual(J.meta[index]) ? [0, 0, 0, 0] : junctionFill(J.meta[index], index === p.selectedJunction),
           updateTriggers: { getFillColor: [p.selectedJunction] },
         }));
       }
@@ -533,6 +536,18 @@ export default function MapView(p: MapViewProps) {
           id: "lane-directions", data: { length: na, startIndices: sub(A.starts, na), attributes: { getPolygon: { value: A.positions, size: 3 } } },
           _full3d: true, modelMatrix, parameters: depthBias("lane-directions"), getFillColor: withAlpha(MARK.white, 200),
         }));
+      // virtual junctions: the iris 45° hatch (fixed on screen: 3px stripes, 5px gap) over their through road's lanes
+      const V = p.layers.junctions && nj ? virtualJunctions(J) : null, nv = V?.index.length ?? 0;
+      if (V && nv)
+        out.push(new SolidPolygonLayer({
+          id: "junctions-virtual", data: { length: nv, startIndices: sub(V.starts, nv), attributes: { getPolygon: { value: V.positions, size: 3 } } },
+          _full3d: true, pickable: true, modelMatrix, parameters: depthBias("junctions-virtual"),
+          getFillColor: (_: unknown, { index }: { index: number }) => junctionFill(J.meta[V.index[index]], V.index[index] === p.selectedJunction),
+          getFillPattern: (_: unknown, { index }: { index: number }) => junctionPattern(J.meta[V.index[index]]),
+          fillPatternMapping: JUNCTION_PATTERNS, fillPatternSizeUnits: "pixels",
+          extensions: [new FillStyleExtension({ pattern: true, proceduralPattern: true })],
+          updateTriggers: { getFillColor: [p.selectedJunction] },
+        }));
       const M = r.marks, nm = M.meta.length;
       if (p.layers.marks && nm)
         out.push(new PathLayer({
@@ -554,9 +569,9 @@ export default function MapView(p: MapViewProps) {
           id: "junction-outlines",
           data: { length: nj, startIndices: sub(J.starts, nj), attributes: { getPath: { value: J.positions, size: 3 } } },
           _pathType: "loop", widthUnits: "pixels", modelMatrix, parameters: depthBias("junction-outlines"),
-          getWidth: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? 3.5 : 2.2),
-          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? OVERLAY.selected : OVERLAY.junctionEdge),
-          getDashArray: (_: unknown, { index }: { index: number }) => (J.meta[index].exact ? [0, 0] : [4, 3]),
+          getWidth: (_: unknown, { index }: { index: number }) => junctionEdgeWidth(index === p.selectedJunction),
+          getColor: (_: unknown, { index }: { index: number }) => junctionEdge(J.meta[index], index === p.selectedJunction),
+          getDashArray: (_: unknown, { index }: { index: number }) => junctionDash(J.meta[index]),
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
           updateTriggers: { getWidth: [p.selectedJunction], getColor: [p.selectedJunction] },
         }));
