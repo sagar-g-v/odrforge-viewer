@@ -48,6 +48,7 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
     points: { ...r.points, positions: d(r.points.positions) },
     grids: { lines: bin(r.grids.lines), points: { ...r.grids.points, positions: d(r.grids.points.positions) }, refLines: bin(r.grids.refLines) },
     features: {
+      footprints: { ...F.footprints, positions: d(F.footprints.positions) },
       columns: F.columns.map((c) => ({ ...c, positions: d(c.positions) })),
       boxes: { ...F.boxes, positions: d(F.boxes.positions) },
       labels: { ...F.labels, positions: d(F.labels.positions) },

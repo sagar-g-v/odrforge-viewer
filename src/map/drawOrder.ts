@@ -8,6 +8,7 @@ export const DRAW_ORDER: Record<string, number> = {
   "lane-directions": 3, // driving-direction arrows on the lanes
   "lane-borders": 4, "marks": 4, // painted lines on the surface
   "refs": 5, "object-lines": 5, "structures": 5, "cross-paths": 5,
+  "footprints": 5, // 2D: flat footprints of the 3D signals and objects, over the road paint
   "junction-outlines": 6, "junction-grid": 6, "junction-grid-points": 6, "junction-ref-lines": 6, "cmp-lanes": 6, "cmp-refs": 6,
 };
 

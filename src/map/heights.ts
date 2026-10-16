@@ -45,6 +45,14 @@ export const hasRealHeights = (lanePositions: Float64Array, ground: Ground): boo
   return m !== null && m < REAL_HEIGHTS_MEDIAN;
 };
 
+/**
+ * The 2D map is a plan view: everything is drawn flat (as height mode "flat") and the terrain is off. Seen from straight
+ * above, heights change nothing but cost tiles and GPU; 3D uses the chosen height mode and terrain.
+ */
+export function viewHeights(view: "2d" | "3d", mode: HeightMode, terrain: boolean): { mode: HeightMode; terrain: boolean } {
+  return view === "2d" ? { mode: "flat", terrain: false } : { mode, terrain };
+}
+
 export interface HeightPlan {
   drape: "flat" | "relative" | null; // lay the network on the ground (drape.ts) in this mode
   base: number; // subtracted from z before scaling

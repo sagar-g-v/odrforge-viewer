@@ -2,6 +2,7 @@
 // deck.gl interleaved into the same WebGL context, so buildings and roads share one depth buffer.
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { diskResolution } from "../xodr/features";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import type { Layer, PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
@@ -19,7 +20,7 @@ import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid }
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
 import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
-import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, type HeightMode } from "./heights";
+import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, viewHeights, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
 
 // satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
@@ -269,6 +270,8 @@ export default function MapView(p: MapViewProps) {
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
+  // 2D is a plan view: drawn flat, no terrain (map/heights.ts viewHeights); 3D uses the chosen mode and terrain
+  const vh = viewHeights(p.mode, p.heightMode, p.layers.terrain), terrainOn = vh.terrain;
   const shownStyle = useRef(styleKey(p.basemap, p.theme)); // the style the map has (or is loading)
   // terrain source for the current grid: a new grid gets a new source (MapLibre caches tiles per url)
   const terrainSrc = useMemo<TerrainSrc>(() => {
@@ -316,14 +319,14 @@ export default function MapView(p: MapViewProps) {
       styleReady.current = true;
       if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity, propsRef.current.theme));
-      ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration, terrainSrcRef.current);
+      ensureTerrain(map, propsRef.current.layers.terrain && propsRef.current.mode === "3d", propsRef.current.exaggeration, terrainSrcRef.current);
       ensureDim(map, propsRef.current.dim);
       syncImageTiles(map, imgRef.current);
       setStyleEpoch((e) => e + 1);
     });
     map.on("idle", () => {
       const probe = probeRef.current, pr = propsRef.current;
-      if (!probe || !pr.layers.terrain) { setLift(0); return; } // no probe (or no terrain): no lift
+      if (!probe || !pr.layers.terrain || pr.mode !== "3d") { setLift(0); return; } // no probe (or no terrain): no lift
       const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
       const next = terrainLift(probe, (lon, lat) => map.queryTerrainElevation([lon, lat]), pr.exaggeration, 0,
         (lon, lat) => lon >= w && lon <= e && lat >= s && lat <= n);
@@ -360,8 +363,8 @@ export default function MapView(p: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map && styleReady.current) ensureTerrain(map, p.layers.terrain, p.exaggeration, terrainSrc);
-  }, [p.layers.terrain, p.exaggeration, terrainSrc]);
+    if (map && styleReady.current) ensureTerrain(map, terrainOn, p.exaggeration, terrainSrc);
+  }, [terrainOn, p.exaggeration, terrainSrc]);
 
   // camera: 2D looks straight down, 3D tilts
   useEffect(() => {
@@ -402,7 +405,7 @@ export default function MapView(p: MapViewProps) {
   // terrain on: load the DEM under the network (its extent plus the camera margin), once per network
   useEffect(() => {
     const r = p.render;
-    if (!p.layers.terrain || !r || !Number.isFinite(r.bounds[0]) || dem?.render === r) return;
+    if (!terrainOn || !r || !Number.isFinite(r.bounds[0]) || dem?.render === r) return;
     const ac = new AbortController();
     const [w, s, e, n] = r.bounds, lat = (s + n) / 2, m = BOUNDS_MARGIN + 50;
     const dLat = m / 111320, dLon = m / (111320 * Math.cos((lat * Math.PI) / 180));
@@ -410,7 +413,7 @@ export default function MapView(p: MapViewProps) {
       .then((d) => setDem({ render: r, dem: d }))
       .catch((err) => { if (!ac.signal.aborted) console.warn("terrain DEM not loaded", err); });
     return () => ac.abort();
-  }, [p.render, p.layers.terrain, dem]);
+  }, [p.render, terrainOn, dem]);
   const demNow = dem && dem.render === p.render ? dem.dem : null;
   // the ground under the roads, as the terrain draws it: the network's grid (blended into Terrarium at its edge) or Terrarium
   const groundAt = useMemo(() => {
@@ -423,17 +426,17 @@ export default function MapView(p: MapViewProps) {
   // how the file's heights are drawn: one pure decision (map/heights.ts, docs/ACCURACY.md), for A and for compare B
   const realHeights = useMemo(() => !!p.render && !!groundAt && hasRealHeights(p.render.lanes.positions, groundAt), [p.render, groundAt]);
   const plan = useMemo(() => heightPlan({
-    mode: p.heightMode, terrain: p.layers.terrain, groundReady: !!groundAt, zGround: p.render?.zGround ?? 0, realHeights, exaggeration: p.exaggeration,
-  }), [p.heightMode, p.layers.terrain, groundAt, p.render, realHeights, p.exaggeration]);
+    mode: vh.mode, terrain: terrainOn, groundReady: !!groundAt, zGround: p.render?.zGround ?? 0, realHeights, exaggeration: p.exaggeration,
+  }), [vh.mode, terrainOn, groundAt, p.render, realHeights, p.exaggeration]);
   const draped = useMemo(() => (plan.drape && p.render && groundAt ? drapeRender(p.render, groundAt, plan.drape) : null),
   [plan.drape, p.render, groundAt]);
   const cmpDraped = useMemo(() => {
     const c = p.compare;
     if (!c || !groundAt) return c;
-    const cp = heightPlan({ mode: p.heightMode, terrain: p.layers.terrain, groundReady: true, zGround: c.zGround,
+    const cp = heightPlan({ mode: vh.mode, terrain: terrainOn, groundReady: true, zGround: c.zGround,
       realHeights: hasRealHeights(c.lanes.positions, groundAt), exaggeration: p.exaggeration });
     return cp.drape ? drapeRender(c, groundAt, cp.drape).render : c;
-  }, [p.compare, p.layers.terrain, groundAt, p.heightMode, p.exaggeration]);
+  }, [p.compare, terrainOn, groundAt, vh.mode, p.exaggeration]);
   // the lift's probe: ground heights (never road heights) under the lanes, wherever the lift applies
   const probe = useMemo(() => (draped ? draped.probe : plan.liftFromGround && p.render && groundAt ? groundProbe(p.render.lanes.positions, groundAt) : null),
   [draped, plan.liftFromGround, p.render, groundAt]);
@@ -444,10 +447,10 @@ export default function MapView(p: MapViewProps) {
   // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
   const absoluteOff = useMemo(() => {
     const r = p.render;
-    if (!p.layers.terrain || !r || !groundAt || p.heightMode !== "absolute") return null;
+    if (!terrainOn || !r || !groundAt || vh.mode !== "absolute") return null;
     const ground = medianGround(r.lanes.positions, groundAt);
     return ground !== null && Math.abs(ground - r.zGround) > NO_GROUND_LEVEL ? { ground, road: r.zGround } : null;
-  }, [p.render, p.layers.terrain, groundAt, p.heightMode]);
+  }, [p.render, terrainOn, groundAt, vh.mode]);
   const noGroundForAbsolute = plan.noGround;
   // z' = (z - base) * scale + lift as a model matrix: positions keep the file's heights (draped ones hold heights above
   // sea level); the lift is the measured terrain detail difference, applied over terrain only
@@ -586,7 +589,7 @@ export default function MapView(p: MapViewProps) {
         const S = F.structures, ns = S.meta.length;
         out.push(new SolidPolygonLayer({
           id: "structures", data: { length: ns, startIndices: sub(S.starts, ns), attributes: { getPolygon: { value: S.positions, size: 3 } } },
-          _normalize: false, extruded: true, pickable: true, modelMatrix, parameters: depthBias("structures"), wireframe: true,
+          _normalize: false, extruded: p.mode === "3d", pickable: true, modelMatrix, parameters: depthBias("structures"), wireframe: true,
           getElevation: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? 4.5 : 0.05),
           getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? STRUCTURE.selectedFill : S.meta[index].tunnel ? STRUCTURE.tunnelFill : STRUCTURE.bridgeFill),
           getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? STRUCTURE.tunnelEdge : STRUCTURE.bridgeEdge), material: MATERIAL,
@@ -601,20 +604,32 @@ export default function MapView(p: MapViewProps) {
           getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       }
-      F.columns.forEach((c) => {
+      // 2D: the flat footprints of the 3D shapes (same positions and sizes, lowest top first); 3D: the shapes themselves
+      if (p.mode === "2d" && F.footprints.meta.length) {
+        const FP = F.footprints, nf = FP.meta.length;
+        out.push(new SolidPolygonLayer({
+          id: "footprints", data: { length: nf, startIndices: sub(FP.starts, nf), attributes: { getPolygon: { value: FP.positions, size: 3 } } },
+          _full3d: true, pickable: true, modelMatrix, parameters: depthBias("footprints"),
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            !showFeature(FP.meta[index]) ? [0, 0, 0, 0] : isSel(FP.meta[index]) ? OVERLAY.selected
+              : [FP.colors[4 * index], FP.colors[4 * index + 1], FP.colors[4 * index + 2], FP.colors[4 * index + 3]],
+          updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects] },
+        }));
+      }
+      if (p.mode === "3d") F.columns.forEach((c) => {
         const keep = c.meta.map((m) => showFeature(m));
         if (!keep.some(Boolean)) return;
         out.push(new ColumnLayer({
           id: `col-${c.radius}`, data: { length: c.meta.length, attributes: {
             getPosition: { value: c.positions, size: 3 }, getElevation: { value: c.elevations, size: 1 } } },
-          radius: c.radius, diskResolution: c.radius >= 0.5 ? 14 : 8, extruded: true, pickable: true, modelMatrix, material: MATERIAL,
+          radius: c.radius, diskResolution: diskResolution(c.radius), extruded: true, pickable: true, modelMatrix, material: MATERIAL,
           getFillColor: (_: unknown, { index }: { index: number }) =>
             !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? OVERLAY.selected
               : [c.colors[4 * index], c.colors[4 * index + 1], c.colors[4 * index + 2], c.colors[4 * index + 3]],
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects] },
         }));
       });
-      if (F.boxes.meta.length) {
+      if (p.mode === "3d" && F.boxes.meta.length) {
         const B = F.boxes, nb = B.meta.length;
         out.push(new SolidPolygonLayer({
           id: "boxes", data: { length: nb, startIndices: sub(B.starts, nb), attributes: { getPolygon: { value: B.positions, size: 3 } } },
@@ -635,18 +650,6 @@ export default function MapView(p: MapViewProps) {
           backgroundBorderRadius: LABEL.borderRadius, fontFamily: LABEL.fontFamily, fontWeight: LABEL.fontWeight, billboard: true, modelMatrix, characterSet: "auto",
         }));
       }
-      const P = r.points;
-      // signal dots for the top-down view; in 3D the boards and lights themselves show (xodr/features.ts)
-      if (p.layers.signals && P.meta.length && p.mode === "2d")
-        out.push(new ScatterplotLayer({
-          id: "signals",
-          data: { length: P.meta.length, attributes: { getPosition: { value: P.positions, size: 3 } } },
-          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: EDGE.ring,
-          lineWidthUnits: "pixels", getLineWidth: 1, lineWidthMaxPixels: 1,
-          getFillColor: (_: unknown, { index }: { index: number }) =>
-            P.meta[index].kind === "object" ? MARKER.dot.object : P.meta[index].dynamic ? MARKER.dot.light : P.meta[index].stop ? MARKER.dot.stop : MARKER.dot.sign,
-          pickable: true, modelMatrix, parameters: { depthCompare: "always" },
-        }));
     }
     // B of a comparison over A: lane outlines and dashed reference lines in magenta, above A's surfaces
     const C = cmpDraped;

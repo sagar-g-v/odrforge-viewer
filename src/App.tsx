@@ -142,7 +142,7 @@ export default function App() {
   const [groundLoading, setGroundLoading] = useState<string | null>(null);
   const groundTried = useRef<typeof net>(null); // the network a grid was looked for (once per network)
   useEffect(() => {
-    if (!layers.terrain || !net?.fromServer || groundTried.current === net) return;
+    if (!layers.terrain || mode !== "3d" || !net?.fromServer || groundTried.current === net) return; // terrain is 3D only
     const ac = new AbortController();
     groundTried.current = net;
     let done = false;
@@ -164,7 +164,7 @@ export default function App() {
       ac.abort();
       if (!done) { groundTried.current = null; setGroundLoading(null); } // interrupted: look again next time
     };
-  }, [net, layers.terrain, server]);
+  }, [net, layers.terrain, mode, server]);
   const groundNow = ground && ground.net === net ? ground : null;
 
   // opening a network: findings belong to the previous one (findings dropped together with the file are loaded after)
@@ -231,9 +231,9 @@ export default function App() {
     const [x, y] = net.proj.inverse(info.coordinate[0], info.coordinate[1]);
     // road furniture, bridges / tunnels, cross paths: the feature inspector
     const F = net.render.features;
-    const fm = layer === "boxes" ? F.boxes.meta[info.index] : layer.startsWith("col-") ? F.columns.find((c) => `col-${c.radius}` === layer)?.meta[info.index]
+    const fm = layer === "boxes" ? F.boxes.meta[info.index] : layer === "footprints" ? F.footprints.meta[info.index]
+      : layer.startsWith("col-") ? F.columns.find((c) => `col-${c.radius}` === layer)?.meta[info.index]
       : layer === "structures" ? F.structures.meta[info.index] : layer === "cross-paths" ? F.crossPaths.meta[info.index]
-      : layer === "signals" ? net.render.points.meta[info.index]
       : layer === "objects" ? net.render.objects.meta[info.index] : layer === "object-lines" ? net.render.objectLines.meta[info.index] : undefined;
     if (fm && !flagMode) { setSelF({ kind: fm.kind, road: fm.road, index: fm.index }); setSel(null); setSelJ(null); return; }
     let s: Selection | null = null;

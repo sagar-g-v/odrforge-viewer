@@ -16,7 +16,19 @@ export type Rgba = [number, number, number, number];
 export interface ColumnSet { radius: number; positions: Float64Array; elevations: Float32Array; colors: Uint8Array; meta: FeatureRef[]; }
 /** extruded rectangles: closed rings (lon, lat, z of the base), extrusion, colour */
 export interface BoxSet { positions: Float64Array; starts: Uint32Array; elevations: Float32Array; colors: Uint8Array; meta: FeatureRef[]; }
+/**
+ * the 2D map's flat footprints of every 3D shape, in the order a straight-down look at the 3D scene shows them (lowest
+ * top first, so a higher part covers a lower one): columns as the same polygon ColumnLayer draws (its radius and disk
+ * resolution), boxes as their own outline; `top` = the shape's top height (m, file datum)
+ */
+export interface Footprints { positions: Float64Array; starts: Uint32Array; colors: Uint8Array; top: Float32Array; meta: FeatureRef[]; }
+/** ColumnLayer disk resolution for a column radius (MapView uses the same rule for the 3D columns) */
+export const diskResolution = (radius: number) => (radius >= 0.5 ? 14 : 8);
+/** the radius a column is drawn with: columns are grouped per centimetre (ColumnLayer's radius is per layer) */
+export const columnRadius = (radius: number) => Math.max(0.02, Math.round(radius * 100) / 100);
+
 export interface Features {
+  footprints: Footprints;
   columns: ColumnSet[];
   boxes: BoxSet;
   labels: { positions: Float64Array; texts: string[] };
@@ -55,6 +67,7 @@ export class FeatureBuilder {
   private lab = { pos: [] as number[], texts: [] as string[] };
   private str = { pos: [] as number[], starts: [] as number[], meta: [] as (FeatureRef & { tunnel: boolean })[] };
   private cp = { pos: [] as number[], starts: [] as number[], meta: [] as FeatureRef[] };
+  private fp: { ring: number[]; color: Rgba; top: number; ref: FeatureRef }[] = [];
 
   private geo: Geo;
   private zOff: number;
@@ -64,7 +77,11 @@ export class FeatureBuilder {
   }
 
   private column(x: number, y: number, z: number, radius: number, height: number, color: Rgba, ref: FeatureRef) {
-    const key = Math.max(0.02, Math.round(radius * 100) / 100);
+    const key = columnRadius(radius);
+    // its footprint: the polygon ColumnLayer draws (vertices at k / n of a turn from +x, radius `key`)
+    const n = diskResolution(key), ring: number[] = [];
+    for (let k = 0; k < n; k++) { const a = (2 * Math.PI * k) / n, [lo, la] = this.geo(x + key * Math.cos(a), y + key * Math.sin(a)); ring.push(lo, la, z + this.zOff); }
+    this.fp.push({ ring, color, top: z + this.zOff + Math.max(0.01, height), ref });
     const c = this.cols.get(key) ?? this.cols.set(key, { pos: [], elev: [], col: [], meta: [] }).get(key)!;
     const [lon, lat] = this.geo(x, y);
     c.pos.push(lon, lat, z + this.zOff);
@@ -75,12 +92,14 @@ export class FeatureBuilder {
 
   /** a rectangle centred at (x, y), half-length hu along heading a, half-width hv across, from z up by height */
   private rect(x: number, y: number, a: number, hu: number, hv: number, z: number, height: number, color: Rgba, ref: FeatureRef) {
-    const ca = Math.cos(a), sa = Math.sin(a);
+    const ca = Math.cos(a), sa = Math.sin(a), ring: number[] = [];
     this.box.starts.push(this.box.pos.length / 3);
     for (const [u, v] of [[-hu, -hv], [hu, -hv], [hu, hv], [-hu, hv]]) {
       const [lon, lat] = this.geo(x + u * ca - v * sa, y + u * sa + v * ca);
       this.box.pos.push(lon, lat, z + this.zOff);
+      ring.push(lon, lat, z + this.zOff);
     }
+    this.fp.push({ ring, color, top: z + this.zOff + Math.max(0.01, height), ref });
     this.box.elev.push(Math.max(0.01, height));
     this.box.col.push(...color);
     this.box.meta.push(ref);
@@ -92,10 +111,15 @@ export class FeatureBuilder {
    */
   prism(ring: [number, number, number, number][], height: number, ref: FeatureRef) {
     this.box.starts.push(this.box.pos.length / 3);
+    const flat: number[] = [];
+    let top = -Infinity;
     for (const [x, y, z] of ring) {
       const [lon, lat] = this.geo(x, y);
       this.box.pos.push(lon, lat, z + this.zOff);
+      flat.push(lon, lat, z + this.zOff);
+      top = Math.max(top, z + this.zOff + height);
     }
+    this.fp.push({ ring: flat, color: C.object, top, ref });
     this.box.elev.push(height);
     this.box.col.push(...C.object);
     this.box.meta.push(ref);
@@ -250,7 +274,17 @@ export class FeatureBuilder {
 
   finish(): Features {
     const bin = (pos: number[], starts: number[]) => ({ positions: Float64Array.from(pos), starts: Uint32Array.from([...starts, pos.length / 3]) });
+    // footprints in the order seen from above: lowest top first (a stable sort keeps build order among equal tops)
+    const order = this.fp.map((_, i) => i).sort((i, j) => this.fp[i].top - this.fp[j].top || i - j);
+    const fpPos: number[] = [], fpStarts: number[] = [], fpCol: number[] = [], fpTop: number[] = [], fpMeta: FeatureRef[] = [];
+    for (const i of order) {
+      const f = this.fp[i];
+      fpStarts.push(fpPos.length / 3);
+      for (const v of f.ring) fpPos.push(v);
+      fpCol.push(...f.color); fpTop.push(f.top); fpMeta.push(f.ref);
+    }
     return {
+      footprints: { ...bin(fpPos, fpStarts), colors: Uint8Array.from(fpCol), top: Float32Array.from(fpTop), meta: fpMeta },
       columns: [...this.cols.entries()].map(([radius, c]) => ({
         radius, positions: Float64Array.from(c.pos), elevations: Float32Array.from(c.elev), colors: Uint8Array.from(c.col), meta: c.meta,
       })),
