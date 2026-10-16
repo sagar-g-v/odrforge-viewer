@@ -430,14 +430,18 @@ export default function MapView(p: MapViewProps) {
 
   // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights); draped
   // positions already hold heights above sea level: scaled with the terrain's exaggeration and lifted above it
+  // absolute heights need a ground: without terrain the map is a flat plane at 0 m, and a network 500 m or 2.6 km above
+  // sea level would float out of view above the camera. Then they are drawn from the road level, as in relative mode
+  // (height differences kept), and the map says so
+  const noGroundForAbsolute = !p.layers.terrain && p.heightMode === "absolute" && !!p.render && Math.abs(p.render.zGround) > 25;
   const modelMatrix = useMemo(() => {
     if (draped) return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, p.exaggeration, 0, 0, 0, lift, 1]);
     const r = p.render;
     const ex = p.heightMode === "flat" ? 0 : p.exaggeration;
-    const base = p.heightMode === "relative" && r && !absoluteView ? r.zGround : 0;
+    const base = (p.heightMode === "relative" && r && !absoluteView) || noGroundForAbsolute ? r!.zGround : 0;
     const up = p.heightMode === "flat" ? 0.05 : absoluteProbe ? lift : 0; // a display offset only: heights stay the file's
     return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + up, 1]);
-  }, [p.render, p.heightMode, p.exaggeration, draped, lift, absoluteProbe, absoluteView]);
+  }, [p.render, p.heightMode, p.exaggeration, draped, lift, absoluteProbe, absoluteView, noGroundForAbsolute]);
   // surfaces that lie on each other (terrain, junction area, lanes, marks, outlines) keep their file heights and are drawn
   // in this order by depth bias (polygon offset): rendering only, nothing is moved
   const bias = (k: number) => ({ depthBias: -k, depthBiasSlopeScale: -k });
@@ -671,6 +675,11 @@ export default function MapView(p: MapViewProps) {
   return (
     <>
       <div ref={host} className="map" />
+      {noGroundForAbsolute && (
+        <div className="map-note">
+          {`Terrain is off, so there is no ground for heights above sea level: drawn from the road level (${p.render!.zGround.toFixed(0)} m), height differences kept. Turn Terrain on to see them at their real height.`}
+        </div>
+      )}
       {absoluteOff && (
         <div className="map-note">
           {`Heights in this file are not above sea level (road level ${absoluteOff.road.toFixed(1)} m, terrain here ${absoluteOff.ground.toFixed(0)} m): choose "relative" heights to lay the roads on the terrain.`}
