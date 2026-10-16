@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeTerrarium } from "../src/map/dem";
 import { encodeTerrarium } from "../src/map/groundTiles";
-import { groundHeight, insideBy, parseOdrz, sampleGrid } from "../src/map/odrz";
+import { datumMismatch, groundHeight, insideBy, parseOdrz, sampleGrid } from "../src/map/odrz";
 
 /** an .odrz file as odrforge TerrainGrid::save writes it */
 function odrz(nx: number, ny: number, cell: number, z: number[][], datum = "DHHN2016", ox = 10, oy = 20): ArrayBuffer {
@@ -50,5 +50,17 @@ describe("Terrarium encoding of the generated DEM tiles", () => {
     const h = Float32Array.from([519.25, -2.26, 0, 2783.638, 8848.86, -432.1]);
     const back = decodeTerrarium(encodeTerrarium(h));
     h.forEach((v, i) => expect(Math.abs(back[i] - v)).toBeLessThanOrEqual(1 / 512 + 1e-4));
+  });
+});
+
+describe("datum check (the file's vertical datum vs its ground grid's)", () => {
+  it("agrees without case and spaces, and says nothing when either is not given", () => {
+    expect(datumMismatch("DHHN2016", "DHHN2016")).toBeNull();
+    expect(datumMismatch("JGD2011 (T.P.)", "jgd2011 (t.p.)")).toBeNull();
+    expect(datumMismatch(undefined, "ODN")).toBeNull();
+    expect(datumMismatch("ODN", "")).toBeNull();
+  });
+  it("flags a different reference (Stelvio: file Genova1942, grid Genova1942+EGM2008)", () => {
+    expect(datumMismatch("Genova1942", "Genova1942+EGM2008")).toMatch(/Genova1942.*Genova1942\+EGM2008/);
   });
 });

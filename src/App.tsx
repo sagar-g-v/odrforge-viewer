@@ -9,6 +9,7 @@ import { listServerFiles, useNetwork } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
 import { storedBasemap } from "./map/basemap";
+import { datumMismatch } from "./map/odrz";
 import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
@@ -171,6 +172,8 @@ export default function App() {
     };
   }, [net, layers.terrain, mode, server, setToast]);
   const groundNow = ground && ground.net === net ? ground : null;
+  // the file's vertical datum against its ground grid's (they must be the same reference, docs/ACCURACY.md)
+  const datumNote = groundNow ? datumMismatch(net?.od?.header.userData.find((u) => u.code === "verticalDatum")?.value, groundNow.grid.datum) : null;
 
   // opening a network: findings belong to the previous one (findings dropped together with the file are loaded after)
   const openServer = useCallback((f: string) => { setFindings([]); openServerFile(server, f); }, [server, openServerFile]);
@@ -455,6 +458,7 @@ export default function App() {
           {loading && <div className="loading"><span className="spinner" />{loading}</div>}
           {groundLoading && <div className="loading"><span className="spinner" />{groundLoading}</div>}
           {error && <div className="banner error" role="alert"><Icon name="alert" />{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
+          {datumNote && layers.terrain && mode === "3d" && <div className="banner info" role="status"><Icon name="alert" />{datumNote}</div>}
           {flagMode && <div className="banner info"><Icon name="flag" />Click where something is wrong. <kbd>Esc</kbd> to stop</div>}
         </div>
         {toast && <div className={`toast ${toast.tone}`} role="status"><Icon name={TOAST_ICON[toast.tone]} />{toast.text}</div>}

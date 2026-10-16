@@ -122,3 +122,6 @@ colour, not the limit.
 - **Review markers sit on the lane under them**, at its drawn height (`LaneZIndex`, through the height plan). Drawn at
   z = 0 instead, a flag on a road 500 m above sea level showed far from it in a tilted view. Guarded by
   `tests/markerZ.test.ts`.
+- **The file and its ground grid share one vertical datum.** The file's header `verticalDatum` must equal the datum label
+  of the grid the viewer draws; otherwise the viewer says so over the map in 3D with terrain (`map/odrz.ts datumMismatch`).
+  Guarded by `tests/odrz.test.ts` and, on the converter's test areas, `tests/realdata.test.ts`.

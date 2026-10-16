@@ -102,3 +102,15 @@ export async function fetchGrid(url: string, onProgress?: (got: number, total: n
   for (const p of parts) { all.set(p, o); o += p.length; }
   return parseOdrz(all.buffer);
 }
+
+/**
+ * The file's vertical datum (header userData verticalDatum, as the OdrForge converter writes it) against the ground grid's
+ * datum label: a different label means the roads and the ground may be heights above different references, so the drawn
+ * roads could float or sink by the datum offset (Stelvio once had the file at "Genova1942" and its grid at
+ * "Genova1942+EGM2008"). Null when they agree or either is not given. Compared without case and spaces.
+ */
+export function datumMismatch(fileDatum: string | null | undefined, gridDatum: string | null | undefined): string | null {
+  const norm = (d: string | null | undefined) => (d ?? "").replace(/\s+/g, "").toLowerCase();
+  if (!norm(fileDatum) || !norm(gridDatum) || norm(fileDatum) === norm(gridDatum)) return null;
+  return `The file's heights are above ${fileDatum}, its ground grid's above ${gridDatum}: roads may float or sink over the terrain by the difference.`;
+}

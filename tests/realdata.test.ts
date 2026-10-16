@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { heightPlan, hasRealHeights } from "../src/map/heights";
-import { groundGridFiles, parseOdrz, sampleGrid, type GroundGrid } from "../src/map/odrz";
+import { datumMismatch, groundGridFiles, parseOdrz, sampleGrid, type GroundGrid } from "../src/map/odrz";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -42,6 +42,13 @@ for (const area of AREAS) {
       expect(s.n).toBeGreaterThan(0.95 * (L.length / 3));
       expect(s.p95abs).toBeLessThanOrEqual(LIMIT.conformedP95);
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.conformedMedian);
+    });
+    it("the file and the grid the viewer draws are heights above the same vertical datum", () => {
+      const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!;
+      const od = parseOpenDrive(readFileSync(xodr, "utf8"));
+      const fileDatum = od.header.userData.find((u) => u.code === "verticalDatum")?.value;
+      expect(fileDatum).toBeTruthy();
+      expect(datumMismatch(fileDatum, grid(file).datum)).toBeNull();
     });
     it("its heights are real (on the plain DEM grid, same frame and datum): drawn as they are over terrain, never draped", () => {
       const { proj, r, L } = data(), g = grid(`${area}_ground.odrz`), s = against(g);
