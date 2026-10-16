@@ -9,6 +9,7 @@
 :root[data-theme="light"] {
   --bg: #eef0f3; --surface: #ffffff; --surface-2: #f5f6f8; --surface-3: #eceff3; --line: #dfe3e8; --line-2: #cfd5dd;
   --text: #1b2028; --muted: #66707e; --accent: #1f6fe5; --accent-ink: #ffffff; --shadow: 0 10px 30px rgba(20, 30, 50, .16);
+  --ok: #12805a; --warn: #a35f00; --err: #cc2f2f; --info: #1f6fe5;
   color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -121,6 +122,8 @@ input[type=range] { accent-color: var(--accent); width: 150px; }
 .eyebrow { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .inspector section { padding: 12px 14px; border-bottom: 1px solid var(--line); }
 .inspector { overflow-y: auto; }
+.stage:has(.inspector) .maplibregl-ctrl-bottom-right { right: 364px; }
+@media (max-width: 700px) { .stage:has(.inspector) .maplibregl-ctrl-bottom-right { right: 0; } .inspector { bottom: 120px; } }
 .kv { display: flex; justify-content: space-between; gap: 12px; padding: 3px 0; }
 .kv span:first-child { color: var(--muted); white-space: nowrap; }
 .kv span:last-child { text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
@@ -131,12 +134,14 @@ input[type=range] { accent-color: var(--accent); width: 150px; }
 .empty { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; padding: 24px; pointer-events: none; }
 .empty h1 { font-size: 22px; margin: 0 0 8px; font-weight: 650; }
 .empty p { max-width: 520px; margin: 4px auto; color: var(--muted); }
-.loading { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--line);
-  border-radius: 99px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; box-shadow: var(--shadow); z-index: 6; }
+.overlays { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); z-index: 6; display: flex; flex-direction: column;
+  align-items: center; gap: 8px; max-width: calc(100% - 32px); pointer-events: none; }
+.overlays > * { pointer-events: auto; }
+.loading { background: var(--surface); border: 1px solid var(--line);
+  border-radius: 99px; padding: 8px 16px; display: flex; gap: 10px; align-items: center; box-shadow: var(--shadow); }
 .spinner { width: 14px; height: 14px; border: 2px solid var(--line-2); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.banner { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); border-radius: 10px; padding: 8px 14px; display: flex; gap: 12px;
-  align-items: center; box-shadow: var(--shadow); z-index: 6; max-width: calc(100% - 32px); }
+.banner { border-radius: 10px; padding: 8px 14px; display: flex; gap: 12px; align-items: center; box-shadow: var(--shadow); }
 .banner.error { background: color-mix(in srgb, var(--err) 18%, var(--surface)); border: 1px solid var(--err); }
 .banner.info { background: color-mix(in srgb, var(--warn) 16%, var(--surface)); border: 1px solid var(--warn); }
 .toast { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--surface-3); border: 1px solid var(--line-2);
@@ -166,6 +171,11 @@ input[type=range] { accent-color: var(--accent); width: 150px; }
   .stage { grid-column: 1 / -1; }
   .search, input.server { display: none; }
   .brand .muted { display: none; }
+}
+@media (max-width: 640px) {
+  .topbar { overflow-x: auto; scrollbar-width: none; gap: 8px; }
+  .brand { display: none; }
+  .source select { max-width: 150px; }
 }
 
 .imagery-credit { position: absolute; left: 110px; bottom: 8px; z-index: 3; max-width: calc(100% - 420px); padding: 2px 8px; border-radius: 6px;
@@ -197,7 +207,10 @@ details.group .group-body { display: flex; flex-direction: column; gap: 6px; pad
 .legend i.sw.light b { flex: 1; height: 6px; border-radius: 50%; }
 
 /* a note over the map (e.g. absolute heights that do not match the terrain) */
-.map-note { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 3;
+.map-note { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 3;
   background: var(--surface); color: var(--text); border: 1px solid var(--warn); border-radius: 8px; padding: 7px 12px;
   font-size: 12px; box-shadow: var(--shadow); }
 code.wrap { white-space: normal; overflow-wrap: anywhere; font-size: 11px; text-align: right; }
+
+/* light theme: white legend lines (marks, stop lines) on a grey backdrop so they show */
+:root[data-theme="light"] .legend i.sw.line { background: #8b94a3; border-radius: 3px; padding: 0 2px; }

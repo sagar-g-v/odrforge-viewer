@@ -10,5 +10,5 @@ export default defineConfig({
   worker: { format: "es" },
   // MapLibre GL (~0.8 MB) and deck.gl (~1.2 MB) are the bulk of the bundle; both are needed before the first frame
   build: { chunkSizeWarningLimit: 2600 },
-  test: { environment: "node" },
+  test: { environment: "node", exclude: ["**/node_modules/**", "**/.claude/**"] }, // .claude: other sessions' worktrees
 });

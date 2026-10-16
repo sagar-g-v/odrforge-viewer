@@ -5,7 +5,11 @@ import type { LaneProbe } from "../xodr/query";
 
 export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; }
 
-const f = (v: number | null | undefined, d = 2) => (v === null || v === undefined || !Number.isFinite(v) ? "–" : v.toFixed(d));
+const f = (v: number | null | undefined, d = 2) => {
+  if (v === null || v === undefined || !Number.isFinite(v)) return "–";
+  const t = v.toFixed(d);
+  return /^-0\.?0*$/.test(t) ? t.slice(1) : t; // -0.001 -> "0.00", not "-0.00"
+};
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return <div className="kv"><span>{k}</span><span>{v}</span></div>;
@@ -39,12 +43,13 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
   net: Network; sel: Selection; onClose: () => void; onFlag: () => void; onGoRoad: (id: string) => void;
 }) {
   const info = net.roads[sel.road];
+  if (!info) return null;
   const road = net.od?.roads[sel.road];
   const pr = sel.probe;
   const lane = pr?.lane;
   const junction = road && road.junction !== "-1" ? net.od?.junctions.find((j) => j.id === road.junction) : undefined;
   const link = (l: { type: string; id: string; contact: string } | null) =>
-    !l ? "–" : l.type === "road" ? <a onClick={() => onGoRoad(l.id)}>road {l.id}{l.contact ? ` (${l.contact})` : ""}</a> : `junction ${l.id}`;
+    !l ? "–" : l.type === "road" ? <button type="button" className="link" onClick={() => onGoRoad(l.id)}>road {l.id}{l.contact ? ` (${l.contact})` : ""}</button> : `junction ${l.id}`;
   const speed = recAt(road?.types ?? [], pr?.s);
   const ds = pr ? pr.s - pr.sectionStart : undefined; // lane records are offset from the lane section's start
   const lSpeed = lane ? recAt(lane.speeds, ds) : undefined, mat = lane ? recAt(lane.materials, ds) : undefined;
@@ -101,7 +106,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
           <h3>Junction {junction.id}</h3>
           <Row k="type" v={junction.type} />
           <Row k="connections" v={junction.connections.length} />
-          <Row k="arms" v={[...new Set(junction.connections.map((c) => c.incomingRoad))].map((id) => <a key={id} onClick={() => onGoRoad(id)}>{id} </a>)} />
+          <Row k="arms" v={[...new Set(junction.connections.map((c) => c.incomingRoad))].map((id) => <button type="button" className="link" key={id} onClick={() => onGoRoad(id)}>{id} </button>)} />
         </section>
       )}
       <footer className="drawer-foot">
@@ -116,6 +121,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
   net: Network; index: number; onClose: () => void; onFlag: () => void; onGoRoad: (id: string) => void;
 }) {
   const m = net.render.junctions.meta[index];
+  if (!m) return null;
   const j = net.od?.junctions.find((q) => q.id === m.id);
   const arms = j ? [...new Set(j.connections.map((c) => c.incomingRoad))] : [];
   const connecting = net.roads.filter((r) => r.junction === m.id);
@@ -154,7 +160,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         <section>
           <h3>Junction group (§12.13)</h3>
           {groups.map((gr) => <Row key={gr.id} k={`${gr.type || "group"} ${gr.id}${gr.name ? ` · ${gr.name}` : ""}`}
-            v={gr.junctions.map((id) => <a key={id} onClick={() => onGoRoad(`j ${id}`)}>{id} </a>)} />)}
+            v={gr.junctions.map((id) => <button type="button" className="link" key={id} onClick={() => onGoRoad(`j ${id}`)}>{id} </button>)} />)}
         </section>
       )}
       {j && j.userData.length > 0 && <section><h3>User data</h3><UserDataRows data={j.userData} /></section>}
@@ -163,7 +169,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         {j && <Row k="connections" v={j.connections.length} />}
         {j && <Row k="lane links" v={turns} />}
         <Row k="connecting roads" v={connecting.length} />
-        {arms.length > 0 && <Row k="incoming arms" v={arms.map((id) => <a key={id} onClick={() => onGoRoad(id)}>{id} </a>)} />}
+        {arms.length > 0 && <Row k="incoming arms" v={arms.map((id) => <button type="button" className="link" key={id} onClick={() => onGoRoad(id)}>{id} </button>)} />}
       </section>
       {j && (j.priorities.length > 0 || j.controllers.length > 0 || j.crossPaths.length > 0) && (
         <section>
@@ -191,7 +197,8 @@ export function FeatureInspector({ net, sel, onClose, onGoRoad }: {
 }) {
   const road = net.od?.roads[sel.road];
   const info = net.roads[sel.road];
-  const roadLink = <a onClick={() => onGoRoad(info.id)}>road {info.id}{info.name ? ` · ${info.name}` : ""}</a>;
+  if (!info) return null;
+  const roadLink = <button type="button" className="link" onClick={() => onGoRoad(info.id)}>road {info.id}{info.name ? ` · ${info.name}` : ""}</button>;
   let title = "", eyebrow = "", body: React.ReactNode = null;
   if (!road) {
     title = "Feature"; body = <section><p className="muted small">Details need the .xodr file (this network was opened from an OdrForge page).</p></section>;
@@ -282,9 +289,9 @@ export function FeatureInspector({ net, sel, onClose, onGoRoad }: {
       <section>
         <h3>Cross path</h3>
         <Row k="crossing road" v={roadLink} />
-        <Row k="from road" v={<a onClick={() => onGoRoad(cp.roadAtStart)}>{cp.roadAtStart}</a>} />
+        <Row k="from road" v={<button type="button" className="link" onClick={() => onGoRoad(cp.roadAtStart)}>{cp.roadAtStart}</button>} />
         {cp.startLaneLink && <Row k="start lane link" v={`s ${f(cp.startLaneLink.s)}: lane ${cp.startLaneLink.from} → ${cp.startLaneLink.to}`} />}
-        <Row k="to road" v={<a onClick={() => onGoRoad(cp.roadAtEnd)}>{cp.roadAtEnd}</a>} />
+        <Row k="to road" v={<button type="button" className="link" onClick={() => onGoRoad(cp.roadAtEnd)}>{cp.roadAtEnd}</button>} />
         {cp.endLaneLink && <Row k="end lane link" v={`s ${f(cp.endLaneLink.s)}: lane ${cp.endLaneLink.from} → ${cp.endLaneLink.to}`} />}
       </section>
     );

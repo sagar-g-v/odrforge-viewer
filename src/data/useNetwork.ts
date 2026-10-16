@@ -43,14 +43,16 @@ export function useNetwork() {
     return () => worker.current?.terminate();
   }, []);
 
-  const parse = useCallback((name: string, text: string, fromServer: boolean) => {
-    const id = ++seq.current;
+  // every open takes a sequence number before any await; a result, error or spinner change of an older one is dropped
+  const parse = useCallback((id: number, name: string, text: string, fromServer: boolean) => {
+    if (id !== seq.current) return;
     setLoading(`Building ${name}…`);
     setError(null);
     const w = worker.current!;
     const onMsg = (e: MessageEvent) => {
       if (e.data.id !== id) return;
       w.removeEventListener("message", onMsg);
+      if (id !== seq.current) return; // a newer file was opened (or B removed) meanwhile
       setLoading(null);
       if (e.data.error) { setError(e.data.error); return; }
       const res = e.data.result as WorkerResult;
@@ -66,19 +68,21 @@ export function useNetwork() {
   }, []);
 
   const openServerFile = useCallback(async (server: string, file: string) => {
+    const id = ++seq.current;
     setLoading(`Downloading ${file}…`);
     setError(null);
     try {
       const r = await fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${file}`);
-      parse(file, await r.text(), true);
+      parse(id, file, await r.text(), true);
     } catch (e) {
+      if (id !== seq.current) return;
       setLoading(null);
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [parse]);
 
-  const openLocalFile = useCallback(async (f: File) => parse(f.name, await f.text(), false), [parse]);
+  const openLocalFile = useCallback(async (f: File) => { const id = ++seq.current; parse(id, f.name, await f.text(), false); }, [parse]);
 
   const clear = useCallback(() => { seq.current++; setNetwork(null); setLoading(null); setError(null); }, []);
   return { network, loading, error, openServerFile, openLocalFile, clearError: () => setError(null), clear };

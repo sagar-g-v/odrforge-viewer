@@ -91,26 +91,38 @@ export default function App() {
   useEffect(() => {
     connect(server).then((fs) => {
       const f = params.get("file");
-      if (f && fs.includes(f)) openServerFile(server, f);
+      if (f && fs.includes(f)) { setFindings([]); openServerFile(server, f); }
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // a new network: fit, reset selection, load its flags
+  // selections, flags and imagery belong to one network: cleared in the render the new network arrives in (an effect
+  // runs only after that render, which would index the new network with the old selection and throw)
+  const [shownNet, setShownNet] = useState(net);
+  if (shownNet !== net) {
+    setShownNet(net);
+    setSel(null); setSelJ(null); setSelF(null); setSelectedFlag(null); setFlags([]); setImagery(null);
+  }
+
+  // a new network: fit, load its flags and imagery (results of an earlier network are dropped)
   useEffect(() => {
     if (!net) return;
-    setFitKey((k) => k + 1); setSel(null); setSelJ(null); setSelF(null); setFindings([]); setSelectedFlag(null);
-    flagStore.current = net.fromServer ? serverStore(server, net.page) : browserStore(net.page);
-    setFlagStoreKind(flagStore.current.kind);
-    flagStore.current.load().then(setFlags).catch(() => {
-      flagStore.current = browserStore(net.page);
+    let live = true;
+    setFitKey((k) => k + 1);
+    const store0 = net.fromServer ? serverStore(server, net.page) : browserStore(net.page);
+    flagStore.current = store0;
+    setFlagStoreKind(store0.kind);
+    store0.load().then((fl) => { if (live) setFlags(fl); }).catch(() => {
+      if (!live) return;
+      const local = browserStore(net.page);
+      flagStore.current = local;
       setFlagStoreKind("browser");
-      flagStore.current.load().then(setFlags);
+      local.load().then((fl) => { if (live) setFlags(fl); });
       setToast("Review server unreachable: flags are kept in this browser.");
     });
-    setImagery(null);
     if (!net.fromServer) setBasemap((b) => (b === "satellite" ? "satellite-live" : b));
     if (net.fromServer)
       findLocalImagery(server, net.page).then((img) => {
+        if (!live) return;
         setImagery(img);
         // the offline option exists only with local imagery: live satellite for a network without it
         if (!img?.satellite) setBasemap((b) => (b === "satellite" ? "satellite-live" : b));
@@ -121,12 +133,22 @@ export default function App() {
       u.searchParams.set("server", server); u.searchParams.set("file", net.name);
       history.replaceState(null, "", u);
     }
+    return () => { live = false; };
   }, [net]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // opening a network: findings belong to the previous one (findings dropped together with the file are loaded after)
+  const openServer = useCallback((f: string) => { setFindings([]); openServerFile(server, f); }, [server, openServerFile]);
+  const openLocal = useCallback((f: File) => { setFindings([]); openLocalFile(f); }, [openLocalFile]);
+
+  const saveSeq = useRef(0);
   const saveFlags = useCallback(async (next: Flag[]) => {
     setFlags(next);
-    if (!flagStore.current) return;
-    try { setFlags(await flagStore.current.save(next)); } catch (e) { setToast(`Could not save flags: ${e instanceof Error ? e.message : e}`); }
+    const st = flagStore.current, n = ++saveSeq.current;
+    if (!st) return;
+    try {
+      const saved = await st.save(next);
+      if (n === saveSeq.current && st === flagStore.current) setFlags(saved); // an older answer must not undo a newer save
+    } catch (e) { setToast(`Could not save flags: ${e instanceof Error ? e.message : e}`); }
   }, []);
 
   const toLonLat = useCallback((x: number, y: number) => net!.proj.forward(x, y), [net]);
@@ -145,15 +167,15 @@ export default function App() {
 
   const findingMarkers = useMemo<MarkerPoint[]>(() => {
     if (!net) return [];
-    return findings.filter((f) => !ruleOff.has(`${f.source} · ${f.rule}`)).map((f, i) => {
+    return findings.filter((f) => !ruleOff.has(`${f.source} · ${f.rule}`) && Number.isFinite(f.x) && Number.isFinite(f.y)).map((f, i) => {
       const [lon, lat] = toLonLat(f.x, f.y);
-      return { id: `finding-${i}`, lon, lat, color: LEVEL_COLOR[f.level] };
+      return { id: `finding-${i}`, lon, lat, color: LEVEL_COLOR[f.level] ?? LEVEL_COLOR.warning };
     });
   }, [findings, ruleOff, net, toLonLat]);
 
   const where = (f: Flag) =>
     f.road
-      ? `Road ${f.road}${f.lane !== null ? ` · lane ${f.lane}${f.laneType ? ` (${f.laneType})` : ""}` : ""}${f.s !== null ? ` · s ${f.s.toFixed(1)} m` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}`
+      ? `Road ${f.road}${f.lane != null ? ` · lane ${f.lane}${f.laneType ? ` (${f.laneType})` : ""}` : ""}${f.s != null ? ` · s ${f.s.toFixed(1)} m` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}`
       : `x ${f.x.toFixed(2)}, y ${f.y.toFixed(2)}`;
 
   const newFlagAt = useCallback((x: number, y: number, s: Selection | null) => {
@@ -215,7 +237,7 @@ export default function App() {
       lat /= b - a;
       setFlyTo({ lon, lat, zoom: 19, key: Date.now() });
       const [x, y] = net.proj.inverse(lon, lat);
-      setSel(null);
+      setSel(null); setSelF(null);
       setSelJ({ index: ji, x, y });
       return;
     }
@@ -231,6 +253,7 @@ export default function App() {
     const laneId = li >= 0 ? net.render.lanes.meta[li].lane : null;
     const [x, y] = net.proj.inverse(lon, lat);
     const road = net.od?.roads[idx];
+    setSelF(null); setSelJ(null);
     setSel({ road: idx, laneId, laneIndex: li >= 0 ? li : null, x, y, probe: road ? probe(road, laneId, x, y) : null });
   }, [net]);
 
@@ -239,14 +262,15 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t?.closest?.("input, textarea, select, dialog")) return;
-      if (e.key === "f" || e.key === "F" || e.key === "m" || e.key === "M") setFlagMode((v) => !v);
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.key === "f" || e.key === "F" || e.key === "m" || e.key === "M") { if (net) setFlagMode((v) => !v); }
       else if (e.key === "v" || e.key === "V") setMode((m) => (m === "2d" ? "3d" : "2d"));
       else if (e.key === "Escape") { if (flagMode) setFlagMode(false); else { setSel(null); setSelJ(null); setSelF(null); } }
       else if (e.key === "/") { e.preventDefault(); document.getElementById("search")?.focus(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [flagMode]);
+  }, [flagMode, net]);
 
   const loadFindings = useCallback(async (fs: File[]) => {
     const all: Finding[] = [];
@@ -266,13 +290,13 @@ export default function App() {
       const fs = [...(e.dataTransfer?.files ?? [])];
       const network = fs.find((f) => /\.(xodr|html)$/i.test(f.name));
       const rest = fs.filter((f) => f !== network);
-      if (network) openLocalFile(network);
+      if (network) openLocal(network);
       if (rest.length) loadFindings(rest);
     };
     window.addEventListener("dragover", over);
     window.addEventListener("drop", drop);
     return () => { window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
-  }, [openLocalFile, loadFindings]);
+  }, [openLocal, loadFindings]);
 
   const cursorXY = cursor && net ? net.proj.inverse(cursor[0], cursor[1]) : null;
 
@@ -285,12 +309,12 @@ export default function App() {
           <span className={`dot ${serverState}`} title={serverState === "ok" ? "Review server connected" : "Review server not reachable"} />
           <input className="server" value={server} onChange={(e) => setServer(e.target.value)} onBlur={() => connect(server)}
             onKeyDown={(e) => e.key === "Enter" && connect(server)} spellCheck={false} aria-label="Review server URL" />
-          <select value={net?.fromServer ? net.name : ""} onChange={(e) => e.target.value && openServerFile(server, e.target.value)} aria-label="File on the server">
+          <select value={net?.fromServer ? net.name : ""} onChange={(e) => e.target.value && openServer(e.target.value)} aria-label="File on the server">
             <option value="">{files.length ? "Choose a file…" : "No files on server"}</option>
             {files.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
           <button className="btn" onClick={() => fileInput.current?.click()}>Open file…</button>
-          <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => e.target.files?.[0] && openLocalFile(e.target.files[0])} />
+          <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => { if (e.target.files?.[0]) openLocal(e.target.files[0]); e.target.value = ""; }} />
         </div>
         <input id="search" className="search" placeholder="Road id, name or j 103   /" value={search}
           onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
@@ -332,7 +356,11 @@ export default function App() {
           }}
           findings={findings} ruleOff={ruleOff}
           toggleRule={(r) => setRuleOff((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n; })}
-          onFinding={(f) => { const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
+          onFinding={(f) => {
+            const [lon, lat] = Number.isFinite(f.x) && Number.isFinite(f.y) ? toLonLat(f.x, f.y) : [NaN, NaN];
+            if (Number.isFinite(lon) && Number.isFinite(lat)) setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() });
+            else setToast("This finding has no position");
+          }}
           onLoadFindings={(fl) => loadFindings([...fl])}
           compare={{
             net: cmp.network, loading: cmp.loading, error: cmp.error, result: cmpResult, files,
@@ -358,9 +386,11 @@ export default function App() {
             )}
           </div>
         )}
-        {loading && <div className="loading"><span className="spinner" />{loading}</div>}
-        {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
-        {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
+        <div className="overlays">
+          {loading && <div className="loading"><span className="spinner" />{loading}</div>}
+          {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
+          {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
+        </div>
         {toast && <div className="toast" role="status">{toast}</div>}
         {net && selF && (
           <FeatureInspector net={net} sel={selF} onClose={() => setSelF(null)} onGoRoad={goRoad} />

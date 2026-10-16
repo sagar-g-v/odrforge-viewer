@@ -34,6 +34,12 @@ export interface CompareProps {
   overlay: boolean; setOverlay: (b: boolean) => void; onItem: (d: DiffItem) => void;
 }
 
+/** props that make a clickable list row reachable and usable from the keyboard */
+const rowButton = (onClick: () => void) => ({
+  role: "button", tabIndex: 0, onClick,
+  onKeyDown: (e: React.KeyboardEvent) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } },
+});
+
 function Toggle({ label, on, set, hint }: { label: string; on: boolean; set: (v: boolean) => void; hint?: string }) {
   return (
     <label className="toggle" title={hint}>
@@ -145,7 +151,7 @@ function LayersTab(p: SidePanelProps) {
       <Section id="basemap" title="Base map">
         <label className="field row">
           <span>Map</span>
-          <select value={p.basemap} onChange={(e) => p.setBasemap(e.target.value as Basemap)}>
+          <select value={p.basemap === "satellite" && !p.imagery?.satellite ? "satellite-live" : p.basemap} onChange={(e) => p.setBasemap(e.target.value as Basemap)}>
             <option value="osm">OpenStreetMap (standard)</option>
             <option value="satellite-live">Satellite (live, Esri World Imagery)</option>
             {p.imagery?.satellite && <option value="satellite">{`HD satellite (offline ${p.imagery.satellite.res} m)`}</option>}
@@ -197,7 +203,7 @@ function FlagsTab(p: SidePanelProps) {
       </p>
       <div className="list">
         {list.map((f) => (
-          <div key={f.id} className={`item ${p.selectedFlag === f.id ? "sel" : ""} ${f.deleted ? "deleted" : ""}`} onClick={() => p.onFlag(f)}>
+          <div key={f.id} className={`item ${p.selectedFlag === f.id ? "sel" : ""} ${f.deleted ? "deleted" : ""}`} {...rowButton(() => p.onFlag(f))}>
             <div className="item-head">
               <b>#{f.id}</b> <span className={`chip status-${f.status ?? "open"}`}>{f.deleted ? "deleted" : f.status ?? "open"}</span>
               <span className="muted small">{f.category}</span>
@@ -205,7 +211,7 @@ function FlagsTab(p: SidePanelProps) {
               <button className="link" onClick={(e) => { e.stopPropagation(); p.onEditFlag(f); }}>Edit</button>
             </div>
             <div>{f.note}</div>
-            <div className="muted small">{f.road ? `road ${f.road}${f.lane !== null ? ` lane ${f.lane}` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}` : "no road"}</div>
+            <div className="muted small">{f.road ? `road ${f.road}${f.lane != null ? ` lane ${f.lane}` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}` : "no road"}</div>
             {f.reply && <div className="reply-text">↳ {f.reply}</div>}
           </div>
         ))}
@@ -229,7 +235,7 @@ function FindingsTab(p: SidePanelProps) {
     <>
       <label className="btn block file-btn">
         Load checker results (.xqar, invariants.json)
-        <input type="file" multiple accept=".xqar,.json" onChange={(e) => e.target.files && p.onLoadFindings(e.target.files)} />
+        <input type="file" multiple accept=".xqar,.json" onChange={(e) => { if (e.target.files) p.onLoadFindings(e.target.files); e.target.value = ""; }} />
       </label>
       {!groups.length && <p className="muted small">ASAM Quality Checker reports and OdrForge exact-invariant results show as markers on the map.</p>}
       <div className="list">
@@ -239,14 +245,14 @@ function FindingsTab(p: SidePanelProps) {
           return (
             <div key={k} className="group">
               <div className="item-head">
-                <input type="checkbox" checked={!off} onChange={() => p.toggleRule(rule)} title="Show on map" />
+                <input type="checkbox" checked={!off} onChange={() => p.toggleRule(rule)} title="Show on map" aria-label={`Show ${rule} on the map`} />
                 <button className="link grow left" onClick={() => setOpen(open === k ? null : k)}>{k}</button>
                 <span className={`chip level-${fs[0].level}`}>{fs.length}</span>
               </div>
               {open === k && (
                 <div className="sublist">
                   {fs.slice(0, 500).map((f, i) => (
-                    <div key={i} className="item small" onClick={() => p.onFinding(f)}>
+                    <div key={i} className="item small" {...rowButton(() => p.onFinding(f))}>
                       {f.road ? `road ${f.road} · ` : ""}{f.message || f.rule}
                     </div>
                   ))}
@@ -280,11 +286,13 @@ function CompareTab(p: SidePanelProps) {
       </label>
       <label className="btn block file-btn">
         Open B from a file…
-        <input type="file" accept=".xodr" onChange={(e) => e.target.files?.[0] && c.openLocal(e.target.files[0])} />
+        <input type="file" accept=".xodr" onChange={(e) => { if (e.target.files?.[0]) c.openLocal(e.target.files[0]); e.target.value = ""; }} />
       </label>
       {c.loading && <p className="muted small">{c.loading}</p>}
       {c.error && <p className="small" style={{ color: "var(--err)" }}>{c.error}</p>}
       {c.net && !c.net.od && <p className="small">B is an OdrForge page export: comparing needs the .xodr.</p>}
+      {c.net && !p.net && <p className="small">Open the network to compare against (A) first.</p>}
+      {c.net && p.net && !p.net.od && <p className="small">A is an OdrForge page export: comparing needs its .xodr.</p>}
       {c.net && (
         <>
           <Toggle label={`Show B on the map (${c.net.name})`} on={c.overlay} set={c.setOverlay} hint="B's lane outlines (magenta) and reference lines (dashed) over A" />
@@ -296,7 +304,7 @@ function CompareTab(p: SidePanelProps) {
           <section className="card">
             <div className="kv"><span /><span><b>A</b> → <b>B</b></span></div>
             {rows.map(([label, k, d]) => (
-              <div className="kv" key={k}><span>{label}</span><span>{R.a[k].toFixed(d)} → {R.b[k].toFixed(d)}{R.a[k] !== R.b[k] ? ` (${R.b[k] - R.a[k] > 0 ? "+" : ""}${(R.b[k] - R.a[k]).toFixed(d)})` : ""}</span></div>
+              <div className="kv" key={k}><span>{label}</span><span>{R.a[k].toFixed(d)} → {R.b[k].toFixed(d)}{R.a[k].toFixed(d) !== R.b[k].toFixed(d) ? ` (${R.b[k] > R.a[k] ? "+" : ""}${(R.b[k] - R.a[k]).toFixed(d)})` : ""}</span></div>
             ))}
             <div className="kv"><span>roads matched by id</span><span>{R.matchedRoads} of {R.a.roads}</span></div>
             {R.matchedRoads < 0.5 * Math.min(R.a.roads, R.b.roads) && (
@@ -312,7 +320,7 @@ function CompareTab(p: SidePanelProps) {
           {!R.items.length && <p className="muted small">No differences.</p>}
           <div className="list">
             {items.slice(0, 500).map((d, i) => (
-              <div key={i} className="item small" onClick={() => c.onItem(d)} title={Number.isFinite(d.lon) ? "Fly there" : "Not on the map"}>
+              <div key={i} className="item small" {...rowButton(() => c.onItem(d))} title={Number.isFinite(d.lon) ? "Fly there" : "Not on the map"}>
                 <div className="item-head"><span className={`chip ${d.kind === "removed" ? "level-error" : d.kind === "added" ? "status-fixed" : "level-warning"}`}>{d.kind}</span><b>{d.what} {d.id}</b></div>
                 <span className="muted">{d.detail}</span>
               </div>
@@ -331,7 +339,14 @@ export default function SidePanel(p: SidePanelProps) {
     <aside className="panel">
       <nav className="tabs" role="tablist">
         {(["layers", "flags", "findings", "compare"] as Tab[]).map((t) => (
-          <button key={t} role="tab" aria-selected={p.tab === t} className={p.tab === t ? "on" : ""} onClick={() => p.setTab(t)}>
+          <button key={t} role="tab" aria-selected={p.tab === t} tabIndex={p.tab === t ? 0 : -1} className={p.tab === t ? "on" : ""} onClick={() => p.setTab(t)}
+            onKeyDown={(e) => { // arrow keys move between the tabs (WAI-ARIA tabs pattern)
+              const all: Tab[] = ["layers", "flags", "findings", "compare"], k = all.indexOf(t);
+              const next = e.key === "ArrowRight" ? all[(k + 1) % all.length] : e.key === "ArrowLeft" ? all[(k + all.length - 1) % all.length] : null;
+              if (!next) return;
+              e.preventDefault(); p.setTab(next);
+              (e.currentTarget.parentElement?.children[all.indexOf(next)] as HTMLElement | undefined)?.focus();
+            }}>
             {t === "layers" ? "Layers" : t === "flags" ? `Flags${nFlags ? ` · ${nFlags}` : ""}` : t === "findings" ? `Findings${p.findings.length ? ` · ${p.findings.length}` : ""}`
               : `Compare${p.compare.result ? ` · ${p.compare.result.items.length}` : ""}`}
           </button>

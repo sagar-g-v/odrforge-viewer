@@ -50,7 +50,7 @@ export function parseFindingsJson(text: string): Finding[] {
   } else if (Array.isArray(d.findings)) {
     for (const f of d.findings)
       if (typeof f.x === "number" && typeof f.y === "number")
-        out.push({ source: f.source ?? "findings", rule: f.rule ?? "finding", level: f.level ?? "warning", message: f.message ?? "", x: f.x, y: f.y, road: f.road });
+        out.push({ source: f.source ?? "findings", rule: f.rule ?? "finding", level: f.level === "error" || f.level === "info" ? f.level : "warning", message: f.message ?? "", x: f.x, y: f.y, road: f.road });
   }
   return out;
 }
