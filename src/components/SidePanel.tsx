@@ -20,6 +20,7 @@ export interface SidePanelProps {
   buildingOpacity: number; setBuildingOpacity: (n: number) => void;
   roadOpacity: number; setRoadOpacity: (n: number) => void;
   dim: number; setDim: (n: number) => void;
+  terrainSource: string | null; // the network's ground grid when the terrain uses it
   flags: Flag[]; flagStoreKind: string; selectedFlag: number | null; onFlag: (f: Flag) => void; onEditFlag: (f: Flag) => void;
   showDeleted: boolean; setShowDeleted: (b: boolean) => void; onExportFlags: () => void;
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
@@ -171,7 +172,8 @@ function LayersTab(p: SidePanelProps) {
         <div className="sub-title">3D</div>
         <Toggle label="3D buildings (in 3D view)" on={L.buildings} set={set("buildings")} />
         <Slider label="Building opacity" value={p.buildingOpacity} min={0.1} max={1} step={0.05} onChange={p.setBuildingOpacity} disabled={!L.buildings} />
-        <Toggle label="Terrain" on={L.terrain} set={set("terrain")} hint="Mapzen Terrarium elevation tiles (AWS Open Data). Files without absolute heights are laid on it in flat and relative mode; Height exaggeration scales terrain and roads alike" />
+        <Toggle label="Terrain" on={L.terrain} set={set("terrain")} hint="The network's own ground grid (the converter's <area>_ground.odrz on the review server) where there is one, Mapzen Terrarium elevation tiles (AWS Open Data) around it. Files without absolute heights are laid on it in flat and relative mode; Height exaggeration scales terrain and roads alike" />
+        {L.terrain && <p className="muted small">{`Terrain: ${p.terrainSource ?? "Mapzen Terrarium (open DEM; can be metres off in cities and steep terrain)"}`}</p>}
       </Section>
       <Section id="legend-odr" title="Legend · OpenDRIVE" defaultOpen={false}>
         <OdrLegend theme={p.theme} />

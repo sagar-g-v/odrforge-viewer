@@ -10,6 +10,7 @@ import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from
 import { parseFindings, type Finding } from "./review/findings";
 import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
+import { fetchGrid, type GroundGrid } from "./map/odrz";
 
 const STATUS_COLOR: Record<string, [number, number, number, number]> = {
   open: [245, 184, 74, 255], fixed: [62, 207, 142, 255], question: [90, 169, 255, 255], wontfix: [140, 146, 158, 255],
@@ -135,6 +136,36 @@ export default function App() {
     }
     return () => { live = false; };
   }, [net]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // the network's own ground grid (converter <area>_ground.odrz next to the file): the terrain, fetched when Terrain is on
+  const [ground, setGround] = useState<{ net: typeof net; grid: GroundGrid; file: string } | null>(null);
+  const [groundLoading, setGroundLoading] = useState<string | null>(null);
+  const groundTried = useRef<typeof net>(null); // the network a grid was looked for (once per network)
+  useEffect(() => {
+    if (!layers.terrain || !net?.fromServer || groundTried.current === net) return;
+    const ac = new AbortController(), stem = net.page.replace(/_standard$/, "");
+    groundTried.current = net;
+    let done = false;
+    (async () => {
+      for (const file of [...new Set([`${net.page}_ground.odrz`, `${stem}_ground.odrz`])]) {
+        try {
+          const grid = await fetchGrid(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}`, (got, total) =>
+            setGroundLoading(`Loading the ground grid ${file}: ${(got / 1e6).toFixed(0)}${total ? ` / ${(total / 1e6).toFixed(0)}` : ""} MB`), ac.signal);
+          if (grid) { setGround({ net, grid, file }); break; }
+        } catch (e) {
+          if (ac.signal.aborted) return;
+          setToast(`Ground grid ${file}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+      done = true;
+      setGroundLoading(null);
+    })();
+    return () => {
+      ac.abort();
+      if (!done) { groundTried.current = null; setGroundLoading(null); } // interrupted: look again next time
+    };
+  }, [net, layers.terrain, server]);
+  const groundNow = ground && ground.net === net ? ground : null;
 
   // opening a network: findings belong to the previous one (findings dropped together with the file are loaded after)
   const openServer = useCallback((f: string) => { setFindings([]); openServerFile(server, f); }, [server, openServerFile]);
@@ -345,6 +376,7 @@ export default function App() {
           exaggeration={exaggeration} setExaggeration={setExaggeration}
           buildingOpacity={buildingOpacity} setBuildingOpacity={setBuildingOpacity}
           roadOpacity={roadOpacity} setRoadOpacity={setRoadOpacity} dim={dim} setDim={setDim}
+          terrainSource={groundNow ? `${groundNow.file} (${groundNow.grid.datum || "datum not given"}, ${groundNow.grid.cell} m cells), Terrarium around it` : null}
           flags={flags} flagStoreKind={flagStoreKind} selectedFlag={selectedFlag}
           onFlag={(f) => { setSelectedFlag(f.id); const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
           onEditFlag={(f) => setDraft({ flag: f, isNew: false, where: where(f) })}
@@ -374,7 +406,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
@@ -388,6 +420,7 @@ export default function App() {
         )}
         <div className="overlays">
           {loading && <div className="loading"><span className="spinner" />{loading}</div>}
+          {groundLoading && <div className="loading"><span className="spinner" />{groundLoading}</div>}
           {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
           {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
         </div>

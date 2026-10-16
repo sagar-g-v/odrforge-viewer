@@ -14,6 +14,8 @@ import type { RenderData } from "../xodr/build";
 import { laneColor, type Rgba } from "./palette";
 import { visibleTiles, type ImageTile, type LocalImagery } from "./localImagery";
 import { DEM_MAXZOOM, Dem, TERRARIUM_TILES } from "./dem";
+import { groundHeight, type GroundGrid } from "./odrz";
+import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid } from "./groundTiles";
 import { drapeRender, terrainLift, type GroundProbe } from "./drape";
 import type { Projector } from "../xodr/geo";
 
@@ -42,6 +44,7 @@ export interface MapViewProps {
   buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
   roadOpacity: number; // 0..1: lane surfaces, junction areas and objects (marks and outlines stay opaque)
   dim: number; // 0..0.9: darkens the base map (not the OpenDRIVE layers)
+  ground: GroundGrid | null; // the network's own ground grid (converter .odrz): the terrain where present
   compare: RenderData | null; // B of a comparison: its lane outlines and reference lines over A
   selectedLane: number | null;
   selectedJunction: number | null;
@@ -145,14 +148,23 @@ function ensureDim(map: MlMap, dim: number) {
   }
 }
 
-function ensureTerrain(map: MlMap, on: boolean, exaggeration: number) {
-  if (on && !map.getSource(TERRAIN_SOURCE))
-    map.addSource(TERRAIN_SOURCE, {
-      type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: DEM_MAXZOOM, tiles: [TERRARIUM_TILES],
-      attribution: "Terrain: Mapzen / AWS Open Data (Terrarium)",
+/** the terrain source: the network's ground grid (rendered by groundTiles.ts, Terrarium around it) or Terrarium alone */
+interface TerrainSrc { id: string; tiles: string; maxzoom: number; attribution: string; }
+const TERRARIUM_SRC: TerrainSrc = { id: TERRAIN_SOURCE, tiles: TERRARIUM_TILES, maxzoom: DEM_MAXZOOM, attribution: "Terrain: Mapzen / AWS Open Data (Terrarium)" };
+
+function ensureTerrain(map: MlMap, on: boolean, exaggeration: number, src: TerrainSrc) {
+  if (on && !map.getSource(src.id))
+    map.addSource(src.id, {
+      type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: src.maxzoom, tiles: [src.tiles], attribution: src.attribution,
     });
-  map.setTerrain(on ? { source: TERRAIN_SOURCE, exaggeration } : null);
+  map.setTerrain(on ? { source: src.id, exaggeration } : null);
+  // sources of an earlier grid (or Terrarium when a grid took over) go once the terrain no longer uses them
+  for (const id of Object.keys(map.getStyle()?.sources ?? {}))
+    if ((id === TERRAIN_SOURCE || id.startsWith(GROUND_SOURCE)) && id !== src.id && map.getSource(id)) map.removeSource(id);
 }
+const GROUND_SOURCE = "odrv-ground-";
+let groundSeq = 0;
+registerGroundProtocol();
 
 const sub = (a: Uint32Array, n: number) => a.subarray(0, n);
 
@@ -211,6 +223,18 @@ export default function MapView(p: MapViewProps) {
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
+  // terrain source for the current grid: a new grid gets a new source (MapLibre caches tiles per url)
+  const terrainSrc = useMemo<TerrainSrc>(() => {
+    if (!p.ground || !p.proj) return TERRARIUM_SRC;
+    const n = ++groundSeq, c = p.proj.forward(p.ground.originX + (p.ground.nx * p.ground.cell) / 2, p.ground.originY + (p.ground.ny * p.ground.cell) / 2);
+    return {
+      id: GROUND_SOURCE + n, tiles: `${GROUND_PROTOCOL}://{z}/{x}/{y}?g=${n}`, maxzoom: groundMaxZoom(p.ground, c[1]),
+      attribution: `Terrain: network ground grid (${p.ground.datum || "datum not given"}, ${p.ground.cell} m), Mapzen Terrarium around it`,
+    };
+  }, [p.ground, p.proj]);
+  const terrainSrcRef = useRef(terrainSrc);
+  // layout effect: the tile protocol knows the grid before the (passive) effect that adds the source runs
+  useLayoutEffect(() => { setGroundGrid(p.ground, p.proj); terrainSrcRef.current = terrainSrc; }, [terrainSrc, p.ground, p.proj]);
   const [styleEpoch, setStyleEpoch] = useState(0); // bumped on every style.load: the overlay's layers are set again
   useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
 
@@ -243,7 +267,7 @@ export default function MapView(p: MapViewProps) {
       styleReady.current = true;
       if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
-      ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
+      ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration, terrainSrcRef.current);
       ensureDim(map, propsRef.current.dim);
       syncImageTiles(map, imgRef.current);
       setStyleEpoch((e) => e + 1);
@@ -288,8 +312,8 @@ export default function MapView(p: MapViewProps) {
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map && styleReady.current) ensureTerrain(map, p.layers.terrain, p.exaggeration);
-  }, [p.layers.terrain, p.exaggeration]);
+    if (map && styleReady.current) ensureTerrain(map, p.layers.terrain, p.exaggeration, terrainSrc);
+  }, [p.layers.terrain, p.exaggeration, terrainSrc]);
 
   // camera: 2D looks straight down, 3D tilts
   useEffect(() => {
@@ -340,15 +364,22 @@ export default function MapView(p: MapViewProps) {
     return () => ac.abort();
   }, [p.render, p.layers.terrain, dem]);
   const demNow = dem && dem.render === p.render ? dem.dem : null;
+  // the ground under the roads, as the terrain draws it: the network's grid (blended into Terrarium at its edge) or Terrarium
+  const groundAt = useMemo(() => {
+    if (!demNow) return null;
+    const g = p.ground, pr = p.proj;
+    if (!g || !pr) return (lon: number, lat: number) => demNow.sample(lon, lat);
+    return (lon: number, lat: number) => { const [x, y] = pr.inverse(lon, lat); return groundHeight(g, x, y, () => demNow.sample(lon, lat)); };
+  }, [demNow, p.ground, p.proj]);
 
   // a file whose heights are relative to its surroundings (not above sea level) is laid on the terrain in flat and
   // relative mode (drape.ts); absolute mode keeps the file's heights
-  const draped = useMemo(() => (p.layers.terrain && p.render && demNow && p.heightMode !== "absolute"
-    ? drapeRender(p.render, (lon, lat) => demNow.sample(lon, lat), p.heightMode) : null),
-  [p.render, p.layers.terrain, demNow, p.heightMode]);
-  const cmpDraped = useMemo(() => (p.compare && p.layers.terrain && demNow && p.heightMode !== "absolute"
-    ? drapeRender(p.compare, (lon, lat) => demNow.sample(lon, lat), p.heightMode).render : p.compare),
-  [p.compare, p.layers.terrain, demNow, p.heightMode]);
+  const draped = useMemo(() => (p.layers.terrain && p.render && groundAt && p.heightMode !== "absolute"
+    ? drapeRender(p.render, groundAt, p.heightMode) : null),
+  [p.render, p.layers.terrain, groundAt, p.heightMode]);
+  const cmpDraped = useMemo(() => (p.compare && p.layers.terrain && groundAt && p.heightMode !== "absolute"
+    ? drapeRender(p.compare, groundAt, p.heightMode).render : p.compare),
+  [p.compare, p.layers.terrain, groundAt, p.heightMode]);
   useEffect(() => {
     probeRef.current = draped?.probe ?? null;
     mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
@@ -356,14 +387,14 @@ export default function MapView(p: MapViewProps) {
   // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
   const absoluteOff = useMemo(() => {
     const r = p.render;
-    if (!p.layers.terrain || !r || !demNow || p.heightMode !== "absolute") return null;
+    if (!p.layers.terrain || !r || !groundAt || p.heightMode !== "absolute") return null;
     const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 1000)), g: number[] = [];
-    for (let v = 0; v < nv; v += step) { const h = demNow.sample(L[3 * v], L[3 * v + 1]); if (Number.isFinite(h)) g.push(h); }
+    for (let v = 0; v < nv; v += step) { const h = groundAt(L[3 * v], L[3 * v + 1]); if (Number.isFinite(h)) g.push(h); }
     if (!g.length) return null;
     g.sort((a, b) => a - b);
     const ground = g[g.length >> 1];
     return Math.abs(ground - r.zGround) > 25 ? { ground, road: r.zGround } : null;
-  }, [p.render, p.layers.terrain, demNow, p.heightMode]);
+  }, [p.render, p.layers.terrain, groundAt, p.heightMode]);
 
   // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights); draped
   // positions already hold heights above sea level: scaled with the terrain's exaggeration and lifted above it
