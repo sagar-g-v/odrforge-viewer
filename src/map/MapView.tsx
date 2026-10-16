@@ -380,10 +380,24 @@ export default function MapView(p: MapViewProps) {
   const cmpDraped = useMemo(() => (p.compare && p.layers.terrain && groundAt && p.heightMode !== "absolute"
     ? drapeRender(p.compare, groundAt, p.heightMode).render : p.compare),
   [p.compare, p.layers.terrain, groundAt, p.heightMode]);
+  // absolute mode over terrain: the file's road surfaces lie on the very ground the terrain draws (the network's grid),
+  // so they would fight it for the same depth and show in patches; they get the same small lift as draped roads, measured
+  // on the lane points at grade (|z - ground| < 1.5 m: bridges and tunnels do not count)
+  const absoluteProbe = useMemo<GroundProbe | null>(() => {
+    const r = p.render;
+    if (!p.layers.terrain || !r || !groundAt || p.heightMode !== "absolute") return null;
+    const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 4000));
+    const lon: number[] = [], lat: number[] = [], z: number[] = [];
+    for (let v = 0; v < nv; v += step) {
+      const g = groundAt(L[3 * v], L[3 * v + 1]);
+      if (Number.isFinite(g) && Math.abs(L[3 * v + 2] - g) < 1.5) { lon.push(L[3 * v]); lat.push(L[3 * v + 1]); z.push(L[3 * v + 2]); }
+    }
+    return lon.length ? { lon: Float64Array.from(lon), lat: Float64Array.from(lat), ground: Float64Array.from(z) } : null;
+  }, [p.render, p.layers.terrain, groundAt, p.heightMode]);
   useEffect(() => {
-    probeRef.current = draped?.probe ?? null;
+    probeRef.current = draped?.probe ?? absoluteProbe;
     mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
-  }, [draped]);
+  }, [draped, absoluteProbe]);
   // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
   const absoluteOff = useMemo(() => {
     const r = p.render;
@@ -403,8 +417,9 @@ export default function MapView(p: MapViewProps) {
     const r = p.render;
     const ex = p.heightMode === "flat" ? 0 : p.exaggeration;
     const base = p.heightMode === "relative" && r ? r.zGround : 0;
-    return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + (p.heightMode === "flat" ? 0.05 : 0), 1]);
-  }, [p.render, p.heightMode, p.exaggeration, draped, lift]);
+    const up = p.heightMode === "flat" ? 0.05 : absoluteProbe ? lift : 0; // a display offset only: heights stay the file's
+    return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + up, 1]);
+  }, [p.render, p.heightMode, p.exaggeration, draped, lift, absoluteProbe]);
   // junction outlines float 0.3 m above the surface: the joints across the arms stay visible over the lanes and curbs
   const outlineMatrix = useMemo(() => new Matrix4(modelMatrix).translate([0, 0, 0.3]), [modelMatrix]);
 
