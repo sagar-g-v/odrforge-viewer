@@ -324,7 +324,9 @@ export default function MapView(p: MapViewProps) {
     map.on("idle", () => {
       const probe = probeRef.current, pr = propsRef.current;
       if (!probe || !pr.layers.terrain) { setLift(0); return; } // no probe (or no terrain): no lift
-      const next = terrainLift(probe, (lon, lat) => map.queryTerrainElevation([lon, lat]), pr.exaggeration, 0);
+      const b = map.getBounds(), w = b.getWest(), e = b.getEast(), s = b.getSouth(), n = b.getNorth();
+      const next = terrainLift(probe, (lon, lat) => map.queryTerrainElevation([lon, lat]), pr.exaggeration, 0,
+        (lon, lat) => lon >= w && lon <= e && lat >= s && lat <= n);
       setLift((cur) => (Math.abs(cur - next) > Math.max(0.05, 0.02 * cur) ? next : cur));
     });
     mapRef.current = map;

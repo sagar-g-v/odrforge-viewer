@@ -36,6 +36,10 @@ The lift is a display offset. It is applied only over terrain and measured only 
   is the 95th percentile rise of the drawn surface over the ground under the lanes, measured when the map comes to rest
   (`terrainLift`, `groundProbe`).
 - **It is never measured against the roads.** A road the file puts below the ground (a cutting) stays below it.
+- **Only lane points in view count.** Elsewhere MapLibre answers from coarse (or no) DEM tiles. Measured over the whole
+  network, this lifted central London's roads 9.2 m in a street-level view (found with `odrvAudit()` on 2026-10-17).
+  In view the lift is 0 there: Adam Street median +0.001 m, Lancaster Place +0.003 m. Guarded by
+  `tests/heights.test.ts` ("only points in view count", "MapView measures the lift in view", mutation-checked).
 - It starts at 0 and is reset to 0 wherever it does not apply.
 
 Guarded by `tests/heights.test.ts` ("the lift is measured against the ground") and `tests/terrain.test.ts`.

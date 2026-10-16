@@ -55,7 +55,24 @@ describe("the lift is measured against the ground, never the roads (docs/ACCURAC
   it("drawn terrain equal to the ground: no lift, the cutting is not hidden", () => {
     expect(terrainLift(groundProbe(lanes, ground), () => 2500, 1, 0)).toBe(0);
   });
+  it("only points in view count: coarse terrain outside the view does not lift the roads on screen", () => {
+    // London, street level: the far point answers from a coarse tile 9 m over the ground, the near one from the drawn grid
+    const two = groundProbe(Float64Array.from([-0.122, 51.509, 13, -0.2, 51.6, 13]), () => 13);
+    const drawn = (lon: number) => (lon < -0.15 ? 22 : 13);
+    expect(terrainLift(two, drawn, 1, 0)).toBe(9); // what the whole-network measurement gave
+    expect(terrainLift(two, drawn, 1, 0, (lon) => lon > -0.15)).toBe(0);
+    expect(terrainLift(two, drawn, 1, 0, () => false)).toBe(0); // nothing in view: no lift
+  });
   it("drawn terrain coarser and higher than the ground (zoomed out): lifted by that difference only", () => {
     expect(terrainLift(groundProbe(lanes, ground), () => 2501.2, 1, 0)).toBeCloseTo(1.2, 9);
+  });
+});
+
+describe("MapView measures the lift in view", () => {
+  it("the idle handler passes the view bounds to terrainLift", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/map/MapView.tsx", import.meta.url), "utf8");
+    const call = src.match(/terrainLift\(probe,[\s\S]*?\);/)?.[0] ?? "";
+    expect(call).toMatch(/lon >= w && lon <= e && lat >= s && lat <= n/);
   });
 });

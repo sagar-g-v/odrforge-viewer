@@ -64,9 +64,13 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
  * on. The 95th percentile of that rise over the probe vertices (drawn height from map.queryTerrainElevation, which
  * includes the exaggeration) plus a small base clearance.
  */
-export function terrainLift(probe: GroundProbe, drawn: (lon: number, lat: number) => number | null, exaggeration: number, base: number): number {
+export function terrainLift(probe: GroundProbe, drawn: (lon: number, lat: number) => number | null, exaggeration: number, base: number,
+  inView: (lon: number, lat: number) => boolean = () => true): number {
+  // only the points in view: elsewhere MapLibre answers from coarse (or no) DEM tiles, which says nothing about what is
+  // drawn on screen and lifted the roads of central London 9 m in a street-level view
   const rise: number[] = [];
   for (let i = 0; i < probe.lon.length; i++) {
+    if (!inView(probe.lon[i], probe.lat[i])) continue;
     const h = drawn(probe.lon[i], probe.lat[i]);
     if (h !== null && Number.isFinite(h)) rise.push(Math.max(0, h - exaggeration * probe.ground[i]));
   }
