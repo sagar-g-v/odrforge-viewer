@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { CARTO_AVAILABLE, type Basemap, type HeightMode, type MapLayers } from "../map/MapView";
 import { OdrLegend, OsmLegend } from "./Legend";
+import { concreteBasemap } from "../map/basemap";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
@@ -155,6 +156,7 @@ function LayersTab(p: SidePanelProps) {
         <label className="field row">
           <span>Map</span>
           <select value={p.basemap === "satellite" && !p.imagery?.satellite ? "satellite-live" : p.basemap} onChange={(e) => p.setBasemap(e.target.value as Basemap)}>
+            <option value="map">Map (follows the theme: OpenStreetMap / dark)</option>
             <option value="osm">OpenStreetMap (standard)</option>
             <option value="satellite-live">Satellite (live, Esri World Imagery)</option>
             {p.imagery?.satellite && <option value="satellite">{`HD satellite (offline ${p.imagery.satellite.res} m)`}</option>}
@@ -162,6 +164,7 @@ function LayersTab(p: SidePanelProps) {
             <option value="positron">OSM Positron (light)</option>
             <option value="dark">OSM Dark</option>
             <option value="carto" disabled={!CARTO_AVAILABLE}>{CARTO_AVAILABLE ? "CARTO Voyager (vector)" : "CARTO Voyager (vector): set CARTO_MAP_API"}</option>
+            <option value="carto-dark" disabled={!CARTO_AVAILABLE}>{CARTO_AVAILABLE ? "CARTO Dark Matter (vector)" : "CARTO Dark Matter (vector): set CARTO_MAP_API"}</option>
             <option value="carto-raster" disabled={!CARTO_AVAILABLE}>{CARTO_AVAILABLE ? "CARTO Voyager (raster)" : "CARTO Voyager (raster): set CARTO_MAP_API"}</option>
             <option value="none">None</option>
           </select>
@@ -183,7 +186,7 @@ function LayersTab(p: SidePanelProps) {
         <OdrLegend theme={p.theme} />
       </Section>
       <Section id="legend-osm" title="Legend · OpenStreetMap" defaultOpen={false}>
-        <OsmLegend basemap={p.basemap} />
+        <OsmLegend basemap={concreteBasemap(p.basemap, p.theme)} />
       </Section>
     </>
   );

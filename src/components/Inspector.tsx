@@ -120,7 +120,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad, onWhole
         </section>
       )}
       <footer className="drawer-foot">
-        <button className="btn primary" onClick={onFlag}><Icon name="flag" />Flag something here</button>
+        <button className="btn block" onClick={onFlag}><Icon name="flag" />{sel.whole ? "Flag this road" : sel.laneId !== null ? "Flag this lane" : "Flag something here"}</button>
       </footer>
     </aside>
   );
@@ -193,7 +193,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         </section>
       )}
       <footer className="drawer-foot">
-        <button className="btn primary" onClick={onFlag}><Icon name="flag" />Flag this junction</button>
+        <button className="btn block" onClick={onFlag}><Icon name="flag" />Flag this junction</button>
       </footer>
     </aside>
   );

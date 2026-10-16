@@ -1,6 +1,6 @@
 // The design system's tooltip (docs/design-system.md §5): shortcut as kbd, placement 6px from its element inside the viewport.
 import { describe, expect, it } from "vitest";
-import { placeTip, splitShortcut } from "../src/components/Tooltip";
+import { placeTip, splitShortcut } from "../src/components/tooltipPlace";
 
 describe("splitShortcut", () => {
   it("a trailing key shortcut becomes the kbd", () => {

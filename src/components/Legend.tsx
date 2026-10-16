@@ -1,6 +1,6 @@
 // Map legends: what the OpenDRIVE layers draw (colours and shapes from map/palette.ts, xodr/features.ts, xodr/build.ts)
 // and what the base map shows (OpenStreetMap Carto's key colours; satellite imagery has no legend).
-import type { Basemap } from "../map/MapView";
+import type { ConcreteBasemap as Basemap } from "../map/basemap";
 import { LEGEND, legendColor } from "../map/palette";
 import { ASSET, EDGE, MARK, MARKER, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
 

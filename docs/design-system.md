@@ -1,6 +1,6 @@
 # OdrForge Viewer design system: "Sky & Meadow"
 
-Status: **adopted** (2026-10-17). `src/main.tsx` imports `src/design/tokens.css` before `src/styles.css`, which takes every colour, size and duration from it. Icons are drawn inline in the Lucide style (`src/components/Icon.tsx`) instead of adding the `lucide-react` package; the tooltip (§5) is `src/components/Tooltip.tsx`, one instance serving every element's `title`.
+Status: **adopted** (2026-10-17). `src/main.tsx` imports `src/design/tokens.css` before `src/styles.css`, which takes every colour, size and duration from it. Icons are drawn inline in the Lucide style (`src/components/Icon.tsx`) instead of adding the `lucide-react` package; the tooltip (§5) is `src/components/Tooltip.tsx`, one instance serving every element's `title`. Inter and JetBrains Mono load from Google Fonts (`index.html`; guarded by `tests/fonts.test.ts`). The top bar's **Map** is the theme's map (`src/map/basemap.ts`): the OSM raster in the light theme and the near-black OpenFreeMap dark vector map in the dark theme, as §3 tunes the lane sets; explicit basemaps (Layers → Base map) do not change with the theme.
 
 - Figma library: https://www.figma.com/design/4XVC3fKkAl3bJMRh8GeY1C (Starter plan, venky s's team)
 - Logo: [`docs/brand/logo-mark.svg`](brand/logo-mark.svg) (one colour, `currentColor`) and [`docs/brand/logo-tile.svg`](brand/logo-tile.svg) (app tile / favicon)
@@ -162,6 +162,7 @@ Rules:
 2. **Overlays are saturated, mid-light hues** that do not occur in any basemap. Lines are at least 1.5px. Markers have a 1.5px `#0a1017` halo, which turns white when selected.
 3. **Each overlay hue has one meaning.** Magenta is only compare-B. Cyan is only cross paths. Chartreuse is only road reference lines. Amber is only junction areas and open flags.
 4. **Road marks and signals keep real-world colours**: white, yellow, and the red/amber/green signal heads.
+5. **Each theme has its own map.** The top bar's Map draws the OSM raster in the light theme and the near-black dark vector map in the dark theme (`tests/basemap.test.ts`). Lane opacity defaults to 1 (the lane alpha .92 above); the Road opacity slider only lowers it on request.
 
 ### Lane types (keep the set: driving, junction, sidewalk, curb, biking, parking, shoulder, border, median, restricted, bidirectional, bus)
 

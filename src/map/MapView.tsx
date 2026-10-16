@@ -25,7 +25,8 @@ import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, view
 import type { Projector } from "../xodr/geo";
 
 // satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
-export type Basemap = "osm" | "liberty" | "positron" | "dark" | "carto" | "carto-raster" | "satellite" | "satellite-live" | "none";
+import { concreteBasemap, type Basemap } from "./basemap";
+export type { Basemap } from "./basemap";
 
 // CARTO basemaps (Voyager), with the key from the environment variable CARTO_MAP_API (vite.config.ts envPrefix)
 const CARTO_KEY = import.meta.env.CARTO_MAP_API ?? "";
@@ -79,7 +80,7 @@ export interface MapViewProps {
   cursorCrosshair: boolean;
 }
 
-const STYLE_URL: Record<Exclude<Basemap, "osm" | "none" | "satellite" | "satellite-live" | "carto" | "carto-raster">, string> = {
+const STYLE_URL: Record<"liberty" | "positron" | "dark", string> = {
   liberty: "https://tiles.openfreemap.org/styles/liberty",
   positron: "https://tiles.openfreemap.org/styles/positron",
   dark: "https://tiles.openfreemap.org/styles/dark",
@@ -126,17 +127,25 @@ const CARTO_RASTER_STYLE = (): StyleSpecification => ({
 });
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 /** the MapLibre style of a basemap (the theme only matters for "none": the empty map takes the page background) */
-function styleFor(basemap: Basemap, theme: "dark" | "light"): StyleSpecification | string {
+function styleFor(chosen: Basemap, theme: "dark" | "light"): StyleSpecification | string {
+  const basemap = concreteBasemap(chosen, theme); // "map" follows the theme
+  if (basemap === "carto-dark") {
+    if (!CARTO_AVAILABLE) return STYLE_URL.dark;
+    return `https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json?key=${encodeURIComponent(CARTO_KEY)}`;
+  }
   if (basemap === "none") return EMPTY_STYLE(theme === "dark" ? "#06112a" : "#e8f2fb"); // --bg (haze-950 / haze-50)
   if (basemap === "osm") return OSM_STYLE;
   if (basemap === "carto" || basemap === "carto-raster") {
     if (!CARTO_AVAILABLE) return OSM_STYLE; // no key here: the standard map
     return basemap === "carto" ? `https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json?key=${encodeURIComponent(CARTO_KEY)}` : CARTO_RASTER_STYLE();
   }
-  if (basemap.startsWith("satellite")) return SATELLITE_STYLE;
-  return STYLE_URL[basemap as keyof typeof STYLE_URL];
+  if (basemap === "satellite" || basemap === "satellite-live") return SATELLITE_STYLE;
+  return STYLE_URL[basemap];
 }
-const styleKey = (basemap: Basemap, theme: "dark" | "light") => (basemap === "none" ? `none-${theme}` : basemap.startsWith("satellite") ? "satellite" : basemap);
+const styleKey = (chosen: Basemap, theme: "dark" | "light") => {
+  const basemap = concreteBasemap(chosen, theme);
+  return basemap === "none" ? `none-${theme}` : basemap.startsWith("satellite") ? "satellite" : basemap;
+};
 const TERRAIN_SOURCE = "odrv-terrain";
 const BUILDINGS = "odrv-buildings-3d";
 const FOOTPRINT = "odrv-buildings-footprint", FOOTPRINT_EDGE = "odrv-buildings-edge"; // bottom face and border
@@ -295,12 +304,15 @@ export default function MapView(p: MapViewProps) {
     const map = new maplibregl.Map({
       // the basemap the app starts with (a placeholder style replaced at once would abort its first requests)
       container: host.current!, style: styleFor(propsRef.current.basemap, propsRef.current.theme), center: [0, 20], zoom: 1.5, maxPitch: 85,
-      attributionControl: { compact: true }, canvasContextAttributes: { antialias: true },
+      attributionControl: false, canvasContextAttributes: { antialias: true },
       transformRequest: (url) => withCartoKey(url),
     });
     deckTransformCompat(map);
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
+    // controls as the design's screens place them: zoom / compass top-left (clear of the inspector drawer), the scale bar
+    // and the attribution bottom-left
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
+    map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
     const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey) });
     map.addControl(ov);
     map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
