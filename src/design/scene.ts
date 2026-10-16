@@ -20,6 +20,20 @@ export const ASSET = {
   crosswalk: [255, 255, 255, 150] as Rgba, //    white 60%
 };
 
+/**
+ * The tree is the logo's tree (docs/brand/logo-mark.svg): a big top lobe over smaller side lobes on a thin trunk.
+ * Fractions of the crown half-width r (default 1.5 m) and the height h (default 6 m), taken from the glyph:
+ * top lobe radius .64r centred at h − .64r; three side lobes radius .53r, .47r out at 120° (so every side shows the
+ * logo silhouette), centres .55r below the top lobe's; trunk radius .14r from the ground to the top lobe's centre.
+ * Each lobe is a stepped low-poly sphere of three columns (ColumnLayer, no extra packages): a middle slice of radius ρ
+ * over ±.35ρ and caps of radius .75ρ from .35ρ to .85ρ above and below. 2D (top-down): the four lobe discs, a trefoil.
+ */
+export const TREE = {
+  top: { radius: 0.64, below: 0.64 }, side: { radius: 0.53, out: 0.47, drop: 0.55, count: 3 },
+  trunk: { radius: 0.14 }, slices: [{ from: -0.85, to: -0.35, radius: 0.75 }, { from: -0.35, to: 0.35, radius: 1 }, { from: 0.35, to: 0.85, radius: 0.75 }],
+  defaults: { height: 6, crown: 1.5 },
+};
+
 /** regulatory colours keep their real-world meaning; tuned values only */
 export const SIGNAL = {
   red: [235, 52, 52, 255] as Rgba, amber: [245, 170, 40, 255] as Rgba, green: [46, 204, 98, 255] as Rgba,

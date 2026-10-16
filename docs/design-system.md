@@ -352,7 +352,7 @@ the Figma page *Map data & Patterns → 3D assets & markers*.
 
 | Asset | 3D shape (defaults when the file gives no size) | 2D (top-down) | Colour |
 |---|---|---|---|
-| Tree / vegetation | trunk column (r = 10% of crown, h 45%) + crown column (r 1.5 m, from 35% to 100% of 6 m) | crown disc | trunk `#6b4f33` bark · crown `#588721` meadow-600 at 92% |
+| Tree / vegetation | **the logo's tree**: a big top lobe (radius .64r, centred .64r below the top) over three smaller side lobes (.53r, .47r out at 120°, .55r lower), so every side shows the logo silhouette. Trunk radius .14r. Each lobe is a stepped low-poly sphere of three columns (caps .75ρ). Defaults: r = 1.5 m crown half-width, h = 6 m. See `TREE` in `scene.ts`. | trefoil: the four lobe discs | trunk `#6b4f33` bark · crown `#588721` meadow-600 at 92% |
 | Pole / post | column r 0.1 m (≤ 0.2), h 6 m; signal posts r 0.04–0.06 to `zOffset` | dot | `#8a9bb0` steel |
 | Street lamp | pole + head column r 0.28, h 0.25 at the top | dot | head `#f2b544` sun-400 |
 | Guard rail / wall / fence | 2 m extruded pieces along the repeat, width ≥ 3 cm | line of boxes | `#b7c3cf` galvanised |
