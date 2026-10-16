@@ -20,7 +20,21 @@ import { drapeRender, terrainLift, type GroundProbe } from "./drape";
 import type { Projector } from "../xodr/geo";
 
 // satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
-export type Basemap = "osm" | "liberty" | "positron" | "dark" | "satellite" | "satellite-live" | "none";
+export type Basemap = "osm" | "liberty" | "positron" | "dark" | "carto" | "carto-raster" | "satellite" | "satellite-live" | "none";
+
+// CARTO basemaps (Voyager), with the key from the environment variable CARTO_MAP_API (vite.config.ts envPrefix)
+const CARTO_KEY = import.meta.env.CARTO_MAP_API ?? "";
+export const CARTO_AVAILABLE = CARTO_KEY.length > 0;
+const CARTO_HOST = /(^|\.)basemaps\.cartocdn\.com$/;
+/** CARTO requests carry the key (the GL style's tile, sprite and glyph urls do not always) */
+function withCartoKey(url: string): { url: string } | undefined {
+  try {
+    const u = new URL(url);
+    if (!CARTO_KEY || !CARTO_HOST.test(u.hostname) || u.searchParams.has("key")) return undefined;
+    u.searchParams.set("key", CARTO_KEY);
+    return { url: u.toString() };
+  } catch { return undefined; }
+}
 export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
@@ -59,7 +73,7 @@ export interface MapViewProps {
   cursorCrosshair: boolean;
 }
 
-const STYLE_URL: Record<Exclude<Basemap, "osm" | "none" | "satellite" | "satellite-live">, string> = {
+const STYLE_URL: Record<Exclude<Basemap, "osm" | "none" | "satellite" | "satellite-live" | "carto" | "carto-raster">, string> = {
   liberty: "https://tiles.openfreemap.org/styles/liberty",
   positron: "https://tiles.openfreemap.org/styles/positron",
   dark: "https://tiles.openfreemap.org/styles/dark",
@@ -91,11 +105,27 @@ const OSM_STYLE: StyleSpecification = {
   },
   layers: [{ id: "bg", type: "background", paint: { "background-color": "#f2efe9" } }, { id: "osm", type: "raster", source: "osm" }],
 };
+// CARTO Voyager raster tiles, with the OpenFreeMap vector source kept for the 3D buildings
+const CARTO_RASTER_STYLE = (): StyleSpecification => ({
+  version: 8,
+  sources: {
+    carto: {
+      type: "raster", tileSize: 256, maxzoom: 20, tiles: [`https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${encodeURIComponent(CARTO_KEY)}`],
+      attribution: '© <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors',
+    },
+    openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" },
+  },
+  layers: [{ id: "bg", type: "background", paint: { "background-color": "#f8f4f0" } }, { id: "carto", type: "raster", source: "carto" }],
+});
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
 /** the MapLibre style of a basemap (the theme only matters for "none": the empty map takes the page background) */
 function styleFor(basemap: Basemap, theme: "dark" | "light"): StyleSpecification | string {
   if (basemap === "none") return EMPTY_STYLE(theme === "dark" ? "#06112a" : "#e8f2fb"); // --bg (haze-950 / haze-50)
   if (basemap === "osm") return OSM_STYLE;
+  if (basemap === "carto" || basemap === "carto-raster") {
+    if (!CARTO_AVAILABLE) return OSM_STYLE; // no key here: the standard map
+    return basemap === "carto" ? `https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json?key=${encodeURIComponent(CARTO_KEY)}` : CARTO_RASTER_STYLE();
+  }
   if (basemap.startsWith("satellite")) return SATELLITE_STYLE;
   return STYLE_URL[basemap as keyof typeof STYLE_URL];
 }
@@ -108,6 +138,8 @@ const BOUNDS_MARGIN = 200; // m beyond the network the camera may move
 /** OSM buildings extruded from the OpenMapTiles `building` layer (render_height / render_min_height) */
 function ensureBuildings(map: MlMap, on: boolean, opacity: number): string | undefined {
   const own = map.getLayer("building-3d") ? "building-3d" : null;
+  // styles without the OpenFreeMap source (CARTO's) get it for the building extrusions
+  if (!own && !map.getSource("openmaptiles")) map.addSource("openmaptiles", { type: "vector", url: "https://tiles.openfreemap.org/planet" });
   if (!own && !map.getLayer(BUILDINGS) && map.getSource("openmaptiles")) {
     map.addLayer({
       id: BUILDINGS, type: "fill-extrusion", source: "openmaptiles", "source-layer": "building", minzoom: 13,
@@ -254,6 +286,7 @@ export default function MapView(p: MapViewProps) {
       // the basemap the app starts with (a placeholder style replaced at once would abort its first requests)
       container: host.current!, style: styleFor(propsRef.current.basemap, propsRef.current.theme), center: [0, 20], zoom: 1.5, maxPitch: 85,
       attributionControl: { compact: true }, canvasContextAttributes: { antialias: true },
+      transformRequest: (url) => withCartoKey(url),
     });
     deckTransformCompat(map);
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");

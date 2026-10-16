@@ -1,6 +1,6 @@
 // Left panel: layers & display, review flags, checker findings.
 import { useMemo, useState } from "react";
-import type { Basemap, HeightMode, MapLayers } from "../map/MapView";
+import { CARTO_AVAILABLE, type Basemap, type HeightMode, type MapLayers } from "../map/MapView";
 import { OdrLegend, OsmLegend } from "./Legend";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
@@ -161,6 +161,8 @@ function LayersTab(p: SidePanelProps) {
             <option value="liberty">OSM Liberty (vector)</option>
             <option value="positron">OSM Positron (light)</option>
             <option value="dark">OSM Dark</option>
+            <option value="carto" disabled={!CARTO_AVAILABLE}>{CARTO_AVAILABLE ? "CARTO Voyager (vector)" : "CARTO Voyager (vector): set CARTO_MAP_API"}</option>
+            <option value="carto-raster" disabled={!CARTO_AVAILABLE}>{CARTO_AVAILABLE ? "CARTO Voyager (raster)" : "CARTO Voyager (raster): set CARTO_MAP_API"}</option>
             <option value="none">None</option>
           </select>
         </label>
