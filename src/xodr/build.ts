@@ -201,7 +201,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
             for (const [i, j] of seg) {
               const b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s), t = b.outer + ln.off;
               const [x, y] = ptAt(i, t);
-              at(x, y, surfaceZ(road, S[i], t) + hOut + 0.02, marks);
+              at(x, y, surfaceZ(road, S[i], t) + hOut, marks);
             }
           }
         });
@@ -218,7 +218,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
           for (const i of seg) {
             const t = laneOffsetAt(road, S[i]) + ln.off;
             const [x, y] = ptAt(i, t);
-            at(x, y, surfaceZ(road, S[i], t) + 0.02, marks);
+            at(x, y, surfaceZ(road, S[i], t), marks);
           }
         }
       });
@@ -257,11 +257,11 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
         else if (ol.closed && ol.pts.length >= 3) {
           objs.begin();
           objMeta.push(meta);
-          for (const [x, y, z] of ol.pts) at(x, y, z + 0.01, objs);
+          for (const [x, y, z] of ol.pts) at(x, y, z, objs);
         } else if (ol.pts.length >= 2) {
           objLines.begin();
           objLineMeta.push(meta);
-          for (const [x, y, z] of ol.pts) at(x, y, z + 0.01, objLines);
+          for (const [x, y, z] of ol.pts) at(x, y, z, objLines);
         }
       }
     });
@@ -279,7 +279,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     if (!ring || ring.length < 3) continue;
     juncs.begin();
     juncMeta.push({ id: j.id, exact, connections: j.connections.length, type: j.type });
-    for (const [x, y, z] of ring) at(x, y, z - 0.03, juncs); // just under the lanes
+    for (const [x, y, z] of ring) at(x, y, z, juncs); // drawn under the lanes by depth bias (MapView)
   }
 
   const L = lanes.done();
@@ -295,9 +295,16 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     const pose = (s: number) => refLinePose(j.refLine, s);
     jRef.begin();
     jRefMeta.push(ji);
-    const n = Math.max(1, Math.ceil(end / 2));
-    for (let k = 0; k <= n; k++) { const p = pose((end * k) / n); at(p.x, p.y, zGround, jRef); }
     const g = j.elevationGrid;
+    // the line has no elevation of its own (§12.9): drawn at its grid's centre values (linear between rows), else the road level
+    const centre = g && g.gridSpacing > 0 ? g.rows.map((r) => r.center[0]) : [];
+    const zAt = (s: number) => {
+      if (!g || !centre.length || !centre.every(Number.isFinite)) return zGround;
+      const f = Math.min(Math.max((s - g.sStart) / g.gridSpacing, 0), centre.length - 1), k = Math.min(Math.floor(f), centre.length - 2);
+      return centre.length === 1 ? centre[0] : centre[k] + (f - k) * (centre[k + 1] - centre[k]);
+    };
+    const n = Math.max(1, Math.ceil(end / 2));
+    for (let k = 0; k <= n; k++) { const s = (end * k) / n, p = pose(s); at(p.x, p.y, zAt(s), jRef); }
     if (!g || !(g.gridSpacing > 0)) continue;
     // grid point (row k, lateral index i: 0 centre, +i left, -i right) -> x, y, z
     const rows = g.rows.map((r, k) => {

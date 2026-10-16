@@ -209,7 +209,7 @@ export class FeatureBuilder {
       const p = evalRoad(road, s);
       for (const [t, list] of [[hi, left], [lo, right]] as const) {
         const [lon, lat] = this.geo(p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg));
-        list.push([lon, lat, surfaceZ(road, s, t) + this.zOff + 0.04]);
+        list.push([lon, lat, surfaceZ(road, s, t) + this.zOff]);
       }
     }
     this.str.starts.push(this.str.pos.length / 3);
@@ -225,7 +225,7 @@ export class FeatureBuilder {
       this.cp.starts.push(this.cp.pos.length / 3);
       for (const s of sampleS(road)) {
         const p = evalRoad(road, s), [lon, lat] = this.geo(p.x, p.y);
-        this.cp.pos.push(lon, lat, surfaceZ(road, s, 0) + this.zOff + 0.06);
+        this.cp.pos.push(lon, lat, surfaceZ(road, s, 0) + this.zOff);
       }
       this.cp.meta.push({ kind: "crossPath", road: ri, index: k });
     }));

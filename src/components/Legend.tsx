@@ -56,6 +56,8 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
         ["other object", { kind: "fill", color: "#c4a05a" }], ["bridge", { kind: "fill", color: "rgba(70,130,230,.35)", border: "#4682e6" }],
         ["tunnel", { kind: "fill", color: "rgba(110,112,122,.35)", border: "#5a5c64" }],
       ]} />
+      <p className="muted small">Signals and objects are symbols (boards, lamps, columns, boxes) at the file's position, height and size;
+        where the file gives no size a typical one is drawn (inspector says so). Other tools draw their own models there.</p>
       <Group title="Review" items={[
         ["flag: open", { kind: "dot", color: "#f5b84a" }], ["flag: fixed", { kind: "dot", color: "#3ecf8e" }],
         ["flag: question", { kind: "dot", color: "#5aa9ff" }], ["finding: error", { kind: "dot", color: "#ff5c5c" }],

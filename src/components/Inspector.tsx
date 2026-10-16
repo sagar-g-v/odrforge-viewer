@@ -222,7 +222,8 @@ export function FeatureInspector({ net, sel, onClose, onGoRoad }: {
           <Row k="road" v={roadLink} />
           <Row k="s / t" v={`${f(g.s)} / ${f(g.t)} m`} />
           <Row k="zOffset" v={`${f(g.zOffset)} m`} />
-          <Row k="size (w × h)" v={`${f(g.width)} × ${f(g.height)} m`} />
+          <Row k="size (w × h)" v={g.width > 0 && g.height > 0 ? `${f(g.width)} × ${f(g.height)} m`
+            : `${g.width > 0 ? `${f(g.width)} m` : "not in the file"} × ${g.height > 0 ? `${f(g.height)} m` : "not in the file"} (drawn at a typical size)`} />
           <Row k="hOffset" v={`${f((g.hOffset * 180) / Math.PI, 1)}°`} />
         </section>
         {(g.validity.length > 0 || g.dependencies.length > 0 || g.references.length > 0 || g.semantics.length > 0 || controllers.length > 0) && (
