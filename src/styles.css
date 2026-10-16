@@ -97,7 +97,7 @@ input.server { width: 190px; font-family: var(--mono); font-size: var(--fs-sm); 
 .topbar .seg { border-color: var(--topbar-glass-line); background: var(--topbar-glass); }
 .topbar .seg button { color: var(--topbar-ink-soft); }
 .topbar .seg button:hover:not(.on) { background: var(--topbar-glass-hover); color: var(--topbar-ink); }
-.topbar .seg button.on { background: #fff; color: var(--sky-600); }
+.topbar .seg button.on { background: var(--topbar-on); color: var(--topbar-on-ink); }
 .topbar .icon-btn:hover:not(:disabled) { background: var(--topbar-glass-hover); border-color: var(--topbar-glass-line); }
 .search-box { position: relative; display: flex; align-items: center; flex: none; }
 .search-box .icon { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
