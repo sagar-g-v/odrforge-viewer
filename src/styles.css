@@ -195,3 +195,8 @@ details.group .group-body { display: flex; flex-direction: column; gap: 6px; pad
 .legend i.sw.line em { display: block; width: 100%; }
 .legend i.sw.light { display: flex; gap: 1px; padding: 1px 2px; background: #1a1c20; border-color: #1a1c20; align-items: center; }
 .legend i.sw.light b { flex: 1; height: 6px; border-radius: 50%; }
+
+/* a note over the map (e.g. absolute heights that do not match the terrain) */
+.map-note { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); z-index: 3;
+  background: var(--surface); color: var(--text); border: 1px solid var(--warn); border-radius: 8px; padding: 7px 12px;
+  font-size: 12px; box-shadow: var(--shadow); }

@@ -101,9 +101,9 @@ function LayersTab(p: SidePanelProps) {
           ))}
         </div>
         <p className="muted small">
-          {p.heightMode === "flat" ? "Roads drawn on the ground (z ignored)." : p.heightMode === "relative"
-            ? `Typical road height on the ground${p.net ? ` (median z ${p.net.render.zGround.toFixed(1)} m; range ${p.net.render.zRange[0].toFixed(1)} … ${p.net.render.zRange[1].toFixed(1)} m)` : ""}.`
-            : "File heights as metres above the map datum — use with Terrain."}
+          {p.heightMode === "flat" ? `Roads drawn on the ground (z ignored)${p.layers.terrain ? ", laid on the terrain" : ""}.` : p.heightMode === "relative"
+            ? `Typical road height on the ground${p.net ? ` (median z ${p.net.render.zGround.toFixed(1)} m; range ${p.net.render.zRange[0].toFixed(1)} … ${p.net.render.zRange[1].toFixed(1)} m)` : ""}${p.layers.terrain ? "; with Terrain the roads are laid on it, bridges and tunnels keep their height above / below the road level" : ""}.`
+            : "File heights as metres above sea level, for files built with real elevation — use with Terrain."}
         </p>
         <Slider label="Height exaggeration" value={p.exaggeration} min={1} max={10} step={1} onChange={p.setExaggeration} format={(v) => `× ${v}`} />
       </Section>
@@ -130,7 +130,7 @@ function LayersTab(p: SidePanelProps) {
         <div className="sub-title">3D</div>
         <Toggle label="3D buildings (in 3D view)" on={L.buildings} set={set("buildings")} />
         <Slider label="Building opacity" value={p.buildingOpacity} min={0.1} max={1} step={0.05} onChange={p.setBuildingOpacity} disabled={!L.buildings} />
-        <Toggle label="Terrain" on={L.terrain} set={set("terrain")} hint="Mapzen Terrarium elevation tiles (AWS Open Data)" />
+        <Toggle label="Terrain" on={L.terrain} set={set("terrain")} hint="Mapzen Terrarium elevation tiles (AWS Open Data). Files without absolute heights are laid on it in flat and relative mode; Height exaggeration scales terrain and roads alike" />
       </Section>
       <Section id="legend-odr" title="Legend · OpenDRIVE" defaultOpen={false}>
         <OdrLegend theme={p.theme} />

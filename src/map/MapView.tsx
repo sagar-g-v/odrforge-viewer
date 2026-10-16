@@ -1,7 +1,7 @@
 // The map: MapLibre GL (OpenFreeMap vector tiles, OSM 3D buildings, terrain) with the OpenDRIVE layers drawn by
 // deck.gl interleaved into the same WebGL context, so buildings and roads share one depth buffer.
 import { MapboxOverlay } from "@deck.gl/mapbox";
-import { BitmapLayer, ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
+import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
 import type { PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
@@ -12,7 +12,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RenderData } from "../xodr/build";
 import { laneColor, type Rgba } from "./palette";
-import { visibleTiles, type LocalImagery } from "./localImagery";
+import { visibleTiles, type ImageTile, type LocalImagery } from "./localImagery";
+import { DEM_MAXZOOM, Dem, TERRARIUM_TILES } from "./dem";
+import { drapeRender, terrainLift, type GroundProbe } from "./drape";
 import type { Projector } from "../xodr/geo";
 
 // satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
@@ -58,7 +60,7 @@ const STYLE_URL: Record<Exclude<Basemap, "osm" | "none" | "satellite" | "satelli
   dark: "https://tiles.openfreemap.org/styles/dark",
 };
 // satellite: Esri World Imagery under everything (online, any area), with the OpenFreeMap vector source kept so the
-// 3D buildings still extrude; the network's offline HD orthophoto (if any) is drawn over it by deck.gl
+// 3D buildings still extrude; the network's offline HD orthophoto (if any) is drawn over it as image sources
 const SATELLITE_STYLE: StyleSpecification = {
   version: 8,
   sources: {
@@ -145,14 +147,32 @@ function ensureDim(map: MlMap, dim: number) {
 function ensureTerrain(map: MlMap, on: boolean, exaggeration: number) {
   if (on && !map.getSource(TERRAIN_SOURCE))
     map.addSource(TERRAIN_SOURCE, {
-      type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 15,
-      tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"],
+      type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: DEM_MAXZOOM, tiles: [TERRARIUM_TILES],
       attribution: "Terrain: Mapzen / AWS Open Data (Terrarium)",
     });
   map.setTerrain(on ? { source: TERRAIN_SOURCE, exaggeration } : null);
 }
 
 const sub = (a: Uint32Array, n: number) => a.subarray(0, n);
+
+const IMG = "odrv-img-";
+/**
+ * The offline HD orthophoto tiles in view as MapLibre image sources (corners TL, TR, BR, BL), under the dim layer: MapLibre
+ * drapes them on the terrain like any raster, and the background dim darkens them with the rest of the base map.
+ */
+function syncImageTiles(map: MlMap, tiles: ImageTile[]) {
+  const want = new Set(tiles.map((t) => IMG + t.id));
+  for (const l of map.getStyle()?.layers ?? [])
+    if (l.id.startsWith(IMG) && !want.has(l.id)) { map.removeLayer(l.id); map.removeSource(l.id); }
+  for (const t of tiles) {
+    const id = IMG + t.id;
+    if (map.getSource(id)) continue;
+    const [bl, tl, tr, br] = t.bounds;
+    map.addSource(id, { type: "image", url: t.url, coordinates: [tl, tr, br, bl] });
+    map.addLayer({ id, type: "raster", source: id, paint: { "raster-fade-duration": 0, "raster-resampling": "linear" } },
+      map.getLayer(DIM) ? DIM : undefined);
+  }
+}
 
 // MapLibre 6 ships its tile worker as a separate ES module: the bundler serves it, MapLibre is told where
 maplibregl.setWorkerUrl(maplibreWorkerUrl);
@@ -180,6 +200,15 @@ export default function MapView(p: MapViewProps) {
   const [beforeId, setBeforeId] = useState<string | undefined>(undefined);
   // the view (file-coordinate box, metres per screen pixel) the imagery tiles are chosen for; updated when the camera rests
   const [view, setView] = useState<{ box: [number, number, number, number]; mpp: number } | null>(null);
+  // terrain: the DEM under the network (the same tiles MapLibre's terrain draws) and the lift that keeps the draped
+  // roads above the surface as drawn (re-measured whenever the map comes to rest)
+  const [dem, setDem] = useState<{ render: RenderData; dem: Dem } | null>(null);
+  const [lift, setLift] = useState(0.2);
+  const probeRef = useRef<GroundProbe | null>(null);
+  const imgRef = useRef<ImageTile[]>([]);
+  // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
+  // for every tile, so changes made while tiles stream in would be dropped)
+  const styleReady = useRef(false);
   useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
 
   // map + overlay, once
@@ -208,10 +237,19 @@ export default function MapView(p: MapViewProps) {
     map.on("moveend", updateView);
     map.on("load", updateView);
     map.on("style.load", () => {
+      styleReady.current = true;
       if (import.meta.env.DEV && mapRef.current === map) (window as unknown as { odrvMap?: MlMap }).odrvMap = map;
       setBeforeId(ensureBuildings(map, propsRef.current.layers.buildings && propsRef.current.mode === "3d", propsRef.current.buildingOpacity));
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
       ensureDim(map, propsRef.current.dim);
+      syncImageTiles(map, imgRef.current);
+    });
+    map.on("idle", () => {
+      const probe = probeRef.current, pr = propsRef.current;
+      if (!probe || !pr.layers.terrain) return;
+      const mpp = (40075016.686 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / (512 * 2 ** map.getZoom());
+      const next = terrainLift(probe, (lon, lat) => map.queryTerrainElevation([lon, lat]), pr.exaggeration, Math.max(0.2, 0.5 * mpp));
+      setLift((cur) => (Math.abs(cur - next) > Math.max(0.05, 0.02 * cur) ? next : cur));
     });
     mapRef.current = map;
     overlay.current = ov;
@@ -224,23 +262,25 @@ export default function MapView(p: MapViewProps) {
     const map = mapRef.current;
     if (!map) return;
     const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
+    styleReady.current = false;
     map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "osm" ? OSM_STYLE
-      : p.basemap.startsWith("satellite") ? SATELLITE_STYLE : STYLE_URL[p.basemap as keyof typeof STYLE_URL]);
+      : p.basemap.startsWith("satellite") ? SATELLITE_STYLE : STYLE_URL[p.basemap as keyof typeof STYLE_URL],
+    { diff: false }); // a full reload, so style.load always fires and our sources and layers are added again
   }, [p.basemap, p.theme]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map?.isStyleLoaded()) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity));
+    if (map && styleReady.current) setBeforeId(ensureBuildings(map, p.layers.buildings && p.mode === "3d", p.buildingOpacity));
   }, [p.layers.buildings, p.buildingOpacity, p.mode]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map?.isStyleLoaded()) ensureDim(map, p.dim);
+    if (map && styleReady.current) ensureDim(map, p.dim);
   }, [p.dim]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (map?.isStyleLoaded()) ensureTerrain(map, p.layers.terrain, p.exaggeration);
+    if (map && styleReady.current) ensureTerrain(map, p.layers.terrain, p.exaggeration);
   }, [p.layers.terrain, p.exaggeration]);
 
   // camera: 2D looks straight down, 3D tilts
@@ -279,28 +319,56 @@ export default function MapView(p: MapViewProps) {
     if (c) c.style.cursor = p.cursorCrosshair ? "crosshair" : "";
   }, [p.cursorCrosshair]);
 
-  // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights)
+  // terrain on: load the DEM under the network (its extent plus the camera margin), once per network
+  useEffect(() => {
+    const r = p.render;
+    if (!p.layers.terrain || !r || !Number.isFinite(r.bounds[0]) || dem?.render === r) return;
+    const ac = new AbortController();
+    const [w, s, e, n] = r.bounds, lat = (s + n) / 2, m = BOUNDS_MARGIN + 50;
+    const dLat = m / 111320, dLon = m / (111320 * Math.cos((lat * Math.PI) / 180));
+    Dem.load([w - dLon, s - dLat, e + dLon, n + dLat], ac.signal)
+      .then((d) => setDem({ render: r, dem: d }))
+      .catch((err) => { if (!ac.signal.aborted) console.warn("terrain DEM not loaded", err); });
+    return () => ac.abort();
+  }, [p.render, p.layers.terrain, dem]);
+  const demNow = dem && dem.render === p.render ? dem.dem : null;
+
+  // a file whose heights are relative to its surroundings (not above sea level) is laid on the terrain in flat and
+  // relative mode (drape.ts); absolute mode keeps the file's heights
+  const draped = useMemo(() => (p.layers.terrain && p.render && demNow && p.heightMode !== "absolute"
+    ? drapeRender(p.render, (lon, lat) => demNow.sample(lon, lat), p.heightMode) : null),
+  [p.render, p.layers.terrain, demNow, p.heightMode]);
+  useEffect(() => {
+    probeRef.current = draped?.probe ?? null;
+    mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
+  }, [draped]);
+  // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
+  const absoluteOff = useMemo(() => {
+    const r = p.render;
+    if (!p.layers.terrain || !r || !demNow || p.heightMode !== "absolute") return null;
+    const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 1000)), g: number[] = [];
+    for (let v = 0; v < nv; v += step) { const h = demNow.sample(L[3 * v], L[3 * v + 1]); if (Number.isFinite(h)) g.push(h); }
+    if (!g.length) return null;
+    g.sort((a, b) => a - b);
+    const ground = g[g.length >> 1];
+    return Math.abs(ground - r.zGround) > 25 ? { ground, road: r.zGround } : null;
+  }, [p.render, p.layers.terrain, demNow, p.heightMode]);
+
+  // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights); draped
+  // positions already hold heights above sea level: scaled with the terrain's exaggeration and lifted above it
   const modelMatrix = useMemo(() => {
+    if (draped) return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, p.exaggeration, 0, 0, 0, lift, 1]);
     const r = p.render;
     const ex = p.heightMode === "flat" ? 0 : p.exaggeration;
     const base = p.heightMode === "relative" && r ? r.zGround : 0;
     return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + (p.heightMode === "flat" ? 0.05 : 0), 1]);
-  }, [p.render, p.heightMode, p.exaggeration]);
+  }, [p.render, p.heightMode, p.exaggeration, draped, lift]);
   // junction outlines float 0.3 m above the surface: the joints across the arms stay visible over the lanes and curbs
   const outlineMatrix = useMemo(() => new Matrix4(modelMatrix).translate([0, 0, 0.3]), [modelMatrix]);
 
   const layers = useMemo(() => {
-    const r = p.render;
+    const r = draped?.render ?? p.render;
     const out = [];
-    // offline HD orthophoto tiles under everything (no depth writes: the roads at ground level draw over them)
-    const pyr = p.imagery?.satellite;
-    const tiles = p.basemap === "satellite" && p.imagery && pyr && p.proj && view ? visibleTiles(p.imagery, pyr, p.proj, view.box, view.mpp) : [];
-    for (const t of tiles)
-        out.push(new BitmapLayer({
-          id: `img-${t.id}`, image: t.url, bounds: t.bounds as never, textureParameters: { minFilter: "linear", magFilter: "linear" },
-          parameters: { depthWriteEnabled: false, depthCompare: "always" },
-          tintColor: [Math.round(255 * (1 - p.dim)), Math.round(255 * (1 - p.dim)), Math.round(255 * (1 - p.dim))],
-        }));
     if (r) {
       const J = r.junctions, nj = J.meta.length;
       if (p.layers.junctions && nj) {
@@ -457,12 +525,21 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, 6));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
-  }, [p.render, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix, outlineMatrix, beforeId,
-      p.mode,
-      p.roadOpacity, p.dim,
-      p.basemap, p.imagery, p.proj, view]);
+  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
+      outlineMatrix, beforeId, p.mode, p.roadOpacity]);
 
   useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
+
+  // offline HD orthophoto tiles in view (MapLibre image sources, see syncImageTiles)
+  const imgTiles = useMemo(() => {
+    const pyr = p.imagery?.satellite;
+    return p.basemap === "satellite" && p.imagery && pyr && p.proj && view ? visibleTiles(p.imagery, pyr, p.proj, view.box, view.mpp) : [];
+  }, [p.basemap, p.imagery, p.proj, view]);
+  useEffect(() => {
+    imgRef.current = imgTiles;
+    const map = mapRef.current;
+    if (map && styleReady.current) syncImageTiles(map, imgTiles);
+  }, [imgTiles]);
 
   // a new network: compute the view once the map has fitted it
   useEffect(() => {
@@ -474,6 +551,11 @@ export default function MapView(p: MapViewProps) {
   return (
     <>
       <div ref={host} className="map" />
+      {absoluteOff && (
+        <div className="map-note">
+          {`Heights in this file are not above sea level (road level ${absoluteOff.road.toFixed(1)} m, terrain here ${absoluteOff.ground.toFixed(0)} m): choose "relative" heights to lay the roads on the terrain.`}
+        </div>
+      )}
       {credit && <div className="imagery-credit" title={p.imagery!.satellite!.name}>{p.imagery!.satellite!.name.replace(/\s*\(offline,?\s*/i, " (")} · {credit}</div>}
     </>
   );
