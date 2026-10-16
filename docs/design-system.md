@@ -321,3 +321,84 @@ The Starter plan allows **3 pages** and **1 mode per variable collection**, so:
   - **Foundations**: logo (mark, tile, lockups on surface, sky and dark), the colour story sampled from the reference, primitive ramps, semantic tokens in both themes, type, spacing, radius, elevation and motion.
   - **Components**: icons (28 Lucide-style), Controls (Button 25 variants, Button Small, Icon Button, Input 15, Select, Segment and segmented controls, Tab, Kbd, Link), Side panel (Checkbox Row, Slider Row, Group, Sub-title, Chip, Chip Toggle, Status Dot, Stats Card, Legend Swatch and Row, KV Row, List Item for flag, finding and diff, Finding Group), Overlays (Inspector Drawer, Flag Dialog, Toast, Banner, Map Note, Loading Pill, Empty State, Map Controls, Scale Bar, Attribution, Tooltip, File Drop Overlay), Shell (Topbar Segment, Button, Icon Button and Field, Top Bar, Status Bar, Side Panel).
   - **Map data & Patterns**: the data colours over OSM, satellite and dark-vector grounds, both lane sets, and the full app screen in light and dark (the dark screen is the light one with every variable rebound to `Color / Dark` and `Lanes / Dark`).
+
+## 8. 3D assets and markers (what the viewer draws itself)
+
+These rules cover everything the viewer draws itself in the map scene: furniture, objects, structures, road marks,
+overlays, labels and markers. They apply to **both views**:
+
+- **3D** shows the asset as a body.
+- **2D** shows the same asset from above, as a footprint, a line or a dot.
+
+A feature has **one colour in both views and both themes**. The scene sits on the basemap, not on the UI. The values live in
+[`src/design/scene.ts`](../src/design/scene.ts), the single source for the deck.gl layers and the legend. Specimens are on
+the Figma page *Map data & Patterns → 3D assets & markers*.
+
+### Principles
+
+1. **Low-poly clay.** Assets are simple primitives (round columns, extruded boxes, prisms) in flat matte colour: no
+   textures, no gloss (`MATERIAL`: ambient .55, diffuse .55, shininess 8). Shape and size say what something is; colour
+   says which family it belongs to.
+2. **Families, not individual colours.** Each asset family has one hue: vegetation is meadow, metal is sky-tinted steel,
+   light is sun, other objects are sandstone, and structures are sky (bridge) or haze (tunnel). Regulatory items keep their
+   real-world colours: signal lamps, sign faces and road paint.
+3. **Overlays win.** Asset colours are mid-saturation, so the review overlays (selection `#1e9bff`, junction amber, cross-path
+   cyan, compare magenta, flags, findings) always stand out above them.
+4. **Every marker has a halo.** Markers and dots carry a 1.5px `#0a1017` ring (2.5px white when selected), so they read over
+   OSM, satellite and the dark map.
+5. **Text is never bare on the map.** Labels are ink on a white pill.
+
+### 3D assets (and their 2D form)
+
+| Asset | 3D shape (defaults when the file gives no size) | 2D (top-down) | Colour |
+|---|---|---|---|
+| Tree / vegetation | **the logo's tree**: a big top lobe (radius .64r, centred .64r below the top) over three smaller side lobes (.53r, .47r out at 120°, .55r lower), so every side shows the logo silhouette. Trunk radius .14r. Each lobe is a stepped low-poly sphere of three columns (caps .75ρ). Defaults: r = 1.5 m crown half-width, h = 6 m. See `TREE` in `scene.ts`. | trefoil: the four lobe discs | trunk `#6b4f33` bark · crown `#588721` meadow-600 at 92% |
+| Pole / post | column r 0.1 m (≤ 0.2), h 6 m; signal posts r 0.04–0.06 to `zOffset` | dot | `#8a9bb0` steel |
+| Street lamp | pole + head column r 0.28, h 0.25 at the top | dot | head `#f2b544` sun-400 |
+| Guard rail / wall / fence | 2 m extruded pieces along the repeat, width ≥ 3 cm | line of boxes | `#b7c3cf` galvanised |
+| Other object | its own cylinder / box / outline prism; a 0.25 m marker post when unsized | footprint or dot | `#d6b47a` sandstone (outline lines too) |
+| Crosswalk | flat area | same | white 60% |
+| Traffic light | housing box 0.28 × w × h (h 1 m) + three lamps r ≤ 0.11 facing the traffic | dot `#2ecc62` | housing `#141a24`; lamps `#eb3434` `#f5aa28` `#2ecc62` |
+| Sign | board 6 cm thick, 0.6 m, on a post; text label above | dot (face colour) | speed / yield `#f6f6f6`, stop `#cc2028`, other `#2c62ce` |
+| Stop / waiting line | flat bar 0.3 m across the lanes | same | `#fafafa` |
+| Bridge | the road's cross section as a translucent volume with a wireframe edge | translucent area + edge | fill `#107cea` at 28%, edge 90% |
+| Tunnel | as bridge | as bridge | fill `#5878a6` at 28%, edge 86% |
+| OSM 3D buildings (context) | MapLibre extrusion | footprint (review layer) | light `#d5dde6`, dark `#24324a` at 85%; review footprint `#ffb347` 28% + `#ff9f1c` edge |
+
+Road marks keep the OpenDRIVE paint colours: white `#f5f7fa`, yellow `#f5c442`, blue `#4682e6`, green `#3caa5a`, red
+`#dc3c3c`, orange `#f09628`, violet `#965ad2` and black `#191919`. Curb marks are `#96989c`. Grass marks are `#588721`,
+meadow from the reference. Lane outlines are night or ink at about 30% (`EDGE.laneDark` / `EDGE.laneLight`).
+
+### Markers and dots
+
+| Marker | Size | Fill | Ring | Label |
+|---|---|---|---|---|
+| Flag (open / fixed / question / won't fix) | 7px radius (+3 when selected) | `#f2b544` / `#7cc95a` / `#5cb6f2` / `#8c929e` | 1.5px `#0a1017`; selected 2.5px white | flag number: Inter 700 11px ink on a white pill, offset +10 / −10px |
+| Finding (error / warning / info) | 5px radius (+3 when selected) | `#ff6a5c` / `#ffaa3c` / `#5cb6f2` | as flag | none (the list and the tooltip name it) |
+| 2D signal / object dots | 0.7 m, clamped to 0.5–7px | traffic light `#2ecc62`, sign `#f6f6f6`, stop `#cc2028`, object `#d6b47a` | 1px `#0a1017` | none |
+| Elevation grid point | 2.5px | `#50dcc8` | 1px `#0a1017` | none |
+| Hover (any pickable) | n/a | white 24% highlight | n/a | n/a |
+| Selected asset | n/a | `#1e9bff` (structures at 47%) | n/a | n/a |
+
+Static sign dots move from coral `#ff6b6b` to the sign's own face colour, because the coral was indistinguishable from
+finding errors. Object dots move from violet to sandstone, so they match the 3D object and stay clear of bidirectional lanes.
+
+### Labels
+
+Sign text and flag numbers are billboards: Inter 600 12px (flags 700 11px) in `#0f2236` on a white pill at 92%, with
+padding 4/2, radius 4, max 16px on screen, placed 0.25 m above a sign board. Use a pill on every ground. Never draw
+outlined or bare text on the map.
+
+### Drawing order (bottom to top)
+
+1. basemap
+2. dim
+3. lanes and lane outlines
+4. road marks, crosswalks, flat object areas
+5. junction areas and outlines
+6. structures
+7. 3D assets
+8. reference lines, cross paths, elevation grid
+9. compare B
+10. labels
+11. review markers (flags above findings, always on top: `depthCompare: always`)
