@@ -33,7 +33,7 @@ export default function App() {
   useEffect(() => { store("odrv.basemap", basemap); }, [basemap]);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
-    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, structures: true, crossPaths: true, grids: false, buildings: true, terrain: false, flags: true, findings: true,
+    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, structures: true, crossPaths: true, grids: false, directions: true, buildings: true, terrain: false, flags: true, findings: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);

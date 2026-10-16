@@ -121,6 +121,7 @@ function LayersTab(p: SidePanelProps) {
         <div className="sub-title">Road</div>
         <Toggle label="Lanes" on={L.lanes} set={set("lanes")} />
         <Toggle label="Road marks" on={L.marks} set={set("marks")} />
+        <Toggle label="Driving direction" on={L.directions} set={set("directions")} hint="An arrow on every traffic lane (OpenDRIVE 1.8 §11.2.1: the road's RHT / LHT rule, the lane's side and @direction; double-headed for both directions)" />
         <Toggle label="Lane borders" on={L.borders} set={set("borders")} />
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />
         <div className="sub-title">Junctions</div>

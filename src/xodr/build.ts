@@ -10,6 +10,8 @@ export type Project = (x: number, y: number) => [number, number];
 
 export interface LaneMeta { road: number; section: number; lane: number; type: string; junction: boolean; }
 /** one drawn mark line: colour, width (m), dash (m on, m off) or null for a continuous line */
+/** a driving-direction arrow on a lane: both = @direction="both" (or the deprecated type bidirectional), double-headed */
+export interface ArrowMeta { road: number; lane: number; forward: boolean; both: boolean; }
 export interface MarkMeta { road: number; color: Rgba; width: number; dash: [number, number] | null; }
 export interface PointMeta { road: number; index: number; kind: "signal" | "object"; dynamic: boolean; label: string; }
 
@@ -21,6 +23,7 @@ export interface RenderData {
   refs: Binary & { meta: number[] }; // road index
   objects: Binary & { meta: PointMeta[] }; // flat object outline areas
   objectLines: Binary & { meta: PointMeta[] }; // object outlines that are line features (@closed false)
+  arrows: Binary & { meta: ArrowMeta[] }; // driving direction of every traffic lane (1.8.0 §11.2.1), flat on the lane
   junctions: Binary & { meta: JunctionMeta[] }; // closed outlines: the file's <boundary>, else an approximate hull
   features: Features; // signals, objects, bridges / tunnels, cross paths as 3D shapes
   points: { positions: Float64Array; meta: PointMeta[] };
@@ -41,6 +44,21 @@ class Buf {
 }
 
 const CHORD = 0.01; // m
+
+/** lane types that carry traffic in a driving direction (sidewalks, curbs, shoulders, parking, medians do not) */
+const DIRECTED = new Set(["driving", "bus", "taxi", "hov", "biking", "entry", "exit", "onramp", "offramp", "connectingramp",
+  "bidirectional", "slipLane".toLowerCase(), "tram", "rail"]);
+const ARROW_EVERY = 20; // m between arrows along a lane
+
+/**
+ * Driving direction of a lane (1.8.0 §11.2.1): with @rule RHT the right lanes (negative id) run along the reference
+ * line (+s) and the left lanes against it; LHT the other way round; @direction="reversed" flips that,
+ * @direction="both" (and the deprecated type bidirectional) allows both
+ */
+export function laneDirection(rule: "RHT" | "LHT", laneId: number, direction: string, type: string): { forward: boolean; both: boolean } {
+  const std = rule === "RHT" ? laneId < 0 : laneId > 0;
+  return { forward: direction === "reversed" ? !std : std, both: direction === "both" || type === "bidirectional" };
+}
 const MAX_STEP = 2.0; // m
 
 /** sample positions along a road: element / record / section boundaries and curvature-adaptive steps */
@@ -129,6 +147,7 @@ export function refLinePose(geoms: Geom[], s: number): Pose {
 
 export function buildRender(od: OpenDrive, project: Project): RenderData {
   const lanes = new Buf(), marks = new Buf(), refs = new Buf(), objs = new Buf(), objLines = new Buf(), objLineMeta: PointMeta[] = [];
+  const arrows = new Buf(), arrowMeta: ArrowMeta[] = [];
   const laneMeta: LaneMeta[] = [], markMeta: MarkMeta[] = [], refMeta: number[] = [], objMeta: PointMeta[] = [];
   const pts: number[] = [], ptMeta: PointMeta[] = [];
   const junctionPts = new Map<string, [number, number, number][]>(); // connecting-road lane borders per junction
@@ -189,6 +208,29 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
           const z = surfaceZ(road, S[i], b.outer) + hOut;
           at(x, y, z, lanes);
           if (jp && (j % 3 === 0 || j === 0 || j === idx.length - 1)) jp.push([x, y, z]);
+        }
+        // driving direction: an arrow every ARROW_EVERY m (one in the middle of a shorter lane), each vertex placed along
+        // the lane itself at its centre line and on its surface, so the arrow follows curves and lane heights
+        if (DIRECTED.has(l.type.toLowerCase())) {
+          const dir = laneDirection(road.rule, l.id, l.direction, l.type), sgn = dir.forward ? 1 : -1, span = s1 - sec.s;
+          const centres = span >= ARROW_EVERY ? Array.from({ length: Math.floor(span / ARROW_EVERY) }, (_, q) => sec.s + ARROW_EVERY / 2 + q * ARROW_EVERY)
+            : span >= 3 ? [sec.s + span / 2] : [];
+          for (const sc of centres) {
+            const b0 = laneBorders(road, sec, sc).get(l.id)!, w = Math.abs(b0.outer - b0.inner);
+            if (w < 1) continue;
+            const L = Math.min(4.5, Math.max(2.4, 1.2 * w), span * 0.8), hl = Math.min(1.4, L * 0.4), hw = Math.min(0.9, w * 0.3), sw = hw * 0.36;
+            const shape: [number, number][] = dir.both
+              ? [[-L / 2, 0], [-L / 2 + hl, -hw], [-L / 2 + hl, -sw], [L / 2 - hl, -sw], [L / 2 - hl, -hw], [L / 2, 0], [L / 2 - hl, hw], [L / 2 - hl, sw], [-L / 2 + hl, sw], [-L / 2 + hl, hw]]
+              : [[-L / 2, -sw], [L / 2 - hl, -sw], [L / 2 - hl, -hw], [L / 2, 0], [L / 2 - hl, hw], [L / 2 - hl, sw], [-L / 2, sw]];
+            arrows.begin();
+            arrowMeta.push({ road: ri, lane: l.id, forward: dir.forward, both: dir.both });
+            for (const [u, v] of shape) {
+              // u along the driving direction, v to its left: on the reference line s = sc + sgn u, t = centre + sgn v
+              const sv = Math.min(Math.max(sc + sgn * u, sec.s), s1), p = evalRoad(road, sv), b = laneBorders(road, sec, sv).get(l.id)!;
+              const t = (b.inner + b.outer) / 2 + sgn * v, [hIn, hOut] = laneHeight(l, sv - sec.s);
+              at(p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg), surfaceZ(road, sv, t) + (hIn + hOut) / 2, arrows);
+            }
+          }
         }
         // road marks on the lane's outer border (1.8.0 §11.8): every line of every <roadMark> record
         l.marks.forEach((m, mi) => {
@@ -344,6 +386,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     refs: { ...refs.done(), meta: refMeta },
     objects: { ...objs.done(), meta: objMeta },
     objectLines: { ...objLines.done(), meta: objLineMeta },
+    arrows: { ...arrows.done(), meta: arrowMeta },
     points: { positions: Float64Array.from(pts), meta: ptMeta },
     bounds: [minLon, minLat, maxLon, maxLat],
     zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],

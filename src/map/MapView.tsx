@@ -26,6 +26,7 @@ export type HeightMode = "flat" | "relative" | "absolute";
 export interface MapLayers {
   lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
   structures: boolean; crossPaths: boolean; grids: boolean; // grids: junction reference lines + elevation grids
+  directions: boolean; // driving-direction arrows on the traffic lanes
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
@@ -476,6 +477,13 @@ export default function MapView(p: MapViewProps) {
           id: "lane-borders",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPath: { value: L.positions, size: 3 } } },
           _pathType: "loop", getColor: p.theme === "dark" ? [0, 0, 0, 90] : [40, 44, 52, 70], getWidth: 1, widthUnits: "pixels", modelMatrix, parameters: bias(4),
+        }));
+      // driving direction (1.8.0 §11.2.1): flat arrows on the traffic lanes, over the lanes and under the marks' outlines
+      const A = r.arrows, na = A.meta.length;
+      if (p.layers.directions && p.layers.lanes && na)
+        out.push(new SolidPolygonLayer({
+          id: "lane-directions", data: { length: na, startIndices: sub(A.starts, na), attributes: { getPolygon: { value: A.positions, size: 3 } } },
+          _full3d: true, modelMatrix, parameters: bias(3), getFillColor: [245, 247, 250, 200],
         }));
       const M = r.marks, nm = M.meta.length;
       if (p.layers.marks && nm)

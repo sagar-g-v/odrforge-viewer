@@ -9,11 +9,13 @@ type Swatch =
   | { kind: "fill"; color: string; border?: string }
   | { kind: "line"; color: string; dash?: boolean; double?: boolean; width?: number }
   | { kind: "dot"; color: string; ring?: string }
-  | { kind: "light" };
+  | { kind: "light" } | { kind: "arrow" };
 
 function Sw({ s }: { s: Swatch }) {
   if (s.kind === "fill") return <i className="sw" style={{ background: s.color, borderColor: s.border ?? "var(--line-2)" }} />;
   if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? "#0a1017" }} />;
+  if (s.kind === "arrow")
+    return <i className="sw arrow"><svg viewBox="0 0 16 10" width="16" height="10"><path d="M1 3.6h9V1l5 4-5 4V6.4H1z" fill="#f5f7fa" stroke="#45607b" strokeWidth=".6" /></svg></i>;
   if (s.kind === "light")
     return <i className="sw light"><b style={{ background: "#eb3434" }} /><b style={{ background: "#f5aa28" }} /><b style={{ background: "#2ecc62" }} /></i>;
   const w = s.width ?? 3;
@@ -44,6 +46,7 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
       <Group title="Road marks" items={[
         ["solid", { kind: "line", color: "#f5f7fa" }], ["broken", { kind: "line", color: "#f5f7fa", dash: true }],
         ["double (yellow)", { kind: "line", color: "#f5c442", double: true, width: 2 }], ["curb", { kind: "line", color: "#96989c", width: 4 }],
+        ["driving direction (arrow)", { kind: "arrow" }],
       ]} />
       <Group title="Signals" items={[
         ["traffic light", { kind: "light" }], ["speed / yield sign", { kind: "fill", color: "#f6f6f6" }],

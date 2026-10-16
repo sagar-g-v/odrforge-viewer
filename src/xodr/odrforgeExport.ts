@@ -121,6 +121,7 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
       junctions: { ...bin(jPos, jStarts), meta: jMeta },
       features: emptyFeatures(),
       objectLines: { ...bin([], []), meta: [] },
+      arrows: { ...bin([], []), meta: [] },
       grids: { lines: { ...bin([], []), meta: [] }, points: { positions: new Float64Array(0), meta: [] }, refLines: { ...bin([], []), meta: [] } },
       points: { positions: new Float64Array(0), meta: [] },
       bounds: [minLon, minLat, maxLon, maxLat],
