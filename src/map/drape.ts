@@ -38,7 +38,7 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
   const F = r.features;
   const render: RenderData = {
     ...r,
-    lanes: bin(r.lanes), marks: bin(r.marks), refs: bin(r.refs), objects: bin(r.objects), junctions: bin(r.junctions),
+    lanes: bin(r.lanes), marks: bin(r.marks), refs: bin(r.refs), objects: bin(r.objects), objectLines: bin(r.objectLines), junctions: bin(r.junctions),
     points: { ...r.points, positions: d(r.points.positions) },
     grids: { lines: bin(r.grids.lines), points: { ...r.grids.points, positions: d(r.grids.points.positions) }, refLines: bin(r.grids.refLines) },
     features: {

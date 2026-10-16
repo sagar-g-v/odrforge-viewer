@@ -5,6 +5,7 @@ import { OdrLegend, OsmLegend } from "./Legend";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
+import type { OpenDrive } from "../xodr/model";
 import type { LocalImagery } from "../map/localImagery";
 
 export type Tab = "layers" | "flags" | "findings";
@@ -62,6 +63,29 @@ function Slider({ label, value, min, max, step, onChange, disabled, format }: {
   );
 }
 
+/** the file's <header> (1.8.0 §6.3): what it says about itself, its georeference, offset, license and user data */
+function FileSection({ od }: { od: OpenDrive }) {
+  const h = od.header, o = h.offset;
+  const kv = (k: string, v: React.ReactNode) => <div className="kv" key={k}><span>{k}</span><span>{v}</span></div>;
+  return (
+    <Section id="file" title="File" defaultOpen={false}>
+      {kv("name", h.name || "–")}
+      {kv("OpenDRIVE", `${h.revMajor}.${h.revMinor}`)}
+      {h.version && kv("version", h.version)}
+      {kv("vendor", h.vendor || "–")}
+      {h.date && kv("date", h.date)}
+      {h.bounds && kv("extent (N S E W)", `${h.bounds.north.toFixed(1)} ${h.bounds.south.toFixed(1)} ${h.bounds.east.toFixed(1)} ${h.bounds.west.toFixed(1)} m`)}
+      {(o.x || o.y || o.z || o.hdg) ? kv("offset (x y z hdg)", `${o.x} ${o.y} ${o.z} ${o.hdg}`) : null}
+      {kv("georeference", <code className="small wrap">{h.geoReference || "none"}</code>)}
+      {h.license && kv("license", h.license.resource
+        ? <a href={h.license.resource} target="_blank" rel="noreferrer">{h.license.name || h.license.spdxid || h.license.resource}</a>
+        : h.license.name || h.license.spdxid || h.license.text)}
+      {h.userData.map((u, i) => <div className="kv" key={`u${i}`}><span>{`userData ${u.code}`}</span><span>{u.value}</span></div>)}
+      {kv("junction groups", od.junctionGroups.length ? od.junctionGroups.map((g) => `${g.type || "group"} ${g.id} (${g.junctions.length})`).join(", ") : "none")}
+    </Section>
+  );
+}
+
 function LayersTab(p: SidePanelProps) {
   const L = p.layers, set = (k: keyof MapLayers) => (v: boolean) => p.setLayers({ ...L, [k]: v });
   const s = p.net?.render.stats;
@@ -75,6 +99,7 @@ function LayersTab(p: SidePanelProps) {
           <div><b>{s.lengthKm.toFixed(1)}</b><span>km</span></div>
         </section>
       )}
+      {p.net?.od && <FileSection od={p.net.od} />}
       <Section id="odr" title="OpenDRIVE layers">
         <div className="sub-title">Road</div>
         <Toggle label="Lanes" on={L.lanes} set={set("lanes")} />

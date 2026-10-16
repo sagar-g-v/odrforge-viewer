@@ -1,8 +1,8 @@
 // OpenDrive model -> compact render buffers (lon, lat, z per vertex) for deck.gl binary layers.
 // Sampling: every element and record boundary, at most 2 m apart, closer on curves (chord error <= 1 cm).
 import { curvatureAt, evalGeom, evalRoad, type Pose } from "./geometry";
-import { laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
-import type { Geom, OpenDrive, Road, RoadMark } from "./model";
+import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
+import type { Geom, OpenDrive, OutlineCorner, Road, RoadMark } from "./model";
 import { FeatureBuilder, type Features, type Rgba } from "./features";
 import { boundaryRing, hull, type JunctionMeta } from "./junctions";
 
@@ -19,7 +19,8 @@ export interface RenderData {
   lanes: Binary & { meta: LaneMeta[] };
   marks: Binary & { meta: MarkMeta[] };
   refs: Binary & { meta: number[] }; // road index
-  objects: Binary & { meta: PointMeta[] };
+  objects: Binary & { meta: PointMeta[] }; // flat object outline areas
+  objectLines: Binary & { meta: PointMeta[] }; // object outlines that are line features (@closed false)
   junctions: Binary & { meta: JunctionMeta[] }; // closed outlines: the file's <boundary>, else an approximate hull
   features: Features; // signals, objects, bridges / tunnels, cross paths as 3D shapes
   points: { positions: Float64Array; meta: PointMeta[] };
@@ -127,7 +128,7 @@ export function refLinePose(geoms: Geom[], s: number): Pose {
 }
 
 export function buildRender(od: OpenDrive, project: Project): RenderData {
-  const lanes = new Buf(), marks = new Buf(), refs = new Buf(), objs = new Buf();
+  const lanes = new Buf(), marks = new Buf(), refs = new Buf(), objs = new Buf(), objLines = new Buf(), objLineMeta: PointMeta[] = [];
   const laneMeta: LaneMeta[] = [], markMeta: MarkMeta[] = [], refMeta: number[] = [], objMeta: PointMeta[] = [];
   const pts: number[] = [], ptMeta: PointMeta[] = [];
   const junctionPts = new Map<string, [number, number, number][]>(); // connecting-road lane borders per junction
@@ -235,16 +236,33 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
       const p = evalRoad(road, o.s);
       const x0 = p.x - o.t * Math.sin(p.hdg), y0 = p.y + o.t * Math.cos(p.hdg);
       const h = p.hdg + o.hdg, z0 = surfaceZ(road, o.s, o.t) + o.zOffset;
-      let corners = o.outline;
-      if (!corners.length && o.length > 0 && o.width > 0 && o.height <= 0.05) { // flat: a marking area
+      const meta: PointMeta = { road: ri, index: oi, kind: "object", dynamic: false, label: o.name || o.type };
+      if (o.repeats.length) return;
+      // corners in file coordinates: <cornerLocal> rotated by the object's heading about its insertion point (z from the
+      // object's base), <cornerRoad> at (s, t) with z = reference line elevation + dz (1.8.0 §13.3.1 / §13.3.2)
+      const xyz = (c: OutlineCorner): [number, number, number, number] => {
+        if (c.kind === "local")
+          return [x0 + c.u * Math.cos(h) - c.v * Math.sin(h), y0 + c.u * Math.sin(h) + c.v * Math.cos(h), z0 + c.z, c.height];
+        const q = evalRoad(road, Math.min(Math.max(c.s, 0), road.length));
+        return [q.x - c.t * Math.sin(q.hdg), q.y + c.t * Math.cos(q.hdg), elevationAt(road, c.s) + c.dz, c.height];
+      };
+      let outlines = o.outlines.map((ol) => ({ closed: ol.closed, pts: ol.corners.map(xyz) }));
+      if (!outlines.length && o.length > 0 && o.width > 0 && o.height <= 0.05) { // flat, without outline: a marking area
         const L = o.length / 2, W = o.width / 2;
-        corners = [{ u: -L, v: -W, z: 0 }, { u: L, v: -W, z: 0 }, { u: L, v: W, z: 0 }, { u: -L, v: W, z: 0 }];
+        outlines = [{ closed: true, pts: [[-L, -W], [L, -W], [L, W], [-L, W]].map(([u, v]) => xyz({ kind: "local", u, v, z: 0, height: 0 })) }];
       }
-      if (corners.length >= 3 && !o.repeats.length) {
-        objs.begin();
-        objMeta.push({ road: ri, index: oi, kind: "object", dynamic: false, label: o.name || o.type });
-        for (const cn of corners)
-          at(x0 + cn.u * Math.cos(h) - cn.v * Math.sin(h), y0 + cn.u * Math.sin(h) + cn.v * Math.cos(h), z0 + cn.z + 0.01, objs);
+      for (const ol of outlines) {
+        const top = Math.max(0, ...ol.pts.map((q) => q[3]));
+        if (ol.closed && ol.pts.length >= 3 && top > 0.05) features.prism(ol.pts, top, { kind: "object", road: ri, index: oi });
+        else if (ol.closed && ol.pts.length >= 3) {
+          objs.begin();
+          objMeta.push(meta);
+          for (const [x, y, z] of ol.pts) at(x, y, z + 0.01, objs);
+        } else if (ol.pts.length >= 2) {
+          objLines.begin();
+          objLineMeta.push(meta);
+          for (const [x, y, z] of ol.pts) at(x, y, z + 0.01, objLines);
+        }
       }
     });
     features.addRoad(road, ri);
@@ -318,6 +336,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     marks: { ...marks.done(), meta: markMeta },
     refs: { ...refs.done(), meta: refMeta },
     objects: { ...objs.done(), meta: objMeta },
+    objectLines: { ...objLines.done(), meta: objLineMeta },
     points: { positions: Float64Array.from(pts), meta: ptMeta },
     bounds: [minLon, minLat, maxLon, maxLat],
     zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],

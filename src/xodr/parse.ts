@@ -1,6 +1,6 @@
 // .xodr text -> OpenDrive model. Element and attribute names follow the ASAM OpenDRIVE 1.8.1 XSD; 1.4 files read
 // the same (their extra / missing attributes default as below).
-import type { Controller, Geom, Junction, Lane, LaneSection, Link, OpenDrive, Poly3, Road, RoadObject, Signal } from "./model";
+import type { Controller, Geom, Junction, Lane, LaneSection, Link, OpenDrive, OutlineCorner, Poly3, Road, RoadObject, Signal } from "./model";
 import { kid, kids, num, parseXml, type XmlNode } from "./xml";
 
 const poly = (n: XmlNode, sAttr = "s"): Poly3 => ({ s: num(n, sAttr), a: num(n, "a"), b: num(n, "b"), c: num(n, "c"), d: num(n, "d") });
@@ -63,7 +63,10 @@ function lane(n: XmlNode): Lane {
     materials: byS(kids(n, "material").map((x) => ({
       s: num(x, "sOffset"), surface: x.attrs.surface ?? "", friction: num(x, "friction", NaN), roughness: num(x, "roughness", NaN),
     }))),
-    access: byS(kids(n, "access").map((x) => ({ s: num(x, "sOffset"), rule: x.attrs.rule ?? "", restriction: x.attrs.restriction ?? "" }))),
+    access: byS(kids(n, "access").map((x) => ({
+      s: num(x, "sOffset"), rule: x.attrs.rule ?? "",
+      restriction: [x.attrs.restriction ?? "", ...kids(x, "restriction").map((r) => r.attrs.type ?? "")].filter(Boolean).join(", "),
+    }))),
     rules: byS(kids(n, "rule").map((x) => ({ s: num(x, "sOffset"), value: x.attrs.value ?? "" }))),
     userData: userData(n),
   };
@@ -94,7 +97,6 @@ function signal(n: XmlNode): Signal {
 }
 
 function object(n: XmlNode): RoadObject {
-  const outline = kid(kid(n, "outlines"), "outline") ?? kid(n, "outline");
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", type: n.attrs.type ?? "", s: num(n, "s"), t: num(n, "t"),
     zOffset: num(n, "zOffset"), hdg: num(n, "hdg"), length: num(n, "length"), width: num(n, "width"),
@@ -104,7 +106,14 @@ function object(n: XmlNode): RoadObject {
       heightStart: num(r, "heightStart"), heightEnd: num(r, "heightEnd"), zOffsetStart: num(r, "zOffsetStart"), zOffsetEnd: num(r, "zOffsetEnd"),
       widthStart: num(r, "widthStart"), widthEnd: num(r, "widthEnd"), lengthStart: num(r, "lengthStart"), lengthEnd: num(r, "lengthEnd"),
     })),
-    outline: kids(outline, "cornerLocal").map((c) => ({ u: num(c, "u"), v: num(c, "v"), z: num(c, "z") })),
+    outlines: [...kids(kid(n, "outlines"), "outline"), ...kids(n, "outline")].map((ol) => ({
+      id: ol.attrs.id ?? "", closed: ol.attrs.closed === undefined ? true : ol.attrs.closed === "true" || ol.attrs.closed === "1",
+      fillType: ol.attrs.fillType ?? "", laneType: ol.attrs.laneType ?? "",
+      outer: ol.attrs.outer === undefined ? null : ol.attrs.outer === "true" || ol.attrs.outer === "1",
+      corners: ol.children.flatMap((c): OutlineCorner[] =>
+        c.tag === "cornerLocal" ? [{ kind: "local", u: num(c, "u"), v: num(c, "v"), z: num(c, "z"), height: num(c, "height") }]
+          : c.tag === "cornerRoad" ? [{ kind: "road", s: num(c, "s"), t: num(c, "t"), dz: num(c, "dz"), height: num(c, "height") }] : []),
+    })),
   };
 }
 
@@ -174,12 +183,17 @@ export function parseOpenDrive(text: string): OpenDrive {
   const od = kid(doc, "OpenDRIVE");
   if (!od) throw new Error("not an OpenDRIVE file: no <OpenDRIVE> root element");
   const h = kid(od, "header");
-  const off = kid(h, "offset");
+  const off = kid(h, "offset"), lic = kid(h, "license");
   return {
     header: {
       revMajor: num(h, "revMajor", 1), revMinor: num(h, "revMinor", 4), name: h?.attrs.name ?? "",
       vendor: h?.attrs.vendor ?? "", date: h?.attrs.date ?? "",
       geoReference: (kid(h, "geoReference")?.text ?? "").trim(),
+      version: h?.attrs.version ?? "",
+      bounds: h && ["north", "south", "east", "west"].every((k) => h.attrs[k] !== undefined)
+        ? { north: num(h, "north"), south: num(h, "south"), east: num(h, "east"), west: num(h, "west") } : null,
+      license: lic ? { name: lic.attrs.name ?? "", resource: lic.attrs.resource ?? "", spdxid: lic.attrs.spdxid ?? "", text: lic.text.trim() } : null,
+      userData: userData(h),
       offset: { x: num(off, "x"), y: num(off, "y"), z: num(off, "z"), hdg: num(off, "hdg") },
     },
     roads: kids(od, "road").map(road),
@@ -187,6 +201,10 @@ export function parseOpenDrive(text: string): OpenDrive {
     controllers: kids(od, "controller").map((c): Controller => ({
       id: c.attrs.id ?? "", name: c.attrs.name ?? "", sequence: c.attrs.sequence ?? "",
       controls: kids(c, "control").map((x) => ({ signalId: x.attrs.signalId ?? "", type: x.attrs.type ?? "" })),
+    })),
+    junctionGroups: kids(od, "junctionGroup").map((g) => ({
+      id: g.attrs.id ?? "", name: g.attrs.name ?? "", type: g.attrs.type ?? "",
+      junctions: kids(g, "junctionReference").map((r) => r.attrs.junction ?? ""),
     })),
   };
 }

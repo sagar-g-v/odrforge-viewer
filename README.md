@@ -37,11 +37,13 @@ Open a network in one of three ways:
 | **Junction areas** | the file's `<boundary>` (OpenDRIVE 1.8 §12.10: lane segments along a lane's outer border, joints across the arm ends) solid; files without one get an approximate dashed outline (hull of the connecting roads). Click one, or search `j 103` |
 | **Junction grids** | the junction reference line (OpenDRIVE 1.8 §12.9, dashed red) and the `<elevationGrid>` (§12.11): every grid point at its z-value (row k at sStart + k · gridSpacing, left / right points every gridSpacing along the perpendicular), lines between neighbouring points; rows past the line's end continue it straight. The grid is drawn as given, not interpolated (§12.11.1 bicubic) |
 | **Road furniture** | signals as boards on posts (value labels), traffic lights with red / amber / green lamps, stop and waiting lines across their lanes; trees, poles, street lamps, guard rails stretched by `<repeat>`, sized boxes / cylinders; bridges and tunnels over their s range; junction cross paths. Click any of them for every attribute (validity, dependencies, references, semantics, controllers) |
+| **Object outlines** | every `<outline>` of an object (1.8.0 §13.3, and the 1.4 form without `<outlines>`): areas flat on the road, areas with height as solid blocks up to their highest corner, `closed="false"` outlines as lines; `<cornerLocal>` about the object's insertion point, `<cornerRoad>` at its s / t with z = reference line elevation + dz |
 | **Road marks** | every line of every `<roadMark>`: double lines in spec order (1.9.0 Annex A: inside to outside, centre lane left to right), explicit `<type><line>` patterns, all colours |
 | **Inspector** | click a lane: s / t, width, border offsets, surface z, superelevation, lane links, and the lane records in force at that point (height, material, speed, access, rule), road marks, road type, every `<userData>` entry (OSM source ways linked); click a junction area, its reference line or grid: boundary, reference line (§12.9), elevation grid (§12.11: spacing, rows, z range), connections, rules |
 | **Flags** (`F`) | click where something is wrong, pick a category, describe it; replies from `flags.py` show in the list |
 | **Findings** | load `.xqar` (ASAM qc-opendrive) and `invariants.json` (OdrForge); grouped by rule, toggle per rule, click to fly |
 | **Search** (`/`) | road id or name |
+| **File** | the `<header>`: name, OpenDRIVE version, file version, vendor, date, extent, offset, georeference, license, user data; junction groups (§12.13, e.g. roundabouts) in the file and the junction inspector |
 
 ## How it works
 

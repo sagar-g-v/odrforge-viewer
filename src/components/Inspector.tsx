@@ -121,6 +121,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
   const connecting = net.roads.filter((r) => r.junction === m.id);
   const turns = j?.connections.reduce((n, c) => n + c.laneLinks.length, 0) ?? 0;
   const g = j?.elevationGrid ?? null;
+  const groups = net.od?.junctionGroups.filter((gr) => gr.junctions.includes(m.id)) ?? [];
   const gridZ = g ? g.rows.flatMap((r) => [...r.center, ...r.left, ...r.right]) : [], gridPts = gridZ.length;
   const lineEnd = j ? j.refLine.reduce((a, q) => Math.max(a, q.s + q.length), 0) : 0;
   const beyond = g ? g.rows.filter((_, k) => g.sStart + k * g.gridSpacing > lineEnd + 1e-6).length : 0;
@@ -147,6 +148,13 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
           <Row k="rows × points" v={`${g.rows.length} rows, ${gridPts} points (left up to ${Math.max(0, ...g.rows.map((r) => r.left.length))}, right up to ${Math.max(0, ...g.rows.map((r) => r.right.length))})`} />
           <Row k="z range" v={gridPts ? `${f(Math.min(...gridZ))} … ${f(Math.max(...gridZ))} m` : "–"} />
           {beyond > 0 && <Row k="rows past the line end" v={`${beyond} (the line is extended straight)`} />}
+        </section>
+      )}
+      {groups.length > 0 && (
+        <section>
+          <h3>Junction group (§12.13)</h3>
+          {groups.map((gr) => <Row key={gr.id} k={`${gr.type || "group"} ${gr.id}${gr.name ? ` · ${gr.name}` : ""}`}
+            v={gr.junctions.map((id) => <a key={id} onClick={() => onGoRoad(`j ${id}`)}>{id} </a>)} />)}
         </section>
       )}
       {j && j.userData.length > 0 && <section><h3>User data</h3><UserDataRows data={j.userData} /></section>}
@@ -237,7 +245,11 @@ export function FeatureInspector({ net, sel, onClose, onGoRoad }: {
           {(o.length > 0 || o.width > 0) && <Row k="length × width" v={`${f(o.length)} × ${f(o.width)} m`} />}
           <Row k="height" v={`${f(o.height)} m`} />
           <Row k="heading" v={`${f((o.hdg * 180) / Math.PI, 1)}°`} />
-          {o.outline.length > 0 && <Row k="outline" v={`${o.outline.length} corners`} />}
+          {o.outlines.map((ol, i) => (
+            <Row key={`o${i}`} k={`outline${ol.id ? ` ${ol.id}` : ""}`} v={`${ol.closed ? "area" : "line"} · ${ol.corners.length} ${ol.corners[0]?.kind === "road" ? "cornerRoad" : "cornerLocal"}`
+              + `${ol.fillType ? ` · fill ${ol.fillType}` : ""}${ol.laneType ? ` · lane type ${ol.laneType}` : ""}${ol.outer !== null ? ` · ${ol.outer ? "outer" : "inner"}` : ""}`
+              + ` · height ${f(Math.min(...ol.corners.map((c) => c.height)))} … ${f(Math.max(...ol.corners.map((c) => c.height)))} m`} />
+          ))}
         </section>
         {o.repeats.length > 0 && (
           <section>

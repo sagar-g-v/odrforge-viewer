@@ -86,6 +86,21 @@ export class FeatureBuilder {
     this.box.meta.push(ref);
   }
 
+  /**
+   * an object outline with height: the area extruded to its greatest corner height (one extrusion per polygon in
+   * SolidPolygonLayer; corners of different heights are drawn at the highest), base at each corner's z
+   */
+  prism(ring: [number, number, number, number][], height: number, ref: FeatureRef) {
+    this.box.starts.push(this.box.pos.length / 3);
+    for (const [x, y, z] of ring) {
+      const [lon, lat] = this.geo(x, y);
+      this.box.pos.push(lon, lat, z + this.zOff);
+    }
+    this.box.elev.push(height);
+    this.box.col.push(...C.object);
+    this.box.meta.push(ref);
+  }
+
   private label(x: number, y: number, z: number, text: string) {
     const [lon, lat] = this.geo(x, y);
     this.lab.pos.push(lon, lat, z + this.zOff);
@@ -127,7 +142,7 @@ export class FeatureBuilder {
 
   private object(road: Road, ri: number, o: RoadObject, index: number) {
     const ref: FeatureRef = { kind: "object", road: ri, index };
-    if (o.outline.length >= 3 && !o.repeats.length) return; // flat outlines (crosswalks ...) are drawn by the object layer
+    if (o.outlines.length && !o.repeats.length) return; // outlines are drawn from build.ts (flat areas, lines, prisms)
     const at = (s: number, t: number) => {
       const p = evalRoad(road, Math.min(Math.max(s, 0), road.length));
       return { x: p.x - t * Math.sin(p.hdg), y: p.y + t * Math.cos(p.hdg), hdg: p.hdg, z: surfaceZ(road, s, t) };

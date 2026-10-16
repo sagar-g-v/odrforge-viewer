@@ -23,7 +23,7 @@ export interface UserData { code: string; value: string; }
 /** lane <material> (1.8.0 §11.10.1), <speed> (§11.10.4), <access> (§11.10.2), <rule> (§11.10.5) records */
 export interface LaneMaterial { s: number; surface: string; friction: number; roughness: number; }
 export interface LaneSpeed { s: number; max: number; unit: string; }
-export interface LaneAccess { s: number; rule: string; restriction: string; }
+export interface LaneAccess { s: number; rule: string; restriction: string; } // restriction: @restriction (<= 1.7) or the <restriction> types (1.8)
 export interface LaneRule { s: number; value: string; }
 
 export interface Lane {
@@ -51,11 +51,19 @@ export interface Signal {
   semantics: string[]; // e.g. "priority: trafficLight", "speed: maximum 30 km/h"
 }
 
+/**
+ * one <outline> (1.8.0 §13.3; a 1.4 <outline> without <outlines> is read the same way): corners relative to the object
+ * (<cornerLocal> u, v, z) or to the road (<cornerRoad> s, t, dz from the reference line), each with the object's height
+ * there; closed = an area (a 1.4 outline without @closed is an area), else a line feature
+ */
+export type OutlineCorner = { kind: "local"; u: number; v: number; z: number; height: number } | { kind: "road"; s: number; t: number; dz: number; height: number };
+export interface ObjectOutline { id: string; closed: boolean; fillType: string; outer: boolean | null; laneType: string; corners: OutlineCorner[]; }
+
 export interface RoadObject {
   id: string; name: string; type: string; s: number; t: number; zOffset: number; hdg: number;
   length: number; width: number; radius: number; height: number;
   subtype: string;
-  outline: { u: number; v: number; z: number }[]; // local corners (cornerLocal), empty when none
+  outlines: ObjectOutline[]; // every <outline>, empty when none
   repeats: ObjectRepeat[]; // 1.8.0 §13.3: the object repeated / stretched along the road
 }
 
@@ -111,7 +119,12 @@ export interface Controller { id: string; name: string; sequence: string; contro
 export interface Header {
   revMajor: number; revMinor: number; name: string; vendor: string; date: string;
   geoReference: string;
+  version: string; bounds: { north: number; south: number; east: number; west: number } | null;
+  license: { name: string; resource: string; spdxid: string; text: string } | null; userData: UserData[];
   offset: { x: number; y: number; z: number; hdg: number }; // 1.8.0 §6.3 <offset>: inertial = rotate(hdg) * local + (x, y)
 }
 
-export interface OpenDrive { header: Header; roads: Road[]; junctions: Junction[]; controllers: Controller[]; }
+/** <junctionGroup> (1.8.0 §12.13): junctions treated as one, e.g. a roundabout */
+export interface JunctionGroup { id: string; name: string; type: string; junctions: string[]; }
+
+export interface OpenDrive { header: Header; roads: Road[]; junctions: Junction[]; controllers: Controller[]; junctionGroups: JunctionGroup[]; }

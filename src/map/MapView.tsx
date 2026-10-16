@@ -3,7 +3,7 @@
 import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { PathStyleExtension } from "@deck.gl/extensions";
-import type { PickingInfo } from "@deck.gl/core";
+import type { Layer, PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MlMap, MapMouseEvent, StyleSpecification } from "maplibre-gl";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
@@ -206,9 +206,11 @@ export default function MapView(p: MapViewProps) {
   const [lift, setLift] = useState(0.2);
   const probeRef = useRef<GroundProbe | null>(null);
   const imgRef = useRef<ImageTile[]>([]);
+  const layersRef = useRef<Layer[]>([]); // the overlay's current layers (style swaps re-set them without beforeId)
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
+  const [styleEpoch, setStyleEpoch] = useState(0); // bumped on every style.load: the overlay's layers are set again
   useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
 
   // map + overlay, once
@@ -243,6 +245,7 @@ export default function MapView(p: MapViewProps) {
       ensureTerrain(map, propsRef.current.layers.terrain, propsRef.current.exaggeration);
       ensureDim(map, propsRef.current.dim);
       syncImageTiles(map, imgRef.current);
+      setStyleEpoch((e) => e + 1);
     });
     map.on("idle", () => {
       const probe = probeRef.current, pr = propsRef.current;
@@ -263,6 +266,10 @@ export default function MapView(p: MapViewProps) {
     if (!map) return;
     const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
     styleReady.current = false;
+    // until the new style has loaded our layers, the OpenDRIVE layers go without beforeId (same layers, so deck.gl
+    // keeps them): it inserts its layer groups on every styledata event and fails while the building layer they are
+    // placed before does not exist yet
+    overlay.current?.setProps({ layers: layersRef.current.map((l) => l.clone({ beforeId: undefined } as never)) });
     map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "osm" ? OSM_STYLE
       : p.basemap.startsWith("satellite") ? SATELLITE_STYLE : STYLE_URL[p.basemap as keyof typeof STYLE_URL],
     { diff: false }); // a full reload, so style.load always fires and our sources and layers are added again
@@ -459,6 +466,12 @@ export default function MapView(p: MapViewProps) {
           data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
           _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, opacity: p.roadOpacity,
         }));
+      const OL = r.objectLines, nol = OL.meta.length;
+      if (p.layers.objects && nol)
+        out.push(new PathLayer({
+          id: "object-lines", data: { length: nol, startIndices: sub(OL.starts, nol), attributes: { getPath: { value: OL.positions, size: 3 } } },
+          _pathType: "open", widthUnits: "pixels", getWidth: 2, getColor: [196, 160, 90, 255], pickable: true, modelMatrix,
+        }));
       // road furniture in 3D (signals, objects), bridges / tunnels and cross paths (xodr/features.ts)
       const F = r.features, selF = p.selectedFeature;
       const isSel = (m: { kind: string; road: number; index: number }) => !!selF && m.kind === selF.kind && m.road === selF.road && m.index === selF.index;
@@ -549,7 +562,10 @@ export default function MapView(p: MapViewProps) {
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
       outlineMatrix, beforeId, p.mode, p.roadOpacity]);
 
-  useEffect(() => { overlay.current?.setProps({ layers }); }, [layers]);
+  useEffect(() => {
+    layersRef.current = layers;
+    if (styleReady.current) overlay.current?.setProps({ layers });
+  }, [layers, styleEpoch]);
 
   // offline HD orthophoto tiles in view (MapLibre image sources, see syncImageTiles)
   const imgTiles = useMemo(() => {

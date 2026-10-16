@@ -175,7 +175,7 @@ export default function App() {
     const fm = layer === "boxes" ? F.boxes.meta[info.index] : layer.startsWith("col-") ? F.columns.find((c) => `col-${c.radius}` === layer)?.meta[info.index]
       : layer === "structures" ? F.structures.meta[info.index] : layer === "cross-paths" ? F.crossPaths.meta[info.index]
       : layer === "signals" ? net.render.points.meta[info.index]
-      : layer === "objects" ? net.render.objects.meta[info.index] : undefined;
+      : layer === "objects" ? net.render.objects.meta[info.index] : layer === "object-lines" ? net.render.objectLines.meta[info.index] : undefined;
     if (fm && !flagMode) { setSelF({ kind: fm.kind, road: fm.road, index: fm.index }); setSel(null); setSelJ(null); return; }
     let s: Selection | null = null;
     if (layer === "lanes" && info.index >= 0) {
