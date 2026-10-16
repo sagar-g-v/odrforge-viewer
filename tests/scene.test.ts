@@ -26,7 +26,7 @@ describe("map colours come from the scene palette", () => {
     expect(TREE.top.radius).toBeGreaterThan(TREE.side.radius);
     expect(OVERLAY.selected).toEqual([30, 155, 255, 255]);
     expect(MARKER.flag.open).not.toEqual(MARKER.finding.error);
-    const hues = [OVERLAY.selected, OVERLAY.junctionEdge, OVERLAY.crossPath, OVERLAY.junctionRef, OVERLAY.elevation, OVERLAY.compare].map((c) => c.slice(0, 3).join());
+    const hues = [OVERLAY.selected, OVERLAY.junctionEdge, OVERLAY.crossPath, OVERLAY.junctionRef, OVERLAY.elevation, OVERLAY.compare, OVERLAY.refLine].map((c) => c.slice(0, 3).join());
     expect(new Set(hues).size).toBe(hues.length);
   });
 });
