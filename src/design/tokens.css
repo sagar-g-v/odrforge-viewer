@@ -41,7 +41,7 @@
   --dur-fast: 120ms; --dur: 180ms; --dur-slow: 260ms;
   --ease: cubic-bezier(.2, .7, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
 
-  --z-map-ui: 3; --z-drawer: 5; --z-banner: 6; --z-toast: 7; --z-panel-mobile: 8; --z-dropzone: 20;
+  --z-map-ui: 3; --z-drawer: 5; --z-banner: 6; --z-toast: 7; --z-panel-mobile: 8; --z-dropzone: 20; --z-tooltip: 30;
 
   /* ---------- map data colours (same in both themes; tuned for OSM raster, satellite and the dark vector map) ---------- */
   --data-selected: #1e9bff;        /* selected lane / junction / feature */
