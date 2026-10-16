@@ -42,6 +42,7 @@ export interface MapViewProps {
   buildingOpacity: number; // 0..1: see-through buildings keep the roads behind them reviewable
   roadOpacity: number; // 0..1: lane surfaces, junction areas and objects (marks and outlines stay opaque)
   dim: number; // 0..0.9: darkens the base map (not the OpenDRIVE layers)
+  compare: RenderData | null; // B of a comparison: its lane outlines and reference lines over A
   selectedLane: number | null;
   selectedJunction: number | null;
   selectedFeature: { kind: string; road: number; index: number } | null;
@@ -345,6 +346,9 @@ export default function MapView(p: MapViewProps) {
   const draped = useMemo(() => (p.layers.terrain && p.render && demNow && p.heightMode !== "absolute"
     ? drapeRender(p.render, (lon, lat) => demNow.sample(lon, lat), p.heightMode) : null),
   [p.render, p.layers.terrain, demNow, p.heightMode]);
+  const cmpDraped = useMemo(() => (p.compare && p.layers.terrain && demNow && p.heightMode !== "absolute"
+    ? drapeRender(p.compare, (lon, lat) => demNow.sample(lon, lat), p.heightMode).render : p.compare),
+  [p.compare, p.layers.terrain, demNow, p.heightMode]);
   useEffect(() => {
     probeRef.current = draped?.probe ?? null;
     mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
@@ -542,6 +546,20 @@ export default function MapView(p: MapViewProps) {
           pickable: true, modelMatrix, parameters: { depthCompare: "always" },
         }));
     }
+    // B of a comparison over A: lane outlines and dashed reference lines in magenta, above A's surfaces
+    const C = cmpDraped;
+    if (C) {
+      const nl = C.lanes.meta.length, nr = C.refs.meta.length;
+      out.push(new PathLayer({
+        id: "cmp-lanes", data: { length: nl, startIndices: sub(C.lanes.starts, nl), attributes: { getPath: { value: C.lanes.positions, size: 3 } } },
+        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 230], modelMatrix: outlineMatrix,
+      }));
+      if (nr) out.push(new PathLayer({
+        id: "cmp-refs", data: { length: nr, startIndices: sub(C.refs.starts, nr), attributes: { getPath: { value: C.refs.positions, size: 3 } } },
+        _pathType: "open", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 255], modelMatrix: outlineMatrix,
+        getDashArray: [4, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+      }));
+    }
     const markers = (id: string, pts: MarkerPoint[], radius: number) => [
       new ScatterplotLayer<MarkerPoint>({
         id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + 3 : radius), radiusUnits: "pixels",
@@ -560,7 +578,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, 10));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
-      outlineMatrix, beforeId, p.mode, p.roadOpacity]);
+      outlineMatrix, beforeId, p.mode, p.roadOpacity, cmpDraped]);
 
   useEffect(() => {
     layersRef.current = layers;

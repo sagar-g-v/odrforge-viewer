@@ -80,5 +80,6 @@ export function useNetwork() {
 
   const openLocalFile = useCallback(async (f: File) => parse(f.name, await f.text(), false), [parse]);
 
-  return { network, loading, error, openServerFile, openLocalFile, clearError: () => setError(null) };
+  const clear = useCallback(() => { seq.current++; setNetwork(null); setLoading(null); setError(null); }, []);
+  return { network, loading, error, openServerFile, openLocalFile, clearError: () => setError(null), clear };
 }

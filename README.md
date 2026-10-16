@@ -42,6 +42,7 @@ Open a network in one of three ways:
 | **Inspector** | click a lane: s / t, width, border offsets, surface z, superelevation, lane links, and the lane records in force at that point (height, material, speed, access, rule), road marks, road type, every `<userData>` entry (OSM source ways linked); click a junction area, its reference line or grid: boundary, reference line (§12.9), elevation grid (§12.11: spacing, rows, z range), connections, rules |
 | **Flags** (`F`) | click where something is wrong, pick a category, describe it; replies from `flags.py` show in the list |
 | **Findings** | load `.xqar` (ASAM qc-opendrive) and `invariants.json` (OdrForge); grouped by rule, toggle per rule, click to fly |
+| **Compare** | open a second build of the same area (B) from the review server or a file: B's lane outlines and reference lines in magenta over A; a list of roads and junctions only in A / only in B, and per road matched by id the changes in length, reference line position and height (nearest-segment distance, WGS84 metres; reported above 5 cm / 5 cm / 1 cm), lane layout per section, links, junction membership, signal / object counts; click to fly there |
 | **Search** (`/`) | road id or name |
 | **File** | the `<header>`: name, OpenDRIVE version, file version, vendor, date, extent, offset, georeference, license, user data; junction groups (§12.13, e.g. roundabouts) in the file and the junction inspector |
 

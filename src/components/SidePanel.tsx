@@ -6,9 +6,10 @@ import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
 import type { OpenDrive } from "../xodr/model";
+import type { CompareResult, DiffItem, DiffKind } from "../xodr/compare";
 import type { LocalImagery } from "../map/localImagery";
 
-export type Tab = "layers" | "flags" | "findings";
+export type Tab = "layers" | "flags" | "findings" | "compare";
 
 export interface SidePanelProps {
   tab: Tab; setTab: (t: Tab) => void; net: Network | null; imagery: LocalImagery | null; theme: "dark" | "light";
@@ -23,6 +24,14 @@ export interface SidePanelProps {
   showDeleted: boolean; setShowDeleted: (b: boolean) => void; onExportFlags: () => void;
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
   onLoadFindings: (files: FileList) => void;
+  compare: CompareProps;
+}
+
+/** comparing the network under review (A) with another build (B) */
+export interface CompareProps {
+  net: Network | null; loading: string | null; error: string | null; result: CompareResult | null; files: string[];
+  openServer: (f: string) => void; openLocal: (f: File) => void; clear: () => void;
+  overlay: boolean; setOverlay: (b: boolean) => void; onItem: (d: DiffItem) => void;
 }
 
 function Toggle({ label, on, set, hint }: { label: string; on: boolean; set: (v: boolean) => void; hint?: string }) {
@@ -252,19 +261,84 @@ function FindingsTab(p: SidePanelProps) {
   );
 }
 
+function CompareTab(p: SidePanelProps) {
+  const c = p.compare, R = c.result;
+  const [show, setShow] = useState<Record<DiffKind, boolean>>({ added: true, removed: true, changed: true });
+  const order: Record<DiffKind, number> = { changed: 0, added: 1, removed: 2 };
+  const items = R ? R.items.filter((d) => show[d.kind]).sort((x, y) => order[x.kind] - order[y.kind]) : [];
+  const count = (k: DiffKind) => R?.items.filter((d) => d.kind === k).length ?? 0;
+  const rows: [string, keyof CompareResult["a"], number][] = [["roads", "roads", 0], ["junctions", "junctions", 0], ["lanes", "lanes", 0], ["km", "km", 2], ["signals", "signals", 0], ["objects", "objects", 0]];
+  return (
+    <>
+      <p className="muted small">Compare <b>A</b>, the network under review{p.net ? ` (${p.net.name})` : ""}, with <b>B</b>, another build of the same area: roads and junctions matched by id, B drawn over A on the map.</p>
+      <label className="field">
+        <span>B from the review server</span>
+        <select value={c.net?.fromServer ? c.net.name : ""} onChange={(e) => e.target.value && c.openServer(e.target.value)}>
+          <option value="">{c.files.length ? "Choose a file…" : "No files on server"}</option>
+          {c.files.map((f) => <option key={f} value={f}>{f}</option>)}
+        </select>
+      </label>
+      <label className="btn block file-btn">
+        Open B from a file…
+        <input type="file" accept=".xodr" onChange={(e) => e.target.files?.[0] && c.openLocal(e.target.files[0])} />
+      </label>
+      {c.loading && <p className="muted small">{c.loading}</p>}
+      {c.error && <p className="small" style={{ color: "var(--err)" }}>{c.error}</p>}
+      {c.net && !c.net.od && <p className="small">B is an OdrForge page export: comparing needs the .xodr.</p>}
+      {c.net && (
+        <>
+          <Toggle label={`Show B on the map (${c.net.name})`} on={c.overlay} set={c.setOverlay} hint="B's lane outlines (magenta) and reference lines (dashed) over A" />
+          <button className="btn block" onClick={c.clear}>Remove B</button>
+        </>
+      )}
+      {R && (
+        <>
+          <section className="card">
+            <div className="kv"><span /><span><b>A</b> → <b>B</b></span></div>
+            {rows.map(([label, k, d]) => (
+              <div className="kv" key={k}><span>{label}</span><span>{R.a[k].toFixed(d)} → {R.b[k].toFixed(d)}{R.a[k] !== R.b[k] ? ` (${R.b[k] - R.a[k] > 0 ? "+" : ""}${(R.b[k] - R.a[k]).toFixed(d)})` : ""}</span></div>
+            ))}
+            <div className="kv"><span>roads matched by id</span><span>{R.matchedRoads} of {R.a.roads}</span></div>
+            {R.matchedRoads < 0.5 * Math.min(R.a.roads, R.b.roads) && (
+              <p className="small" style={{ color: "var(--warn)" }}>Few road ids match: B seems renumbered, so the list says little; compare on the map.</p>
+            )}
+            <p className="muted small">{`Reported above ${R.tolerance.position * 100} cm in position, ${R.tolerance.height * 100} cm in height, ${R.tolerance.length * 100} cm in length.`}</p>
+          </section>
+          <div className="chips">
+            {(["changed", "added", "removed"] as DiffKind[]).map((k) => (
+              <button key={k} className={`chip ${show[k] ? "status-open" : ""}`} onClick={() => setShow({ ...show, [k]: !show[k] })}>{k} {count(k)}</button>
+            ))}
+          </div>
+          {!R.items.length && <p className="muted small">No differences.</p>}
+          <div className="list">
+            {items.slice(0, 500).map((d, i) => (
+              <div key={i} className="item small" onClick={() => c.onItem(d)} title={Number.isFinite(d.lon) ? "Fly there" : "Not on the map"}>
+                <div className="item-head"><span className={`chip ${d.kind === "removed" ? "level-error" : d.kind === "added" ? "status-fixed" : "level-warning"}`}>{d.kind}</span><b>{d.what} {d.id}</b></div>
+                <span className="muted">{d.detail}</span>
+              </div>
+            ))}
+            {items.length > 500 && <p className="muted small">… {items.length - 500} more</p>}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export default function SidePanel(p: SidePanelProps) {
   const nFlags = p.flags.filter((f) => !f.deleted).length;
   return (
     <aside className="panel">
       <nav className="tabs" role="tablist">
-        {(["layers", "flags", "findings"] as Tab[]).map((t) => (
+        {(["layers", "flags", "findings", "compare"] as Tab[]).map((t) => (
           <button key={t} role="tab" aria-selected={p.tab === t} className={p.tab === t ? "on" : ""} onClick={() => p.setTab(t)}>
-            {t === "layers" ? "Layers" : t === "flags" ? `Flags${nFlags ? ` · ${nFlags}` : ""}` : `Findings${p.findings.length ? ` · ${p.findings.length}` : ""}`}
+            {t === "layers" ? "Layers" : t === "flags" ? `Flags${nFlags ? ` · ${nFlags}` : ""}` : t === "findings" ? `Findings${p.findings.length ? ` · ${p.findings.length}` : ""}`
+              : `Compare${p.compare.result ? ` · ${p.compare.result.items.length}` : ""}`}
           </button>
         ))}
       </nav>
       <div className="panel-body">
-        {p.tab === "layers" ? <LayersTab {...p} /> : p.tab === "flags" ? <FlagsTab {...p} /> : <FindingsTab {...p} />}
+        {p.tab === "layers" ? <LayersTab {...p} /> : p.tab === "flags" ? <FlagsTab {...p} /> : p.tab === "findings" ? <FindingsTab {...p} /> : <CompareTab {...p} />}
       </div>
     </aside>
   );

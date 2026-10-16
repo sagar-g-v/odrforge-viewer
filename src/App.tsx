@@ -4,6 +4,7 @@ import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
 import Inspector, { FeatureInspector, JunctionInspector, type Selection } from "./components/Inspector";
 import SidePanel, { type Tab } from "./components/SidePanel";
 import { listServerFiles, useNetwork } from "./data/useNetwork";
+import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
@@ -44,6 +45,11 @@ export default function App() {
   const [files, setFiles] = useState<string[]>([]);
   const [serverState, setServerState] = useState<"idle" | "ok" | "error">("idle");
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
+  // B: another build of the same area, compared with the network under review (xodr/compare.ts)
+  const cmp = useNetwork();
+  const [cmpOverlay, setCmpOverlay] = useState(true);
+  const cmpResult = useMemo(() => (net?.od && cmp.network?.od ? compareNetworks(net.od, net.render, cmp.network.od, cmp.network.render) : null),
+    [net, cmp.network]);
   const [sel, setSel] = useState<Selection | null>(null);
   const [imagery, setImagery] = useState<LocalImagery | null>(null); // offline HD orthophoto on the server
   const [selF, setSelF] = useState<{ kind: string; road: number; index: number } | null>(null); // a signal, object, structure, cross path
@@ -328,13 +334,19 @@ export default function App() {
           toggleRule={(r) => setRuleOff((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n; })}
           onFinding={(f) => { const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
           onLoadFindings={(fl) => loadFindings([...fl])}
+          compare={{
+            net: cmp.network, loading: cmp.loading, error: cmp.error, result: cmpResult, files,
+            openServer: (f) => cmp.openServerFile(server, f), openLocal: cmp.openLocalFile, clear: cmp.clear,
+            overlay: cmpOverlay, setOverlay: setCmpOverlay,
+            onItem: (d) => { if (Number.isFinite(d.lon)) setFlyTo({ lon: d.lon, lat: d.lat, zoom: 19, key: Date.now() }); },
+          }}
         />
       )}
 
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
