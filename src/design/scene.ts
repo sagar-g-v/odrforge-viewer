@@ -4,6 +4,9 @@
 
 export type Rgba = [number, number, number, number];
 
+/** a palette colour with another alpha (fills of a hue whose line is in the palette) */
+export const withAlpha = (c: Rgba, a: number): Rgba => [c[0], c[1], c[2], a];
+
 /** matte "clay" material for every extruded asset: no gloss, so colour reads the same from every view angle */
 export const MATERIAL = { ambient: 0.55, diffuse: 0.55, shininess: 8, specularColor: [40, 40, 40] as [number, number, number] };
 
@@ -64,6 +67,7 @@ export const OVERLAY = {
   junctionRef: [235, 64, 52, 255] as Rgba,
   elevation: [80, 220, 200, 255] as Rgba, elevationLine: [80, 220, 200, 200] as Rgba,
   compare: [255, 64, 200, 235] as Rgba, //           magenta: comparison B only
+  refLine: [232, 76, 255, 220] as Rgba, //           road reference lines (off by default); hue close to compare: design to decide
   buildingFill: "#ffb347", buildingEdge: "#ff9f1c",
 };
 

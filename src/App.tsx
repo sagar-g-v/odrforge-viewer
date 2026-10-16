@@ -4,6 +4,7 @@ import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
 import Inspector, { FeatureInspector, JunctionInspector, type Selection } from "./components/Inspector";
 import SidePanel, { type Tab } from "./components/SidePanel";
 import { Icon, Logo } from "./components/Icon";
+import { MARKER } from "./design/scene";
 import { listServerFiles, useNetwork } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
@@ -13,13 +14,9 @@ import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
 import { fetchGrid, groundGridFiles, type GroundGrid } from "./map/odrz";
 
-// review marker colours (design system --data-flag-*, --data-finding-*)
-const STATUS_COLOR: Record<string, [number, number, number, number]> = {
-  open: [242, 181, 68, 255], fixed: [124, 201, 90, 255], question: [92, 182, 242, 255], wontfix: [140, 146, 158, 255],
-};
-const LEVEL_COLOR: Record<string, [number, number, number, number]> = {
-  error: [255, 106, 92, 235], warning: [255, 170, 60, 230], info: [92, 182, 242, 225],
-};
+// review marker colours (design/scene.ts MARKER, design system --data-flag-*, --data-finding-*)
+const STATUS_COLOR = MARKER.flag;
+const LEVEL_COLOR = MARKER.finding;
 
 const store = (k: string, v?: string) => {
   try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { /* storage blocked */ }

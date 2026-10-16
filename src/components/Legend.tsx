@@ -2,8 +2,9 @@
 // and what the base map shows (OpenStreetMap Carto's key colours; satellite imagery has no legend).
 import type { Basemap } from "../map/MapView";
 import { LEGEND, legendColor } from "../map/palette";
+import { ASSET, EDGE, MARK, MARKER, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
 
-const css = (c: number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
+const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
 
 type Swatch =
   | { kind: "fill"; color: string; border?: string }
@@ -13,7 +14,7 @@ type Swatch =
 
 function Sw({ s }: { s: Swatch }) {
   if (s.kind === "fill") return <i className="sw" style={{ background: s.color, borderColor: s.border ?? "var(--line-2)" }} />;
-  if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? "#0a1017" }} />;
+  if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? css(EDGE.ring) }} />;
   if (s.kind === "arrow")
     return <i className="sw arrow"><svg viewBox="0 0 16 10" width="16" height="10"><path d="M1 3.6h9V1l5 4-5 4V6.4H1z" fill="#f5f7fa" stroke="#45607b" strokeWidth=".6" /></svg></i>;
   if (s.kind === "light")
@@ -37,35 +38,36 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
     <>
       <Group title="Lane types" items={LEGEND.map((t) => [t, { kind: "fill", color: css(legendColor(t, theme)) }])} />
       <Group title="Junctions" items={[
-        ["junction area (<boundary>)", { kind: "fill", color: "rgba(245,184,74,.3)", border: "#f5b84a" }],
-        ["approximate area", { kind: "line", color: "#f5b84a", dash: true, width: 2 }],
-        ["cross path", { kind: "line", color: "#00cdff", dash: true, width: 2 }],
-        ["junction reference line", { kind: "line", color: "#eb4034", dash: true, width: 2 }],
-        ["elevation grid point / line", { kind: "dot", color: "#50dcc8" }],
+        ["junction area (<boundary>)", { kind: "fill", color: css(OVERLAY.junctionFill), border: css(OVERLAY.junctionEdge) }],
+        ["approximate area", { kind: "line", color: css(OVERLAY.junctionEdge), dash: true, width: 2 }],
+        ["cross path", { kind: "line", color: css(OVERLAY.crossPath), dash: true, width: 2 }],
+        ["junction reference line", { kind: "line", color: css(OVERLAY.junctionRef), dash: true, width: 2 }],
+        ["elevation grid point / line", { kind: "dot", color: css(OVERLAY.elevation) }],
       ]} />
       <Group title="Road marks" items={[
-        ["solid", { kind: "line", color: "#f5f7fa" }], ["broken", { kind: "line", color: "#f5f7fa", dash: true }],
-        ["double (yellow)", { kind: "line", color: "#f5c442", double: true, width: 2 }], ["curb", { kind: "line", color: "#96989c", width: 4 }],
+        ["solid", { kind: "line", color: css(MARK.white) }], ["broken", { kind: "line", color: css(MARK.white), dash: true }],
+        ["double (yellow)", { kind: "line", color: css(MARK.yellow), double: true, width: 2 }], ["curb", { kind: "line", color: css(MARK.curb), width: 4 }],
         ["driving direction (arrow)", { kind: "arrow" }],
       ]} />
       <Group title="Signals" items={[
-        ["traffic light", { kind: "light" }], ["speed / yield sign", { kind: "fill", color: "#f6f6f6" }],
-        ["stop sign", { kind: "fill", color: "#cc2028" }], ["other sign", { kind: "fill", color: "#2c62ce" }],
-        ["stop / waiting line", { kind: "line", color: "#fafafa", width: 4 }], ["post / pole", { kind: "fill", color: "#969ba2" }],
+        ["traffic light", { kind: "light" }], ["speed / yield sign", { kind: "fill", color: css(SIGNAL.signWhite) }],
+        ["stop sign", { kind: "fill", color: css(SIGNAL.signStop) }], ["other sign", { kind: "fill", color: css(SIGNAL.signInfo) }],
+        ["stop / waiting line", { kind: "line", color: css(SIGNAL.stopLine), width: 4 }], ["post / pole", { kind: "fill", color: css(ASSET.pole) }],
       ]} />
       <Group title="Objects & structures" items={[
-        ["tree", { kind: "fill", color: "#3e8a42" }], ["street lamp", { kind: "fill", color: "#ffd678" }],
-        ["barrier / guard rail", { kind: "fill", color: "#b6bcc4" }], ["crosswalk", { kind: "fill", color: "rgba(255,255,255,.6)" }],
-        ["other object", { kind: "fill", color: "#c4a05a" }], ["bridge", { kind: "fill", color: "rgba(70,130,230,.35)", border: "#4682e6" }],
-        ["tunnel", { kind: "fill", color: "rgba(110,112,122,.35)", border: "#5a5c64" }],
+        ["tree", { kind: "fill", color: css(ASSET.crown), border: css(ASSET.trunk) }], ["street lamp", { kind: "fill", color: css(ASSET.lamp) }],
+        ["barrier / guard rail", { kind: "fill", color: css(ASSET.barrier) }], ["crosswalk", { kind: "fill", color: css(ASSET.crosswalk) }],
+        ["other object", { kind: "fill", color: css(ASSET.object) }],
+        ["bridge", { kind: "fill", color: css(STRUCTURE.bridgeFill), border: css(STRUCTURE.bridgeEdge) }],
+        ["tunnel", { kind: "fill", color: css(STRUCTURE.tunnelFill), border: css(STRUCTURE.tunnelEdge) }],
       ]} />
       <p className="muted small">Signals and objects are symbols (boards, lamps, columns, boxes) at the file's position, height and size;
         where the file gives no size a typical one is drawn (inspector says so). Other tools draw their own models there.</p>
       <Group title="Review" items={[
-        ["flag: open", { kind: "dot", color: "#f2b544" }], ["flag: fixed", { kind: "dot", color: "#7cc95a" }],
-        ["flag: question", { kind: "dot", color: "#5cb6f2" }], ["finding: error", { kind: "dot", color: "#ff6a5c" }],
-        ["finding: warning", { kind: "dot", color: "#ffaa3c" }],
-        ["selected", { kind: "fill", color: "#1e9bff" }], ["compare B (outlines)", { kind: "line", color: "#ff40c8", width: 2 }],
+        ["flag: open", { kind: "dot", color: css(MARKER.flag.open) }], ["flag: fixed", { kind: "dot", color: css(MARKER.flag.fixed) }],
+        ["flag: question", { kind: "dot", color: css(MARKER.flag.question) }], ["finding: error", { kind: "dot", color: css(MARKER.finding.error) }],
+        ["finding: warning", { kind: "dot", color: css(MARKER.finding.warning) }],
+        ["selected", { kind: "fill", color: css(OVERLAY.selected) }], ["compare B (outlines)", { kind: "line", color: css(OVERLAY.compare), width: 2 }],
       ]} />
     </>
   );
