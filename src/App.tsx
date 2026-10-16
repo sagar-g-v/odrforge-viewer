@@ -11,7 +11,7 @@ import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from
 import { parseFindings, type Finding } from "./review/findings";
 import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
-import { fetchGrid, type GroundGrid } from "./map/odrz";
+import { fetchGrid, groundGridFiles, type GroundGrid } from "./map/odrz";
 
 // review marker colours (design system --data-flag-*, --data-finding-*)
 const STATUS_COLOR: Record<string, [number, number, number, number]> = {
@@ -146,12 +146,11 @@ export default function App() {
   const groundTried = useRef<typeof net>(null); // the network a grid was looked for (once per network)
   useEffect(() => {
     if (!layers.terrain || !net?.fromServer || groundTried.current === net) return;
-    const ac = new AbortController(), stem = net.page.replace(/_standard$/, "");
+    const ac = new AbortController();
     groundTried.current = net;
     let done = false;
     (async () => {
-      // the road-conformed grid (road surface under the paved width, blended to the DEM) when the converter wrote one
-      for (const file of [...new Set([`${net.page}_ground_conformed.odrz`, `${stem}_ground_conformed.odrz`, `${net.page}_ground.odrz`, `${stem}_ground.odrz`])]) {
+      for (const file of groundGridFiles(net.page)) {
         try {
           const grid = await fetchGrid(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}`, (got, total) =>
             setGroundLoading(`Loading the ground grid ${file}: ${(got / 1e6).toFixed(0)}${total ? ` / ${(total / 1e6).toFixed(0)}` : ""} MB`), ac.signal);

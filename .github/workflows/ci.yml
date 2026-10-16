@@ -1,0 +1,17 @@
+# Guards docs/ACCURACY.md on every push: types, lint, unit tests (the real-data checks skip without the test areas), build.
+name: ci
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc -b
+      - run: npx oxlint src
+      - run: npm test
+      - run: npm run build

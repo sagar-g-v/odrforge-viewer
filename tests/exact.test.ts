@@ -16,7 +16,21 @@ describe("geometry at the file's heights (nothing lifted or lowered for display)
   const od = parseOpenDrive(XODR);
   const r = buildRender(od, makeProjector(od.header.geoReference).forward);
   const zs = (a: Float64Array) => new Set(Array.from({ length: a.length / 3 }, (_, i) => a[3 * i + 2]));
-  it("lanes, marks, reference line and object outlines all lie at the road surface", () => {
-    for (const buf of [r.lanes.positions, r.marks.positions, r.refs.positions, r.objects.positions]) expect([...zs(buf)]).toEqual([517.25]);
+  it("lanes, marks, reference line, object outlines and direction arrows all lie at the road surface", () => {
+    for (const buf of [r.lanes.positions, r.marks.positions, r.refs.positions, r.objects.positions, r.arrows.positions]) expect([...zs(buf)]).toEqual([517.25]);
+    expect(r.arrows.meta.length).toBeGreaterThan(0);
+  });
+});
+
+describe("superelevation sign (1.8.0 §10.5: positive = the road falls to the right)", () => {
+  const xml = XODR.replace('<elevationProfile><elevation s="0" a="517.25" b="0" c="0" d="0"/></elevationProfile>',
+    '<elevationProfile><elevation s="0" a="517.25" b="0" c="0" d="0"/></elevationProfile><lateralProfile><superelevation s="0" a="0.05" b="0" c="0" d="0"/></lateralProfile>');
+  const od = parseOpenDrive(xml), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
+  it("z = elevation + t tan(se): the right lane's outer border (t = -3.5) is lower, by 3.5 tan(0.05)", () => {
+    const L = r.lanes.positions;
+    let low = Infinity, high = -Infinity;
+    for (let v = 0; v < L.length / 3; v++) { low = Math.min(low, L[3 * v + 2]); high = Math.max(high, L[3 * v + 2]); }
+    expect(low).toBeCloseTo(517.25 - 3.5 * Math.tan(0.05), 9);
+    expect(high).toBeCloseTo(517.25, 9); // the right lane's inner border lies on the reference line
   });
 });

@@ -23,15 +23,21 @@ function drapePos(pos: Float64Array, ground: Ground, dz: (z: number) => number, 
   return out;
 }
 
+/** ground heights under up to `samples` vertices of a lon / lat / z buffer (the lift's probe: the ground, never the roads) */
+export function groundProbe(positions: Float64Array, ground: Ground, samples = 4000): GroundProbe {
+  const nv = positions.length / 3, step = Math.max(1, Math.floor(nv / samples));
+  const lon: number[] = [], lat: number[] = [], g: number[] = [];
+  for (let v = 0; v < nv; v += step) {
+    const h = ground(positions[3 * v], positions[3 * v + 1]);
+    if (Number.isFinite(h)) { lon.push(positions[3 * v]); lat.push(positions[3 * v + 1]); g.push(h); }
+  }
+  return { lon: Float64Array.from(lon), lat: Float64Array.from(lat), ground: Float64Array.from(g) };
+}
+
 export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relative"): { render: RenderData; probe: GroundProbe } {
   // fallback for vertices without DEM data: the median ground under the lanes
-  const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 4000));
-  const pl: number[] = [], pa: number[] = [], pg: number[] = [];
-  for (let v = 0; v < nv; v += step) {
-    const g = ground(L[3 * v], L[3 * v + 1]);
-    if (Number.isFinite(g)) { pl.push(L[3 * v]); pa.push(L[3 * v + 1]); pg.push(g); }
-  }
-  const sorted = [...pg].sort((a, b) => a - b), fallback = sorted.length ? sorted[sorted.length >> 1] : 0;
+  const probe = groundProbe(r.lanes.positions, ground);
+  const sorted = [...probe.ground].sort((a, b) => a - b), fallback = sorted.length ? sorted[sorted.length >> 1] : 0;
   const dz = mode === "flat" ? () => 0 : (z: number) => z - r.zGround;
   const d = (pos: Float64Array) => drapePos(pos, ground, dz, fallback);
   const bin = <T extends Binary>(b: T): T => ({ ...b, positions: d(b.positions) });
@@ -49,7 +55,7 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
       crossPaths: { ...F.crossPaths, positions: d(F.crossPaths.positions) },
     },
   };
-  return { render, probe: { lon: Float64Array.from(pl), lat: Float64Array.from(pa), ground: Float64Array.from(pg) } };
+  return { render, probe };
 }
 
 /**

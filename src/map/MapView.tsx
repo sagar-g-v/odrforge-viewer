@@ -16,7 +16,9 @@ import { visibleTiles, type ImageTile, type LocalImagery } from "./localImagery"
 import { DEM_MAXZOOM, Dem, TERRARIUM_TILES } from "./dem";
 import { groundHeight, type GroundGrid } from "./odrz";
 import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid } from "./groundTiles";
-import { drapeRender, terrainLift, type GroundProbe } from "./drape";
+import { drapeRender, groundProbe, terrainLift } from "./drape";
+import { depthBias } from "./drawOrder";
+import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
 
 // satellite: the offline HD orthophoto over live imagery; satellite-live: live (online) imagery only
@@ -35,7 +37,7 @@ function withCartoKey(url: string): { url: string } | undefined {
     return { url: u.toString() };
   } catch { return undefined; }
 }
-export type HeightMode = "flat" | "relative" | "absolute";
+export type { HeightMode } from "./heights";
 
 export interface MapLayers {
   lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
@@ -257,8 +259,8 @@ export default function MapView(p: MapViewProps) {
   // terrain: the DEM under the network (the same tiles MapLibre's terrain draws) and the lift that keeps the draped
   // roads above the surface as drawn (re-measured whenever the map comes to rest)
   const [dem, setDem] = useState<{ render: RenderData; dem: Dem } | null>(null);
-  const [lift, setLift] = useState(0.2);
-  const probeRef = useRef<GroundProbe | null>(null);
+  const [lift, setLift] = useState(0); // measured on idle (terrain only); nothing is lifted before that
+  const probeRef = useRef<ReturnType<typeof groundProbe> | null>(null);
   const imgRef = useRef<ImageTile[]>([]);
   const layersRef = useRef<Layer[]>([]); // the overlay's current layers (style swaps re-set them without beforeId)
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
@@ -318,7 +320,7 @@ export default function MapView(p: MapViewProps) {
     });
     map.on("idle", () => {
       const probe = probeRef.current, pr = propsRef.current;
-      if (!probe || !pr.layers.terrain) return;
+      if (!probe || !pr.layers.terrain) { setLift(0); return; } // no probe (or no terrain): no lift
       const next = terrainLift(probe, (lon, lat) => map.queryTerrainElevation([lon, lat]), pr.exaggeration, 0);
       setLift((cur) => (Math.abs(cur - next) > Math.max(0.05, 0.02 * cur) ? next : cur));
     });
@@ -413,72 +415,57 @@ export default function MapView(p: MapViewProps) {
     return (lon: number, lat: number) => { const [x, y] = pr.inverse(lon, lat); return groundHeight(g, x, y, () => demNow.sample(lon, lat)); };
   }, [demNow, p.ground, p.proj]);
 
-  // a file whose heights are relative to its surroundings (not above sea level) is laid on the terrain in flat and
-  // relative mode (drape.ts); absolute mode keeps the file's heights
-  // a file with real heights (its lanes on the ground: median |z - ground| < 2 m) keeps them in relative mode too:
-  // re-basing it to its median and laying that on the terrain would show a surface no other tool would
-  const realHeights = useMemo(() => {
-    const r = p.render;
-    if (!r || !groundAt) return false;
-    const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 1000)), d: number[] = [];
-    for (let v = 0; v < nv; v += step) { const h = groundAt(L[3 * v], L[3 * v + 1]); if (Number.isFinite(h)) d.push(Math.abs(L[3 * v + 2] - h)); }
-    d.sort((a, b) => a - b);
-    return d.length > 0 && d[d.length >> 1] < 2;
-  }, [p.render, groundAt]);
-  const absoluteView = p.heightMode === "absolute" || (p.heightMode === "relative" && realHeights && p.layers.terrain);
-  const draped = useMemo(() => (p.layers.terrain && p.render && groundAt && !absoluteView && p.heightMode !== "absolute"
-    ? drapeRender(p.render, groundAt, p.heightMode as "flat" | "relative") : null),
-  [p.render, p.layers.terrain, groundAt, absoluteView, p.heightMode]);
-  const cmpDraped = useMemo(() => (p.compare && p.layers.terrain && groundAt && p.heightMode !== "absolute"
-    ? drapeRender(p.compare, groundAt, p.heightMode).render : p.compare),
-  [p.compare, p.layers.terrain, groundAt, p.heightMode]);
-  // absolute heights over terrain: the roads stay at the file's heights. Where MapLibre draws a coarser DEM level than the
-  // ground (zoomed out, distant tiles) the drawn surface can rise over it: the lift measured against the ground itself
-  // (never against the roads, so a road the file puts below the ground stays below it)
-  const absoluteProbe = useMemo<GroundProbe | null>(() => {
-    const r = p.render;
-    if (!p.layers.terrain || !r || !groundAt || !absoluteView) return null;
-    const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 4000));
-    const lon: number[] = [], lat: number[] = [], g: number[] = [];
-    for (let v = 0; v < nv; v += step) {
-      const h = groundAt(L[3 * v], L[3 * v + 1]);
-      if (Number.isFinite(h)) { lon.push(L[3 * v]); lat.push(L[3 * v + 1]); g.push(h); }
-    }
-    return lon.length ? { lon: Float64Array.from(lon), lat: Float64Array.from(lat), ground: Float64Array.from(g) } : null;
-  }, [p.render, p.layers.terrain, groundAt, absoluteView]);
+  // how the file's heights are drawn: one pure decision (map/heights.ts, docs/ACCURACY.md), for A and for compare B
+  const realHeights = useMemo(() => !!p.render && !!groundAt && hasRealHeights(p.render.lanes.positions, groundAt), [p.render, groundAt]);
+  const plan = useMemo(() => heightPlan({
+    mode: p.heightMode, terrain: p.layers.terrain, groundReady: !!groundAt, zGround: p.render?.zGround ?? 0, realHeights, exaggeration: p.exaggeration,
+  }), [p.heightMode, p.layers.terrain, groundAt, p.render, realHeights, p.exaggeration]);
+  const draped = useMemo(() => (plan.drape && p.render && groundAt ? drapeRender(p.render, groundAt, plan.drape) : null),
+  [plan.drape, p.render, groundAt]);
+  const cmpDraped = useMemo(() => {
+    const c = p.compare;
+    if (!c || !groundAt) return c;
+    const cp = heightPlan({ mode: p.heightMode, terrain: p.layers.terrain, groundReady: true, zGround: c.zGround,
+      realHeights: hasRealHeights(c.lanes.positions, groundAt), exaggeration: p.exaggeration });
+    return cp.drape ? drapeRender(c, groundAt, cp.drape).render : c;
+  }, [p.compare, p.layers.terrain, groundAt, p.heightMode, p.exaggeration]);
+  // the lift's probe: ground heights (never road heights) under the lanes, wherever the lift applies
+  const probe = useMemo(() => (draped ? draped.probe : plan.liftFromGround && p.render && groundAt ? groundProbe(p.render.lanes.positions, groundAt) : null),
+  [draped, plan.liftFromGround, p.render, groundAt]);
   useEffect(() => {
-    probeRef.current = draped?.probe ?? absoluteProbe;
+    probeRef.current = probe;
     mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
-  }, [draped, absoluteProbe]);
+  }, [probe]);
   // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
   const absoluteOff = useMemo(() => {
     const r = p.render;
     if (!p.layers.terrain || !r || !groundAt || p.heightMode !== "absolute") return null;
-    const L = r.lanes.positions, nv = L.length / 3, step = Math.max(1, Math.floor(nv / 1000)), g: number[] = [];
-    for (let v = 0; v < nv; v += step) { const h = groundAt(L[3 * v], L[3 * v + 1]); if (Number.isFinite(h)) g.push(h); }
-    if (!g.length) return null;
-    g.sort((a, b) => a - b);
-    const ground = g[g.length >> 1];
-    return Math.abs(ground - r.zGround) > 25 ? { ground, road: r.zGround } : null;
+    const ground = medianGround(r.lanes.positions, groundAt);
+    return ground !== null && Math.abs(ground - r.zGround) > NO_GROUND_LEVEL ? { ground, road: r.zGround } : null;
   }, [p.render, p.layers.terrain, groundAt, p.heightMode]);
-
-  // height: z' = (z - base) * exaggeration, applied as a model matrix (positions keep the file's heights); draped
-  // positions already hold heights above sea level: scaled with the terrain's exaggeration and lifted above it
-  // absolute heights need a ground: without terrain the map is a flat plane at 0 m, and a network 500 m or 2.6 km above
-  // sea level would float out of view above the camera. Then they are drawn from the road level, as in relative mode
-  // (height differences kept), and the map says so
-  const noGroundForAbsolute = !p.layers.terrain && p.heightMode === "absolute" && !!p.render && Math.abs(p.render.zGround) > 25;
-  const modelMatrix = useMemo(() => {
-    if (draped) return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, p.exaggeration, 0, 0, 0, lift, 1]);
-    const r = p.render;
-    const ex = p.heightMode === "flat" ? 0 : p.exaggeration;
-    const base = (p.heightMode === "relative" && r && !absoluteView) || noGroundForAbsolute ? r!.zGround : 0;
-    const up = p.heightMode === "flat" ? 0.05 : absoluteProbe ? lift : 0; // a display offset only: heights stay the file's
-    return new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, ex, 0, 0, 0, -base * ex + up, 1]);
-  }, [p.render, p.heightMode, p.exaggeration, draped, lift, absoluteProbe, absoluteView, noGroundForAbsolute]);
-  // surfaces that lie on each other (terrain, junction area, lanes, marks, outlines) keep their file heights and are drawn
-  // in this order by depth bias (polygon offset): rendering only, nothing is moved
-  const bias = (k: number) => ({ depthBias: -k, depthBiasSlopeScale: -k });
+  const noGroundForAbsolute = plan.noGround;
+  // z' = (z - base) * scale + lift as a model matrix: positions keep the file's heights (draped ones hold heights above
+  // sea level); the lift is the measured terrain detail difference, applied over terrain only
+  // dev builds: window.odrvAudit() measures the drawn lanes against the drawn terrain in the current view (docs/ACCURACY.md §5)
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    (window as unknown as { odrvAudit?: () => unknown }).odrvAudit = () => {
+      const map = mapRef.current, r = draped?.render ?? p.render;
+      if (!map || !r || !map.getTerrain()) return { error: "open a network and turn Terrain on" };
+      const b = map.getBounds(), L = r.lanes.positions, d: number[] = [];
+      for (let v = 0; v < L.length / 3; v++) {
+        const lon = L[3 * v], lat = L[3 * v + 1];
+        if (lon < b.getWest() || lon > b.getEast() || lat < b.getSouth() || lat > b.getNorth()) continue;
+        const t = map.queryTerrainElevation([lon, lat]);
+        if (t !== null) d.push(drawnZ(plan, L[3 * v + 2], lift) - t);
+      }
+      if (!d.length) return { error: "no lane in view" };
+      const s = [...d].sort((x, y) => x - y), a = d.map(Math.abs).sort((x, y) => x - y), q = (arr: number[], f: number) => +arr[Math.floor(f * (arr.length - 1))].toFixed(3);
+      return { lanePoints: d.length, zoom: +map.getZoom().toFixed(2), lift: +lift.toFixed(3), plan, median: q(s, 0.5), p5: q(s, 0.05), p95: q(s, 0.95), p95abs: q(a, 0.95) };
+    };
+  }, [draped, p.render, plan, lift]);
+  const modelMatrix = useMemo(() => new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, plan.scale, 0, 0, 0,
+    -plan.base * plan.scale + (plan.liftFromGround ? lift : 0), 1]), [plan, lift]);
 
   const layers = useMemo(() => {
     const r = draped?.render ?? p.render;
@@ -489,7 +476,7 @@ export default function MapView(p: MapViewProps) {
         // junction areas under the lanes: exact boundaries solid, approximate hulls dashed and fainter
         const jData = { length: nj, startIndices: sub(J.starts, nj), attributes: { getPolygon: { value: J.positions, size: 3 } } };
         out.push(new SolidPolygonLayer({
-          id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, parameters: bias(1), opacity: p.roadOpacity,
+          id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, parameters: depthBias("junctions"), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) =>
             index === p.selectedJunction ? [30, 155, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
           updateTriggers: { getFillColor: [p.selectedJunction] },
@@ -501,7 +488,7 @@ export default function MapView(p: MapViewProps) {
           id: "lanes",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPolygon: { value: L.positions, size: 3 } } },
           _normalize: false, _full3d: true, extruded: false, pickable: true, autoHighlight: true,
-          highlightColor: [255, 255, 255, 60], modelMatrix, parameters: bias(2), opacity: p.roadOpacity,
+          highlightColor: [255, 255, 255, 60], modelMatrix, parameters: depthBias("lanes"), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) => laneColor(L.meta[index], p.theme, index === p.selectedLane),
           updateTriggers: { getFillColor: [p.theme, p.selectedLane] },
         }));
@@ -509,21 +496,21 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "lane-borders",
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPath: { value: L.positions, size: 3 } } },
-          _pathType: "loop", getColor: p.theme === "dark" ? [0, 0, 0, 90] : [40, 44, 52, 70], getWidth: 1, widthUnits: "pixels", modelMatrix, parameters: bias(4),
+          _pathType: "loop", getColor: p.theme === "dark" ? [0, 0, 0, 90] : [40, 44, 52, 70], getWidth: 1, widthUnits: "pixels", modelMatrix, parameters: depthBias("lane-borders"),
         }));
       // driving direction (1.8.0 §11.2.1): flat arrows on the traffic lanes, over the lanes and under the marks' outlines
       const A = r.arrows, na = A.meta.length;
       if (p.layers.directions && p.layers.lanes && na)
         out.push(new SolidPolygonLayer({
           id: "lane-directions", data: { length: na, startIndices: sub(A.starts, na), attributes: { getPolygon: { value: A.positions, size: 3 } } },
-          _full3d: true, modelMatrix, parameters: bias(3), getFillColor: [245, 247, 250, 200],
+          _full3d: true, modelMatrix, parameters: depthBias("lane-directions"), getFillColor: [245, 247, 250, 200],
         }));
       const M = r.marks, nm = M.meta.length;
       if (p.layers.marks && nm)
         out.push(new PathLayer({
           id: "marks",
           data: { length: nm, startIndices: sub(M.starts, nm), attributes: { getPath: { value: M.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "meters", widthMinPixels: 1, modelMatrix, parameters: bias(4),
+          _pathType: "open", widthUnits: "meters", widthMinPixels: 1, modelMatrix, parameters: depthBias("marks"),
           getWidth: (_: unknown, { index }: { index: number }) => M.meta[index].width,
           getColor: (_: unknown, { index }: { index: number }) => M.meta[index].color,
           // dash pattern in metres -> multiples of the line width (PathStyleExtension units)
@@ -538,7 +525,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "junction-outlines",
           data: { length: nj, startIndices: sub(J.starts, nj), attributes: { getPath: { value: J.positions, size: 3 } } },
-          _pathType: "loop", widthUnits: "pixels", modelMatrix, parameters: bias(6),
+          _pathType: "loop", widthUnits: "pixels", modelMatrix, parameters: depthBias("junction-outlines"),
           getWidth: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? 3.5 : 2.2),
           getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? [30, 155, 255, 255] : [245, 184, 74, 230]),
           getDashArray: (_: unknown, { index }: { index: number }) => (J.meta[index].exact ? [0, 0] : [4, 3]),
@@ -552,17 +539,17 @@ export default function MapView(p: MapViewProps) {
         const n2 = G.refLines.meta.length, nl = G.lines.meta.length, np = G.points.meta.length;
         if (nl) out.push(new PathLayer({
           id: "junction-grid", data: { length: nl, startIndices: sub(G.lines.starts, nl), attributes: { getPath: { value: G.lines.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 1, getColor: [80, 220, 200, 200], pickable: true, modelMatrix, parameters: bias(6),
+          _pathType: "open", widthUnits: "pixels", getWidth: 1, getColor: [80, 220, 200, 200], pickable: true, modelMatrix, parameters: depthBias("junction-grid"),
         }));
         if (np) out.push(new ScatterplotLayer({
           id: "junction-grid-points", data: { length: np, attributes: { getPosition: { value: G.points.positions, size: 3 } } },
           getRadius: 2.5, radiusUnits: "pixels", getFillColor: [80, 220, 200, 255], stroked: true, getLineColor: [10, 16, 23, 255],
-          lineWidthUnits: "pixels", getLineWidth: 1, pickable: true, modelMatrix, parameters: bias(6),
+          lineWidthUnits: "pixels", getLineWidth: 1, pickable: true, modelMatrix, parameters: depthBias("junction-grid-points"),
         }));
         // the reference line last: the grid's centre points lie on it
         out.push(new PathLayer({
           id: "junction-ref-lines", data: { length: n2, startIndices: sub(G.refLines.starts, n2), attributes: { getPath: { value: G.refLines.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 3, getColor: [235, 64, 52, 255], pickable: true, modelMatrix, parameters: bias(6),
+          _pathType: "open", widthUnits: "pixels", getWidth: 3, getColor: [235, 64, 52, 255], pickable: true, modelMatrix, parameters: depthBias("junction-ref-lines"),
           getDashArray: [6, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       }
@@ -571,20 +558,20 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "refs",
           data: { length: nr, startIndices: sub(R.starts, nr), attributes: { getPath: { value: R.positions, size: 3 } } },
-          _pathType: "open", getColor: [232, 76, 255, 220], getWidth: 1.5, widthUnits: "pixels", modelMatrix, parameters: bias(5),
+          _pathType: "open", getColor: [232, 76, 255, 220], getWidth: 1.5, widthUnits: "pixels", modelMatrix, parameters: depthBias("refs"),
         }));
       const O = r.objects, no = O.meta.length;
       if (p.layers.objects && no)
         out.push(new SolidPolygonLayer({
           id: "objects",
           data: { length: no, startIndices: sub(O.starts, no), attributes: { getPolygon: { value: O.positions, size: 3 } } },
-          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, parameters: bias(3), opacity: p.roadOpacity,
+          _full3d: true, getFillColor: [255, 255, 255, 150], modelMatrix, parameters: depthBias("objects"), opacity: p.roadOpacity,
         }));
       const OL = r.objectLines, nol = OL.meta.length;
       if (p.layers.objects && nol)
         out.push(new PathLayer({
           id: "object-lines", data: { length: nol, startIndices: sub(OL.starts, nol), attributes: { getPath: { value: OL.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 2, getColor: [196, 160, 90, 255], pickable: true, modelMatrix, parameters: bias(5),
+          _pathType: "open", widthUnits: "pixels", getWidth: 2, getColor: [196, 160, 90, 255], pickable: true, modelMatrix, parameters: depthBias("object-lines"),
         }));
       // road furniture in 3D (signals, objects), bridges / tunnels and cross paths (xodr/features.ts)
       const F = r.features, selF = p.selectedFeature;
@@ -594,7 +581,7 @@ export default function MapView(p: MapViewProps) {
         const S = F.structures, ns = S.meta.length;
         out.push(new SolidPolygonLayer({
           id: "structures", data: { length: ns, startIndices: sub(S.starts, ns), attributes: { getPolygon: { value: S.positions, size: 3 } } },
-          _normalize: false, extruded: true, pickable: true, modelMatrix, parameters: bias(5), wireframe: true,
+          _normalize: false, extruded: true, pickable: true, modelMatrix, parameters: depthBias("structures"), wireframe: true,
           getElevation: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? 4.5 : 0.05),
           getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? [30, 155, 255, 120] : S.meta[index].tunnel ? [110, 112, 122, 70] : [70, 130, 230, 70]),
           getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? [90, 92, 100, 220] : [70, 130, 230, 230]),
@@ -605,7 +592,7 @@ export default function MapView(p: MapViewProps) {
         const X = F.crossPaths, nx = X.meta.length;
         out.push(new PathLayer({
           id: "cross-paths", data: { length: nx, startIndices: sub(X.starts, nx), attributes: { getPath: { value: X.positions, size: 3 } } },
-          _pathType: "open", widthUnits: "pixels", getWidth: 2.5, getColor: [0, 205, 255, 235], pickable: true, modelMatrix, parameters: bias(5),
+          _pathType: "open", widthUnits: "pixels", getWidth: 2.5, getColor: [0, 205, 255, 235], pickable: true, modelMatrix, parameters: depthBias("cross-paths"),
           getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
       }
@@ -662,11 +649,11 @@ export default function MapView(p: MapViewProps) {
       const nl = C.lanes.meta.length, nr = C.refs.meta.length;
       out.push(new PathLayer({
         id: "cmp-lanes", data: { length: nl, startIndices: sub(C.lanes.starts, nl), attributes: { getPath: { value: C.lanes.positions, size: 3 } } },
-        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 235], modelMatrix, parameters: bias(6),
+        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 235], modelMatrix, parameters: depthBias("cmp-lanes"),
       }));
       if (nr) out.push(new PathLayer({
         id: "cmp-refs", data: { length: nr, startIndices: sub(C.refs.starts, nr), attributes: { getPath: { value: C.refs.positions, size: 3 } } },
-        _pathType: "open", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 255], modelMatrix, parameters: bias(6),
+        _pathType: "open", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 255], modelMatrix, parameters: depthBias("cmp-refs"),
         getDashArray: [4, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
       }));
     }

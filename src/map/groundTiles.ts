@@ -10,7 +10,7 @@ import type { Projector } from "../xodr/geo";
 export const GROUND_PROTOCOL = "odrv-ground";
 const DIM = 256;
 
-interface Active { grid: GroundGrid; proj: Projector; bbox: [number, number, number, number]; }
+export interface Active { grid: GroundGrid; proj: Projector; bbox: [number, number, number, number]; }
 let active: Active | null = null;
 
 /** lon / lat box of the grid (its corners and edge midpoints projected), padded by a cell */
@@ -21,9 +21,11 @@ function gridBox(g: GroundGrid, proj: Projector): [number, number, number, numbe
   return [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
 }
 
+export const activeGrid = (grid: GroundGrid, proj: Projector): Active => ({ grid, proj, bbox: gridBox(grid, proj) });
+
 /** the grid tiles are drawn from (null: Terrarium only); a new grid needs a new source url (tiles are cached by url) */
 export function setGroundGrid(grid: GroundGrid | null, proj: Projector | null) {
-  active = grid && proj ? { grid, proj, bbox: gridBox(grid, proj) } : null;
+  active = grid && proj ? activeGrid(grid, proj) : null;
 }
 
 /** finest tile zoom worth rendering for a grid: pixels about the grid cell, at most z17 */
@@ -98,7 +100,11 @@ export function encodeTerrarium(h: Float32Array): Uint8ClampedArray {
 
 /** heights at the pixel centres of tile z/x/y: grid (blended at its edge) over Terrarium */
 export async function groundTileHeights(z: number, x: number, y: number, a: Active): Promise<Float32Array> {
-  const base = await terrariumAt(z, x, y);
+  return groundTileFromBase(z, x, y, a, await terrariumAt(z, x, y));
+}
+
+/** the pure part: grid heights (blended into `base` at the grid edge) at the pixel centres of tile z/x/y */
+export function groundTileFromBase(z: number, x: number, y: number, a: Active, base: Float32Array): Float32Array {
   // the projection is locally affine at tile scale: project a 17 x 17 lattice and interpolate between its points
   const L = 16, gx = new Float64Array((L + 1) ** 2), gy = new Float64Array((L + 1) ** 2);
   for (let b = 0; b <= L; b++)

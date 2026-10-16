@@ -73,6 +73,16 @@ export function groundHeight(g: GroundGrid, x: number, y: number, fallback: () =
   return f + (h - f) * s;
 }
 
+/**
+ * the ground grids next to a network on the review server, in the order the viewer tries them: the converter's
+ * road-conformed grid (road surface under the paved width, blended to the DEM) before the plain DEM grid, each for the
+ * page name and for the area name (the page without "_standard")
+ */
+export function groundGridFiles(page: string): string[] {
+  const stem = page.replace(/_standard$/, "");
+  return [...new Set([`${page}_ground_conformed.odrz`, `${stem}_ground_conformed.odrz`, `${page}_ground.odrz`, `${stem}_ground.odrz`])];
+}
+
 /** fetch with progress (bytes received / total when the server says) */
 export async function fetchGrid(url: string, onProgress?: (got: number, total: number) => void, signal?: AbortSignal): Promise<GroundGrid | null> {
   const r = await fetch(url, { cache: "no-store", signal });
