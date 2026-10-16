@@ -7,6 +7,7 @@ import { evalRoad } from "./geometry";
 import { laneBorders, laneOffsetAt, sectionIndex, surfaceZ } from "./lanes";
 import { sampleS } from "./build";
 import type { OpenDrive, Road, RoadObject, Signal } from "./model";
+import { ASSET, TREE } from "../design/scene";
 
 export interface FeatureRef { kind: "signal" | "object" | "structure" | "crossPath"; road: number; index: number; }
 export type Rgba = [number, number, number, number];
@@ -176,13 +177,30 @@ export class FeatureBuilder {
     this.single(o, q.x, q.y, q.hdg + o.hdg, q.z + o.zOffset, o.height, o.width, o.length, ref);
   }
 
+  /**
+   * the logo's tree (docs/design-system.md §8, design/scene.ts TREE): a top lobe of radius .64r centred .64r below the
+   * height h over three side lobes (.53r, .47r out at 120° from the object's heading, .55r lower), each a stepped
+   * low-poly sphere of three columns; a trunk of radius .14r from the ground to the top lobe's centre. r = the file's
+   * radius (crown half-width), h = its height; from above the four lobe discs make a trefoil
+   */
+  private tree(x: number, y: number, hdg: number, z: number, h: number, r: number, ref: FeatureRef) {
+    const lobe = (cx: number, cy: number, cz: number, rho: number) => {
+      for (const sl of TREE.slices) this.column(cx, cy, cz + sl.from * rho, sl.radius * rho, (sl.to - sl.from) * rho, ASSET.crown, ref);
+    };
+    const topZ = z + h - TREE.top.below * r, side = TREE.side;
+    this.column(x, y, z, TREE.trunk.radius * r, topZ - z, ASSET.trunk, ref);
+    lobe(x, y, topZ, TREE.top.radius * r);
+    for (let k = 0; k < side.count; k++) {
+      const a = hdg + (2 * Math.PI * k) / side.count;
+      lobe(x + side.out * r * Math.cos(a), y + side.out * r * Math.sin(a), topZ - side.drop * r, side.radius * r);
+    }
+  }
+
   /** one object at (x, y): trees, poles / lamps, and sized cylinders or boxes for everything else */
   private single(o: RoadObject, x: number, y: number, hdg: number, z: number, height: number, width: number, length: number, ref: FeatureRef) {
     const type = o.type.toLowerCase(), sub = o.subtype.toLowerCase();
     if (type === "tree" || type === "vegetation") {
-      const h = height > 0 ? height : 6, r = o.radius > 0 ? o.radius : 1.5;
-      this.column(x, y, z, Math.max(0.12, r * 0.1), h * 0.45, C.trunk, ref);
-      this.column(x, y, z + h * 0.35, r, h * 0.65, C.crown, ref);
+      this.tree(x, y, hdg, z, height > 0 ? height : TREE.defaults.height, o.radius > 0 ? o.radius : TREE.defaults.crown, ref);
     } else if (type === "pole" || type === "streetlamp" || sub === "streetlamp") {
       const h = height > 0 ? height : 6;
       this.column(x, y, z, o.radius > 0 ? Math.min(o.radius, 0.2) : 0.1, h, C.pole, ref);

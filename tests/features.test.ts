@@ -68,10 +68,13 @@ describe("road furniture (xodr/features.ts)", () => {
     expect(od.roads[0].structures.map((x) => x.kind)).toEqual(["bridge", "tunnel"]);
     expect(od.controllers[0].controls[0].signalId).toBe("L");
   });
-  it("a tree is a trunk and a crown of its radius, together its height", () => {
+  it("a tree is the logo's tree: a trunk and four lobes of three slices, within its radius and height", () => {
     const tree = cols.filter((c) => c.kind === "object" && c.index === 0);
-    expect(tree).toHaveLength(2);
-    expect(Math.max(...tree.map((c) => c.radius))).toBe(2);
+    expect(tree).toHaveLength(1 + 4 * 3);
+    expect(Math.max(...tree.map((c) => c.radius))).toBeCloseTo(0.64 * 2, 2); // top lobe .64r, r = the file's 2 m
+    const trunk = tree.reduce((a, b) => (a.radius < b.radius ? a : b));
+    expect(trunk.radius).toBeCloseTo(0.14 * 2, 2);
+    expect(trunk.h).toBeCloseTo(8 - 0.64 * 2, 5); // ground to the top lobe's centre, h = the file's 8 m
   });
   it("a continuous guard rail is cut into pieces of at most 2 m along its 10 m", () => {
     expect(F.boxes.meta.filter((m) => m.kind === "object" && m.index === 1)).toHaveLength(5);

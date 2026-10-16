@@ -150,7 +150,8 @@ export default function App() {
     groundTried.current = net;
     let done = false;
     (async () => {
-      for (const file of [...new Set([`${net.page}_ground.odrz`, `${stem}_ground.odrz`])]) {
+      // the road-conformed grid (road surface under the paved width, blended to the DEM) when the converter wrote one
+      for (const file of [...new Set([`${net.page}_ground_conformed.odrz`, `${stem}_ground_conformed.odrz`, `${net.page}_ground.odrz`, `${stem}_ground.odrz`])]) {
         try {
           const grid = await fetchGrid(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}`, (got, total) =>
             setGroundLoading(`Loading the ground grid ${file}: ${(got / 1e6).toFixed(0)}${total ? ` / ${(total / 1e6).toFixed(0)}` : ""} MB`), ac.signal);
