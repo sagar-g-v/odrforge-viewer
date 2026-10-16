@@ -209,8 +209,8 @@ are deliberately close (a junction lane is a driving lane), and the junction-are
 |---|---|---|---|---|
 | selected lane/junction/feature | `#1e9bff` (was `#5aa9ff`) | ✔ | ✔ | ✔ |
 | junction area fill / outline | `#f5b84a` at α .28 / 1 | ✔ | ✔ | ✔ |
-| cross path (dashed) | `#00cdff` | ✔ | ✔ | ✔ |
-| junction reference line (dashed) | `#eb4034` | ✔ | ✔ | ✔ |
+| cross path (dashed) | `#00e5ff` (was `#00cdff`: ΔE 16.7 from the sky info markers) | ✔ | ✔ | ✔ |
+| junction reference line (dashed) | `#ff4d00` vermilion (was `#eb4034`: ΔE 16.1 from error findings) | ✔ | ✔ | ✔ |
 | elevation grid | `#50dcc8` | ✔ | ✔ | ✔ |
 | **compare B outlines** | `#ff40c8` magenta | ✔ | ✔ | ✔ |
 | building footprint / outline | `#ffb347` α .28 / `#ff9f1c` | ✔ | ✔ | ✔ |
@@ -402,3 +402,29 @@ outlined or bare text on the map.
 9. compare B
 10. labels
 11. review markers (flags above findings, always on top: `depthCompare: always`)
+
+## 9. Enforced by tests
+
+The contract above is checked, not only written. `tests/design.test.ts` computes it from the sources the app uses
+(`src/design/tokens.css`, `src/map/palette.ts`, `src/design/scene.ts`) and fails below these limits. **Do not lower a limit
+to make a change pass.** Change the colour, or bring new evidence and update this section, `docs/ACCURACY.md` §7 and the
+test in the same commit.
+
+| Rule | Limit | Measured |
+|---|---|---|
+| Text, accent and semantic colours on bg, surface, surface-2 and surface-3, in both themes | ≥ 4.5:1 | tightest: light `--err` on surface-3, 4.65 |
+| Chips (`--x` on `--x-soft`), inks on their fills, top-bar ink on the sky, the active segment (`--topbar-on-ink` on `--topbar-on`) | ≥ 4.5:1 | tightest: light err chip, 4.68 |
+| `--line-strong` on surface and surface-2; `--focus` on bg, surface and surface-2 | ≥ 3:1 | tightest: dark line-strong on surface-2, 3.52 |
+| `palette.ts` draws exactly the `--lane-*` colours | equal | n/a |
+| Closest lane pair, dark set: normal / deuteranopia / protanopia / tritanopia | ΔE ≥ 12.5 / 12.5 / 12.5 / 9.5 | 12.9 / 12.8 / 13.0 / 9.9 |
+| Closest lane pair, light set | ΔE ≥ 9.5 / 9.5 / 9.5 / 6.5 | 10.1 / 10.0 / 10.2 / 7.0 |
+| Different overlay meanings (selection, junction, cross path, reference line, elevation, compare, flag and finding states) | ΔE ≥ 20, except the documented shares* | closest: selected / question 25.6 |
+| Compare magenta against every lane, overlay, marker and signal colour | ΔE ≥ 30 | n/a |
+| Cross-path cyan against the same | ΔE ≥ 25 | vs elevation teal 25.1 |
+| Selection against every lane colour and overlay; `palette.ts` and `scene.ts` agree | ΔE ≥ 25 | 25.6 |
+| 2D sign and object dots against every finding colour | ΔE ≥ 20 | n/a |
+
+\* The documented shares: amber for junction areas and open flags; the attention family (open flag, warning finding);
+sky for question flags and info findings.
+
+`DESIGN_REPORT=1 npx vitest run tests/design.test.ts --silent=false` prints the measured numbers.

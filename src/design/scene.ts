@@ -60,8 +60,8 @@ export const OVERLAY = {
   selected: [30, 155, 255, 255] as Rgba, //          #1e9bff
   hover: [255, 255, 255, 60] as Rgba, //             deck autoHighlight
   junctionFill: [245, 184, 74, 70] as Rgba, junctionFillApprox: [245, 184, 74, 38] as Rgba, junctionEdge: [245, 184, 74, 230] as Rgba,
-  crossPath: [0, 205, 255, 235] as Rgba,
-  junctionRef: [235, 64, 52, 255] as Rgba,
+  crossPath: [0, 229, 255, 235] as Rgba, //   #00e5ff
+  junctionRef: [255, 77, 0, 255] as Rgba, // vermilion #ff4d00
   elevation: [80, 220, 200, 255] as Rgba, elevationLine: [80, 220, 200, 200] as Rgba,
   compare: [255, 64, 200, 235] as Rgba, //           magenta: comparison B only
   buildingFill: "#ffb347", buildingEdge: "#ff9f1c",

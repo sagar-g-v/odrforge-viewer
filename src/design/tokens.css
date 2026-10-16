@@ -46,8 +46,8 @@
   /* ---------- map data colours (same in both themes; tuned for OSM raster, satellite and the dark vector map) ---------- */
   --data-selected: #1e9bff;        /* selected lane / junction / feature */
   --data-junction: #f5b84a;        /* junction <boundary> fill (alpha .28) and outline */
-  --data-crosspath: #00cdff;       /* junction cross path, dashed */
-  --data-junction-ref: #eb4034;    /* junction reference line, dashed */
+  --data-crosspath: #00e5ff;       /* junction cross path, dashed */
+  --data-junction-ref: #ff4d00;    /* junction reference line, dashed */
   --data-elevation: #50dcc8;
   --data-junction-fill: rgba(245, 184, 74, .28);       /* elevation grid */
   --data-compare: #ff40c8;         /* comparison B outlines (magenta, used nowhere else) */
@@ -75,6 +75,7 @@
   --topbar-start: var(--sky-night-1); --topbar-end: var(--sky-night-2); --topbar-ink: var(--haze-snow); --topbar-ink-soft: rgba(232, 241, 251, .74);
   --topbar-glass: rgba(232, 241, 251, .10); --topbar-glass-hover: rgba(232, 241, 251, .18); --topbar-glass-line: rgba(232, 241, 251, .24);
   --horizon: var(--meadow-500);
+  --topbar-on: #ffffff; --topbar-on-ink: var(--sky-600); /* the active segment on the bar: white with sky text in both themes */
   --backdrop: rgba(4, 8, 14, .58);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 6px rgba(0, 0, 0, .25);
   --shadow: 0 10px 30px rgba(0, 0, 0, .45);
@@ -99,6 +100,7 @@
   --topbar-start: var(--sky-zenith); --topbar-end: var(--sky-600); --topbar-ink: #ffffff; --topbar-ink-soft: rgba(255, 255, 255, .80);
   --topbar-glass: rgba(255, 255, 255, .14); --topbar-glass-hover: rgba(255, 255, 255, .22); --topbar-glass-line: rgba(255, 255, 255, .30);
   --horizon: var(--meadow-500);
+  --topbar-on: #ffffff; --topbar-on-ink: var(--sky-600);
   --backdrop: rgba(15, 34, 54, .38);
   --shadow-sm: 0 1px 2px rgba(15, 34, 54, .08), 0 2px 6px rgba(15, 34, 54, .06);
   --shadow: 0 10px 30px rgba(15, 34, 54, .16);
