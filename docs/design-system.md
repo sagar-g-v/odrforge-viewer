@@ -2,7 +2,8 @@
 
 Status: **proposal for review**. The app is not restyled yet. `src/design/tokens.css` exists but nothing imports it.
 
-- Figma library: https://www.figma.com/design/u5MEzgyVJr6K5EGnJ3oQ5t (Starter plan draft, owner sagar_goruru_gst's team)
+- Figma library: https://www.figma.com/design/4XVC3fKkAl3bJMRh8GeY1C (Starter plan, venky s's team)
+- Logo: [`docs/brand/logo-mark.svg`](brand/logo-mark.svg) (one colour, `currentColor`) and [`docs/brand/logo-tile.svg`](brand/logo-tile.svg) (app tile / favicon)
 - Tokens: [`src/design/tokens.css`](../src/design/tokens.css)
 
 ## 1. Rationale
@@ -11,7 +12,13 @@ The viewer is a review tool that sits on a map. The map, the lanes and the findi
 around them should stay quiet: low-contrast surfaces, one accent, and colour only where it means something.
 
 The identity comes from a calm landscape: a sky that runs from deep to pale blue, soft white clouds, a single dark tree and
-a bright yellow-green meadow.
+a bright yellow-green meadow. The landscape shows in three places:
+
+- **The top bar is the sky.** It is a zenith-to-sky gradient by day and the night sky in dark mode, with a 3px meadow-green
+  **horizon line** under it. This is the one literal quote of the image.
+- **Surfaces are tinted by the sky.** Light-theme surfaces are clouds over horizon haze (`#e8f2fb`). Dark-theme surfaces are
+  the night zenith (`#06112a`). Neither theme uses plain grey.
+- **Sky and meadow are the two brand colours.** Sky is the accent and meadow is the secondary. The logo uses them in one colour.
 
 | Reference area      | Sampled | Becomes |
 |---------------------|---------|---------|
@@ -28,7 +35,7 @@ How these become UI roles:
 
 - **Primary (sky)** is used for selection, focus, the active segment and tab, links and the primary button.
 - **Secondary (meadow)** is used sparingly for "good/added/fixed" moments and brand accents. It never competes with the accent.
-- **Neutrals (haze)** are cool greys with a slight sky bias: cloud-white by day, a night-sky blue-black by night.
+- **Neutrals (haze)** are visibly sky-tinted: the horizon haze by day and the night zenith by night.
 - **Semantic colours** are leaf (ok), sun (warn), clay (error) and sky (info). Each has a text-safe foreground and a soft tint for chips and banners.
 
 ## 2. Colour tokens
@@ -39,65 +46,87 @@ All ratios are WCAG 2.x contrast ratios. The AA thresholds are 4.5:1 for text an
 
 | Token | Value | Notes / contrast |
 |---|---|---|
-| `--bg` | `#f3f6f9` | app background |
+| `--bg` | `#e8f2fb` | app background (horizon haze) |
 | `--surface` | `#ffffff` | panel, top bar, drawer, dialog |
-| `--surface-2` | `#f6f8fb` | inputs, cards, list items |
-| `--surface-3` | `#eaeff4` | hover, code, neutral chip |
-| `--line` | `#dbe3ea` | dividers (decorative) |
-| `--line-2` | `#c3cfda` | card / segment borders (decorative) |
-| `--line-strong` | `#7d8fa1` | **input & checkbox borders: 3.33:1 on surface, 3.13:1 on surface-2** |
-| `--text` | `#14202c` | 16.5:1 on surface, 14.3:1 on surface-3 |
-| `--muted` | `#556372` | 6.15:1 on surface, 5.32:1 on surface-3 |
-| `--accent` | `#0a65c2` | 5.75:1 on surface; white text on it 5.75:1 |
+| `--surface-2` | `#f3f8fd` | inputs, cards, list items |
+| `--surface-3` | `#deebf7` | hover, code, neutral chip |
+| `--line` | `#cfdfee` | dividers (decorative) |
+| `--line-2` | `#b2c9df` | card / segment borders (decorative) |
+| `--line-strong` | `#6a8aa8` | **input & checkbox borders: 3.61:1 on surface, 3.38:1 on surface-2** |
+| `--text` | `#0f2236` | 16.1:1 on surface, 13.3:1 on surface-3 |
+| `--muted` | `#45607b` | 6.54:1 on surface, 5.40:1 on surface-3 |
+| `--accent` | `#0a65c2` | 5.75:1 on surface, 4.74:1 on surface-3; white text on it 5.75:1 |
 | `--accent-hover` | `#0857a8` | white on it 7.15:1 |
 | `--accent-soft` | `#e3effb` | selected row tint; text on it 14.2:1 |
-| `--secondary` | `#3f7a16` | 5.24:1 on surface; white on it 5.24:1 |
-| `--ok` / `--ok-soft` | `#2f7a1a` / `#e6f2e0` | 5.36:1 on surface; chip 4.63:1 |
-| `--warn` / `--warn-soft` | `#975400` / `#fbefdc` | 5.86:1; chip 5.16:1 |
+| `--secondary` | `#3a7311` | 5.77:1 on surface, 4.76:1 on surface-3; white on it 5.77:1 |
+| `--ok` / `--ok-soft` | `#2b7317` / `#e6f2e0` | 5.89:1 on surface, 4.86:1 on surface-3; chip 5.09:1 |
+| `--warn` / `--warn-soft` | `#975400` / `#fbefdc` | 5.86:1, 4.84:1 on surface-3; chip 5.16:1 |
 | `--warn-solid` / `--warn-ink` | `#f2b544` / `#2a1a00` | Flag-mode button, 9.2:1 |
-| `--err` / `--err-soft` | `#c42b2b` / `#fbe5e4` | 5.63:1; chip 4.68:1 |
+| `--err` / `--err-soft` | `#c42b2b` / `#fbe5e4` | 5.63:1, 4.65:1 on surface-3; chip 4.68:1 |
 | `--info` / `--info-soft` | `#0a65c2` / `#e3effb` | 5.75:1; chip 4.93:1 |
 | `--focus` | `#0a65c2` | 2px ring, 5.75:1 against surface |
+| `--topbar-start` → `--topbar-end` | `#0b2cc5` → `#0a65c2` | sky gradient; white text 9.6:1 → 5.75:1 |
+| `--topbar-glass` / `-hover` / `-line` | white 14% / 22% / 30% | glass controls on the top bar |
+| `--horizon` | `#79ad32` | 3px line under the top bar (sampled lit meadow) |
 
 ### Dark theme (default)
 
 | Token | Value | Notes / contrast |
 |---|---|---|
-| `--bg` | `#0a1017` | |
-| `--surface` | `#10181f` | |
-| `--surface-2` | `#16202a` | |
-| `--surface-3` | `#1e2a36` | |
-| `--line` / `--line-2` | `#25313e` / `#344352` | decorative |
-| `--line-strong` | `#5f7387` | **3.66:1 on surface, 3.37:1 on surface-2** |
-| `--text` | `#e6edf3` | 15.2:1 on surface, 12.3:1 on surface-3 |
-| `--muted` | `#93a2b1` | 6.86:1 on surface, 5.59:1 on surface-3 |
-| `--accent` | `#5cb6f2` | 8.04:1; ink `#061626` on it 8.2:1 |
+| `--bg` | `#06112a` | night zenith |
+| `--surface` | `#0b1a34` | |
+| `--surface-2` | `#10223f` | |
+| `--surface-3` | `#172c4f` | |
+| `--line` / `--line-2` | `#1e3558` / `#2a4570` | decorative |
+| `--line-strong` | `#5878a6` | **3.84:1 on surface, 3.52:1 on surface-2** |
+| `--text` | `#e8f1fb` | 15.2:1 on surface, 12.2:1 on surface-3 |
+| `--muted` | `#9fb6d0` | 8.32:1 on surface, 6.67:1 on surface-3 |
+| `--accent` | `#5cb6f2` | 7.78:1; ink `#061626` on it 8.2:1 |
 | `--accent-hover` | `#7cc5f5` | ink on it 9.7:1 |
 | `--accent-soft` | `#15324a` | |
-| `--secondary` | `#8cc63f` | 8.75:1; ink `#0d1a05` on it 8.8:1 |
-| `--ok` / `--ok-soft` | `#7cc95a` / `#1b3320` | 8.84:1; chip 6.72:1 |
-| `--warn` / `--warn-soft` | `#f2b544` / `#3a2e14` | 9.78:1; chip 7.25:1 |
-| `--err` / `--err-soft` | `#ff7b70` / `#3d1f22` | 7.10:1; chip 5.87:1 |
-| `--info` / `--info-soft` | `#5cb6f2` / `#15324a` | 8.04:1; chip 5.94:1 |
+| `--secondary` | `#8cc63f` | 8.47:1; ink `#0d1a05` on it 8.8:1 |
+| `--ok` / `--ok-soft` | `#7cc95a` / `#1b3320` | 8.55:1; chip 6.72:1 |
+| `--warn` / `--warn-soft` | `#f2b544` / `#3a2e14` | 9.47:1; chip 7.25:1 |
+| `--err` / `--err-soft` | `#ff7b70` / `#3d1f22` | 6.87:1; chip 5.87:1 |
+| `--info` / `--info-soft` | `#5cb6f2` / `#15324a` | 7.78:1; chip 5.94:1 |
+| `--topbar-start` → `--topbar-end` | `#071a45` → `#0b3170` | night sky; snow text 10.9:1 or more |
 
 ### Primitives
 
 | Ramp | 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900 | 950 |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | sky | `#eef6fc` | `#d9ecf8` | `#aed0e6` | `#7cc5f5` | `#5cb6f2` | `#107cea` | `#0a65c2` | `#0857a8` | `#0b3f78` | `#15324a` | `#0a1b2c` |
-| meadow | `#f2f8ea` | `#e8f2dc` | `#c9e3a4` | `#a8d46e` | `#8cc63f` | `#79ad32` | `#588721` | `#3f7a16` | `#2f4f17` | `#1e3315` | `#121d0d` |
+| meadow | `#f2f8ea` | `#e8f2dc` | `#c9e3a4` | `#a8d46e` | `#8cc63f` | `#79ad32` | `#588721` | `#3a7311` | `#2f4f17` | `#1e3315` | `#121d0d` |
 
-The haze neutrals are `0 #ffffff · 25 #f6f8fb · 50 #f3f6f9 · 100 #eaeff4 · 200 #dbe3ea · 300 #c3cfda · 400 #93a2b1 · 500 #7d8fa1 ·
-600 #5f7387 · 700 #556372 · 750 #344352 · 800 #25313e · 850 #1e2a36 · 900 #16202a · 925 #10181f · 950 #0a1017`, plus ink
-`#14202c` and snow `#e6edf3`.
+The haze neutrals (sky-tinted) are `0 #ffffff · 25 #f3f8fd · 50 #e8f2fb · 100 #deebf7 · 200 #cfdfee · 300 #b2c9df · 400 #9fb6d0 ·
+500 #6a8aa8 · 600 #5878a6 · 700 #45607b · 750 #2a4570 · 800 #1e3558 · 850 #172c4f · 900 #10223f · 925 #0b1a34 · 950 #06112a`, plus
+ink `#0f2236` and snow `#e8f1fb`. The night sky adds `sky-night-1 #071a45` and `sky-night-2 #0b3170`.
 
 The semantic hues are:
 
-- leaf: `100 #e6f2e0 · 400 #7cc95a · 700 #2f7a1a · 900 #1b3320`
+- leaf: `100 #e6f2e0 · 400 #7cc95a · 700 #2b7317 · 900 #1b3320`
 - sun: `100 #fbefdc · 400 #f2b544 · 700 #975400 · 900 #3a2e14`
 - clay: `100 #fbe5e4 · 400 #ff7b70 · 700 #c42b2b · 900 #3d1f22`
 
-The brand gradient (logo mark and empty-state hero only) runs zenith → sky-500 → sky-300 → sky-200.
+Translucent tokens carry their alpha in the value: `--topbar-glass*`, `--topbar-ink-soft`, `--surface-glass`, `--err-line`,
+`--ok-halo`, `--backdrop` and `--data-junction-fill`. Use them instead of `opacity` or `color-mix` on a token. Figma's renderer
+drops paint opacity on variable-bound paints, so the Figma library uses the same alpha-baked variables.
+
+### Logo
+
+The mark is **one colour** that follows the theme. It is a **folded map** (the viewer) with a **road** cut through it
+(OpenDRIVE), a **car** on the road (the networks are built for driving simulation), and the **lone tree** and meadow contours
+from the reference landscape (nature). The tree canopy can also be read as a map pin.
+
+| Use | File | Colour |
+|---|---|---|
+| Mark on surfaces | `docs/brand/logo-mark.svg` | `currentColor` = `--accent` (`#0a65c2` light, `#5cb6f2` dark) |
+| Mark on the top bar | same | `--topbar-ink` (white / snow) |
+| App tile, favicon | `docs/brand/logo-tile.svg` | `--accent` tile with an `--accent-ink` glyph |
+
+The wordmark is "OdrForge" in Inter Bold 15 plus "Viewer" in Inter Medium 15 (muted, or `--topbar-ink-soft` on the top bar),
+with an 8px gap after a 22–24px mark. Keep clear space of 25% of the mark around it. The minimum size is 16px. Do not add
+gradients, outlines or other colours.
 
 ### Adopting the tokens
 
@@ -113,7 +142,8 @@ The brand gradient (logo mark and empty-state hero only) runs zenith → sky-500
 
 To adopt:
 
-1. Import `tokens.css` before `styles.css` and delete the two `:root` blocks there.
+1. Import `tokens.css` before `styles.css` and delete the two `:root` blocks there. Give `.topbar` the sky
+   (`background: var(--topbar-bg); color: var(--topbar-ink); border-bottom: 3px solid var(--horizon)`) and its controls the glass tokens.
 2. Change the input, select and checkbox borders from `--line` to `--line-strong`.
 3. Change chip backgrounds from `color-mix(... 22%)` to `--*-soft`. The light-theme mixes reach only about 4.1:1.
 4. Use `--warn-solid` and `--warn-ink` for `.btn.warn`. In light mode, `--warn` is now a dark amber text colour.
@@ -217,7 +247,7 @@ caps. They inherit `currentColor`. The Figma file draws a matching subset under 
 | Today | Icon | Today | Icon |
 |---|---|---|---|
 | ☰ | `menu` | ⤢ | `scan` / `maximize` |
-| ◆ | brand mark (sky gradient diamond) | ◐ | `sun-moon` |
+| ◆ | logo mark (`docs/brand/logo-mark.svg`) | ◐ | `sun-moon` |
 | ⚑ | `flag` | ✕ | `x` |
 | ▸ | `chevron-right` (rotates 90°) | search | `search` |
 | Map / Satellite | `map` / `globe` | Layers / Flags / Findings / Compare tabs | `layers`, `flag`, `triangle-alert`, `git-compare` |
@@ -235,7 +265,7 @@ Every interactive component has these states:
 
 | Component | Spec |
 |---|---|
-| **Top bar** | 52px high, surface, 1px bottom `--line`, 12px padding, 8px gaps. Left to right: panel toggle (icon button), brand (gradient diamond + "OdrForge" 600 + "Viewer" muted), source group (status dot, server field mono 190px, file select, "Open file…" secondary button), search 220px with a `/` kbd hint, spacer, Map/Satellite segmented, 2D/3D segmented, Flag button (secondary; turns `--warn-solid` "Click the map…" while active), fit icon button, theme icon button. |
+| **Top bar** | 52px high, `--topbar-bg` sky gradient, then a 3px `--horizon` meadow line. 12px padding, 8px gaps. Left to right: panel toggle, logo lockup (white mark + "OdrForge" + "Viewer" at `--topbar-ink-soft`), server field (solid surface, mono, connection dot), file select, "Open file…" glass button, search 220px with a `/` kbd, spacer, Map/Satellite and 2D/3D glass segmented controls (on = white segment with accent text), Flag glass button (`--warn-solid` "Click the map…" while active), fit and theme glass icon buttons. **Glass**: fill `--topbar-glass` (hover `-hover`), 1px `--topbar-glass-line`, text `--topbar-ink`. Focus ring: white with a sky gap. |
 | **Status dot** | 8px circle. Connected: `--ok` with a 3px 25% halo. Error: `--err`. Idle: `--muted`. Always paired with a title or tooltip. |
 | **Input** (server, search, text) | 32px, `--surface-2`, 1px `--line-strong`, radius md, padding 6/10. Hover: border `--muted`. Focus: border `--accent` plus the ring. Error: border `--err` plus help text in `--err`. Disabled: 45%. Search has a 16px search icon at 10px inset and a trailing kbd. |
 | **Select** | As input, with a chevron-down at 10px right inset. Open: border accent. |
@@ -256,7 +286,7 @@ Every interactive component has these states:
 | **Banner** | Top centre over the map, radius 10, elevation 2. Error: err-soft bg + 1px err border + alert icon + Dismiss link. Info/mode: warn-soft + warn border (flag mode: "Click where something is wrong. Esc to stop"). |
 | **Map note** | As banner, 12px text, warn border, max 560px. Used for height/terrain notes. |
 | **Loading pill** | Top centre, radius full, surface, elevation 2, 14px spinner (2px line-2 ring with an accent arc, 0.8s linear) + message. |
-| **Empty / error states** | Centred on the map. A 40px brand-gradient diamond, 22/600 title, muted 13 body (max 520), inline code. Error variant: the server is unreachable, so the body says what to run and includes a "Retry" secondary button. |
+| **Empty / error states** | Centred on the map. A 40px logo mark in accent, 22/600 title, muted 13 body (max 520), inline code. Error variant: the server is unreachable, so the body says what to run and includes a "Retry" secondary button. |
 | **Map controls** | MapLibre group restyled: surface, 1px line, radius md, elevation 1, 32px buttons with Lucide plus, minus and compass icons (the icons replace the CSS-inverted sprites). Scale bar: surface at 80%, muted text, 1px muted border. Attribution and imagery credit: surface at 82%, 11px muted, radius sm. |
 | **Tooltip** | `--text` bg with `--surface` text (inverted), 12px, radius sm, padding 4/8, 6px offset, 400ms delay, no arrow. Shortcuts are shown as kbd. |
 | **File drop overlay** | Full stage: `--backdrop` + 2px blur, a centred card with a 2px dashed accent border, radius lg, upload icon 32px, "Drop a .xodr, an OdrForge page, or checker results". It appears on `dragenter` with files. |
@@ -265,7 +295,7 @@ Every interactive component has these states:
 
 ## 6. Accessibility notes and trade-offs
 
-- **All text and UI-control colours meet WCAG AA in both themes** (tables above). The tightest light-theme pairs are `--ok` on surface-3 (4.63:1) and the ok and secondary chips (4.53–4.63:1). Do not put them on anything darker than surface-3.
+- **All text and UI-control colours meet WCAG AA in both themes** (tables above), including every semantic colour on the hover surface (surface-3). The tightest light-theme pairs are `--err` on surface-3 (4.65:1) and the err chip (4.68:1). Do not put semantic text on anything darker than surface-3. Logo, top bar: white on the sky gradient is 5.75:1 or more, and the accent on a white segment is 5.75:1.
 - Light-theme `--warn` is a **dark amber** (`#975400`) because the familiar `#f5b84a` reaches only 1.8:1 on white. The bright amber is kept as `--warn-solid` for fills, with dark ink on it.
 - `--line` and `--line-2` are decorative and fall below 3:1 on purpose, to keep the chrome quiet. Controls whose boundary identifies them (inputs, selects, checkboxes, segment containers) use `--line-strong`, which is 3:1 or more.
 - Lanes cannot all be colour-blind-safe at 12 categories. The proposal raises the worst case from ΔE 2–5 to 10–13, and the inspector and the hover tooltip always name the lane type.
@@ -278,7 +308,7 @@ Every interactive component has these states:
 The Starter plan allows **3 pages** and **1 mode per variable collection**, so:
 
 - **Variables**
-  - `Primitives`: sky, meadow, haze, leaf, sun, clay, ink. Hidden from pickers.
+  - `Primitives`: sky (incl. zenith, night-1/2), meadow, haze, leaf, sun, clay, ink. Hidden from pickers.
   - `Color / Light` and `Color / Dark`: the same `color/*` names, aliased to the primitives, with code syntax `var(--…)`.
   - `Lanes / Light` and `Lanes / Dark`
   - `Map data`: overlays, flags, findings, marks, signals.
@@ -288,6 +318,6 @@ The Starter plan allows **3 pages** and **1 mode per variable collection**, so:
   variables. On a paid plan, merge each Light/Dark pair into one collection with two modes.
 - **Styles**: text styles (Display, Heading, Body, Label, Mono) and effect styles (Elevation 1/2 × Light/Dark).
 - **Pages**
-  - **Foundations**: palette, semantic tokens in both themes, type, spacing, radius, elevation and motion.
-  - **Components**: every component above, with its variants and states.
-  - **Map data & Patterns**: lane/overlay swatches over OSM-like, satellite-like and dark grounds, plus composed screens (top bar, side panel tabs, inspector, dialog) in light and dark.
+  - **Foundations**: logo (mark, tile, lockups on surface, sky and dark), the colour story sampled from the reference, primitive ramps, semantic tokens in both themes, type, spacing, radius, elevation and motion.
+  - **Components**: icons (28 Lucide-style), Controls (Button 25 variants, Button Small, Icon Button, Input 15, Select, Segment and segmented controls, Tab, Kbd, Link), Side panel (Checkbox Row, Slider Row, Group, Sub-title, Chip, Chip Toggle, Status Dot, Stats Card, Legend Swatch and Row, KV Row, List Item for flag, finding and diff, Finding Group), Overlays (Inspector Drawer, Flag Dialog, Toast, Banner, Map Note, Loading Pill, Empty State, Map Controls, Scale Bar, Attribution, Tooltip, File Drop Overlay), Shell (Topbar Segment, Button, Icon Button and Field, Top Bar, Status Bar, Side Panel).
+  - **Map data & Patterns**: the data colours over OSM, satellite and dark-vector grounds, both lane sets, and the full app screen in light and dark (the dark screen is the light one with every variable rebound to `Color / Dark` and `Lanes / Dark`).

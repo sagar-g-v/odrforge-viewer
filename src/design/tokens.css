@@ -1,5 +1,7 @@
 /* OdrForge Viewer design tokens: "Sky & Meadow".
- * Palette derived from a calm landscape reference (deep-to-pale sky, white clouds, a dark tree, bright meadow).
+ * Palette derived from a calm landscape reference (deep-to-pale sky, white clouds, a dark tree, bright meadow): surfaces are
+ * tinted by the horizon haze (light) or the night zenith (dark), the top bar is the sky with a meadow horizon line.
+ * Logo: docs/brand/logo-mark.svg (currentColor = --accent) and docs/brand/logo-tile.svg.
  * Names match src/styles.css (--bg, --surface, --text, --muted, --accent, --ok, --warn, --err, --info, --line, ...) so the
  * app can adopt this file by importing it before styles.css and deleting the old :root blocks. Not imported yet: review first.
  * Spec, contrast ratios and component specs: docs/design-system.md. Figma library: see the doc. */
@@ -9,15 +11,16 @@
   /* sky: sampled #107cea (upper sky), #69c2e8 (mid sky), #aed0e6 (horizon haze); zenith #0b2cc5 */
   --sky-50: #eef6fc; --sky-100: #d9ecf8; --sky-200: #aed0e6; --sky-300: #7cc5f5; --sky-400: #5cb6f2; --sky-500: #107cea;
   --sky-600: #0a65c2; --sky-700: #0857a8; --sky-800: #0b3f78; --sky-900: #15324a; --sky-950: #0a1b2c; --sky-zenith: #0b2cc5;
+  --sky-night-1: #071a45; --sky-night-2: #0b3170;
   /* meadow: sampled #79ad32 (lit grass), #588721 (foreground), #22341d (tree shadow) */
   --meadow-50: #f2f8ea; --meadow-100: #e8f2dc; --meadow-200: #c9e3a4; --meadow-300: #a8d46e; --meadow-400: #8cc63f; --meadow-500: #79ad32;
-  --meadow-600: #588721; --meadow-700: #3f7a16; --meadow-800: #2f4f17; --meadow-900: #1e3315; --meadow-950: #121d0d;
-  /* haze: cool neutrals with a slight sky bias (clouds by day, night sky by night) */
-  --haze-0: #ffffff; --haze-25: #f6f8fb; --haze-50: #f3f6f9; --haze-100: #eaeff4; --haze-200: #dbe3ea; --haze-300: #c3cfda;
-  --haze-400: #93a2b1; --haze-500: #7d8fa1; --haze-600: #5f7387; --haze-700: #556372; --haze-750: #344352; --haze-800: #25313e;
-  --haze-850: #1e2a36; --haze-900: #16202a; --haze-925: #10181f; --haze-950: #0a1017; --haze-ink: #14202c; --haze-snow: #e6edf3;
+  --meadow-600: #588721; --meadow-700: #3a7311; --meadow-800: #2f4f17; --meadow-900: #1e3315; --meadow-950: #121d0d;
+  /* haze: sky-tinted neutrals: the horizon haze by day, the night zenith by night */
+  --haze-0: #ffffff; --haze-25: #f3f8fd; --haze-50: #e8f2fb; --haze-100: #deebf7; --haze-200: #cfdfee; --haze-300: #b2c9df;
+  --haze-400: #9fb6d0; --haze-500: #6a8aa8; --haze-600: #5878a6; --haze-700: #45607b; --haze-750: #2a4570; --haze-800: #1e3558;
+  --haze-850: #172c4f; --haze-900: #10223f; --haze-925: #0b1a34; --haze-950: #06112a; --haze-ink: #0f2236; --haze-snow: #e8f1fb;
   /* semantic hues */
-  --leaf-100: #e6f2e0; --leaf-400: #7cc95a; --leaf-700: #2f7a1a; --leaf-900: #1b3320;
+  --leaf-100: #e6f2e0; --leaf-400: #7cc95a; --leaf-700: #2b7317; --leaf-900: #1b3320;
   --sun-100: #fbefdc; --sun-400: #f2b544; --sun-700: #975400; --sun-900: #3a2e14; --sun-ink: #2a1a00;
   --clay-100: #fbe5e4; --clay-400: #ff7b70; --clay-700: #c42b2b; --clay-900: #3d1f22;
 
@@ -45,7 +48,8 @@
   --data-junction: #f5b84a;        /* junction <boundary> fill (alpha .28) and outline */
   --data-crosspath: #00cdff;       /* junction cross path, dashed */
   --data-junction-ref: #eb4034;    /* junction reference line, dashed */
-  --data-elevation: #50dcc8;       /* elevation grid */
+  --data-elevation: #50dcc8;
+  --data-junction-fill: rgba(245, 184, 74, .28);       /* elevation grid */
   --data-compare: #ff40c8;         /* comparison B outlines (magenta, used nowhere else) */
   --data-building: #ffb347; --data-building-line: #ff9f1c;
   --data-mark-white: #f5f7fa; --data-mark-yellow: #f5c442; --data-mark-curb: #96989c;
@@ -66,10 +70,15 @@
   --err: var(--clay-400); --err-soft: var(--clay-900);
   --info: var(--sky-400); --info-soft: var(--sky-900);
   --focus: var(--sky-400);
+  --surface-glass: rgba(11, 26, 52, .82); --err-line: rgba(255, 123, 112, .45); --ok-halo: rgba(124, 201, 90, .25);
+  /* top bar: the night sky, with the meadow horizon line */
+  --topbar-start: var(--sky-night-1); --topbar-end: var(--sky-night-2); --topbar-ink: var(--haze-snow); --topbar-ink-soft: rgba(232, 241, 251, .74);
+  --topbar-glass: rgba(232, 241, 251, .10); --topbar-glass-hover: rgba(232, 241, 251, .18); --topbar-glass-line: rgba(232, 241, 251, .24);
+  --horizon: var(--meadow-500);
   --backdrop: rgba(4, 8, 14, .58);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .4), 0 2px 6px rgba(0, 0, 0, .25);
   --shadow: 0 10px 30px rgba(0, 0, 0, .45);
-  --brand-gradient: linear-gradient(180deg, var(--sky-zenith), var(--sky-500) 45%, var(--sky-300) 80%, var(--sky-200));
+  --topbar-bg: linear-gradient(90deg, var(--topbar-start), var(--topbar-end));
   color-scheme: dark;
 }
 
@@ -85,9 +94,15 @@
   --err: var(--clay-700); --err-soft: var(--clay-100);
   --info: var(--sky-600); --info-soft: #e3effb;
   --focus: var(--sky-600);
-  --backdrop: rgba(20, 32, 44, .38);
-  --shadow-sm: 0 1px 2px rgba(20, 32, 44, .08), 0 2px 6px rgba(20, 32, 44, .06);
-  --shadow: 0 10px 30px rgba(20, 32, 44, .16);
+  --surface-glass: rgba(255, 255, 255, .82); --err-line: rgba(196, 43, 43, .45); --ok-halo: rgba(43, 115, 23, .25);
+  /* top bar: the day sky, zenith to sky, with the meadow horizon line */
+  --topbar-start: var(--sky-zenith); --topbar-end: var(--sky-600); --topbar-ink: #ffffff; --topbar-ink-soft: rgba(255, 255, 255, .80);
+  --topbar-glass: rgba(255, 255, 255, .14); --topbar-glass-hover: rgba(255, 255, 255, .22); --topbar-glass-line: rgba(255, 255, 255, .30);
+  --horizon: var(--meadow-500);
+  --backdrop: rgba(15, 34, 54, .38);
+  --shadow-sm: 0 1px 2px rgba(15, 34, 54, .08), 0 2px 6px rgba(15, 34, 54, .06);
+  --shadow: 0 10px 30px rgba(15, 34, 54, .16);
+  --topbar-bg: linear-gradient(90deg, var(--topbar-start), var(--topbar-end));
   color-scheme: light;
 }
 
