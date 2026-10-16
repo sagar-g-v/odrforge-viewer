@@ -29,7 +29,7 @@ export default function App() {
   useEffect(() => { store("odrv.basemap", basemap); }, [basemap]);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
-    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, structures: true, crossPaths: true, buildings: true, terrain: false, flags: true, findings: true,
+    lanes: true, junctions: true, marks: true, borders: false, refs: false, signals: true, objects: true, structures: true, crossPaths: true, grids: false, buildings: true, terrain: false, flags: true, findings: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -186,7 +186,11 @@ export default function App() {
     if (flagMode) { newFlagAt(x, y, s); return; }
     setSel(s);
     setSelF(null);
-    setSelJ(!s && layer === "junctions" && info.index >= 0 ? { index: info.index, x, y } : null);
+    // a junction area, or its reference line / elevation grid
+    const G = net.render.grids;
+    const ji = layer === "junctions" ? info.index : layer === "junction-ref-lines" ? G.refLines.meta[info.index]
+      : layer === "junction-grid" ? G.lines.meta[info.index] : layer === "junction-grid-points" ? G.points.meta[info.index] : -1;
+    setSelJ(!s && ji !== undefined && ji >= 0 ? { index: ji, x, y } : null);
   }, [net, visibleFlags, flagMode, newFlagAt]);
 
   const goRoad = useCallback((q: string) => {

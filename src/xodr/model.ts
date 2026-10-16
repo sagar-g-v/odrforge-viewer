@@ -18,6 +18,14 @@ export interface LaneHeight { s: number; inner: number; outer: number; }
 export interface MarkLine { length: number; space: number; tOffset: number; sOffset: number; width: number; color: string; rule: string; }
 export interface RoadMark { s: number; type: string; color: string; width: number; weight: string; laneChange: string; lines: MarkLine[]; }
 
+/** <userData code value> (1.8.0 §6.11.2), every entry in file order (a code can repeat, e.g. OdrForge's osmWays) */
+export interface UserData { code: string; value: string; }
+/** lane <material> (1.8.0 §11.10.1), <speed> (§11.10.4), <access> (§11.10.2), <rule> (§11.10.5) records */
+export interface LaneMaterial { s: number; surface: string; friction: number; roughness: number; }
+export interface LaneSpeed { s: number; max: number; unit: string; }
+export interface LaneAccess { s: number; rule: string; restriction: string; }
+export interface LaneRule { s: number; value: string; }
+
 export interface Lane {
   id: number; type: string; direction: string; level: boolean;
   widths: Poly3[]; // sOffset relative to the section start (1.8.0 §11.6.1)
@@ -26,6 +34,7 @@ export interface Lane {
   marks: RoadMark[];
   pred: number | null; succ: number | null;
   speed: number | null; // m/s, first <speed> record
+  speeds: LaneSpeed[]; materials: LaneMaterial[]; access: LaneAccess[]; rules: LaneRule[]; userData: UserData[];
 }
 
 export interface LaneSection { s: number; singleSide: boolean; left: Lane[]; right: Lane[]; center: Lane | null; }
@@ -67,7 +76,7 @@ export interface Road {
   elevation: Poly3[]; superelevation: Poly3[]; laneOffset: Poly3[];
   sections: LaneSection[];
   signals: Signal[]; objects: RoadObject[]; structures: Structure[];
-  userData: Record<string, string>;
+  userData: UserData[];
 }
 
 export interface LaneLink { from: number; to: number; }
@@ -83,9 +92,18 @@ export interface CrossPath {
   id: string; crossingRoad: string; roadAtStart: string; roadAtEnd: string;
   startLaneLink: { s: number; from: number; to: number } | null; endLaneLink: { s: number; from: number; to: number } | null;
 }
+/**
+ * <elevationGrid> (1.8.0 §12.11): z-values on a square grid along the junction reference line: row k at
+ * s = sStart + k * gridSpacing, its centre point on the line, left / right points (inside to outside) every gridSpacing
+ * metres along the perpendicular
+ */
+export interface ElevationGrid { gridSpacing: number; sStart: number; rows: { center: number[]; left: number[]; right: number[] }[]; }
 export interface Junction {
   id: string; name: string; type: string; connections: Connection[]; boundary: BoundarySegment[];
   crossPaths: CrossPath[]; priorities: { high: string; low: string }[]; controllers: { id: string; type: string; sequence: string }[];
+  refLine: Geom[]; // <planView> (1.8.0 §12.9): the junction reference line, one <line>
+  elevationGrid: ElevationGrid | null;
+  userData: UserData[];
 }
 /** <controller> (1.8.0 §14.6): signals switched together */
 export interface Controller { id: string; name: string; sequence: string; controls: { signalId: string; type: string }[]; }

@@ -1,8 +1,8 @@
 // OpenDrive model -> compact render buffers (lon, lat, z per vertex) for deck.gl binary layers.
 // Sampling: every element and record boundary, at most 2 m apart, closer on curves (chord error <= 1 cm).
-import { curvatureAt, evalRoad } from "./geometry";
+import { curvatureAt, evalGeom, evalRoad, type Pose } from "./geometry";
 import { laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
-import type { OpenDrive, Road, RoadMark } from "./model";
+import type { Geom, OpenDrive, Road, RoadMark } from "./model";
 import { FeatureBuilder, type Features, type Rgba } from "./features";
 import { boundaryRing, hull, type JunctionMeta } from "./junctions";
 
@@ -23,6 +23,8 @@ export interface RenderData {
   junctions: Binary & { meta: JunctionMeta[] }; // closed outlines: the file's <boundary>, else an approximate hull
   features: Features; // signals, objects, bridges / tunnels, cross paths as 3D shapes
   points: { positions: Float64Array; meta: PointMeta[] };
+  // junction reference lines (1.8.0 §12.9) and elevation grids (§12.11); meta: index into junctions (-1: no drawn area)
+  grids: { lines: Binary & { meta: number[] }; points: { positions: Float64Array; meta: number[] }; refLines: Binary & { meta: number[] } };
   bounds: [number, number, number, number]; // lon/lat
   zRange: [number, number];
   zGround: number; // median lane height: the level the surrounding ground is drawn at in relative mode
@@ -112,6 +114,16 @@ export function markLines(m: RoadMark, inside: number): MarkLineSpec[] {
   }
   const single = one(m.type, 0);
   return single ? [single] : [];
+}
+
+/** pose on a junction reference line at s; past its end the last element continues straight (grid rows can lie there) */
+export function refLinePose(geoms: Geom[], s: number): Pose {
+  let g = geoms[0];
+  for (const q of geoms) if (q.s <= s + 1e-9) g = q;
+  const ds = s - g.s;
+  if (ds <= g.length || g.kind === "line") return evalGeom(g, Math.max(0, ds));
+  const e = evalGeom(g, g.length);
+  return { x: e.x + (ds - g.length) * Math.cos(e.hdg), y: e.y + (ds - g.length) * Math.sin(e.hdg), hdg: e.hdg };
 }
 
 export function buildRender(od: OpenDrive, project: Project): RenderData {
@@ -253,10 +265,55 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   }
 
   const L = lanes.done();
+  const zGround = medianZ(L.positions);
+
+  // junction reference lines and elevation grids, at the grid's z-values (the reference line itself has no elevation,
+  // §12.9: drawn at the road level)
+  const gLines = new Buf(), gLineMeta: number[] = [], gPts = new Buf(), gPtMeta: number[] = [], jRef = new Buf(), jRefMeta: number[] = [];
+  const areaIndex = new Map(juncMeta.map((m, i) => [m.id, i]));
+  for (const j of od.junctions) {
+    if (!j.refLine.length) continue;
+    const ji = areaIndex.get(j.id) ?? -1, end = j.refLine.reduce((a, g) => Math.max(a, g.s + g.length), 0);
+    const pose = (s: number) => refLinePose(j.refLine, s);
+    jRef.begin();
+    jRefMeta.push(ji);
+    const n = Math.max(1, Math.ceil(end / 2));
+    for (let k = 0; k <= n; k++) { const p = pose((end * k) / n); at(p.x, p.y, zGround, jRef); }
+    const g = j.elevationGrid;
+    if (!g || !(g.gridSpacing > 0)) continue;
+    // grid point (row k, lateral index i: 0 centre, +i left, -i right) -> x, y, z
+    const rows = g.rows.map((r, k) => {
+      const p = pose(g.sStart + k * g.gridSpacing), nx = -Math.sin(p.hdg), ny = Math.cos(p.hdg);
+      const pts = new Map<number, [number, number, number]>();
+      const put = (i: number, z: number) => { if (Number.isFinite(z)) pts.set(i, [p.x + nx * i * g.gridSpacing, p.y + ny * i * g.gridSpacing, z]); };
+      if (r.center.length) put(0, r.center[0]);
+      r.left.forEach((z, q) => put(q + 1, z));
+      r.right.forEach((z, q) => put(-(q + 1), z));
+      return pts;
+    });
+    for (const pts of rows) {
+      for (const [x, y, z] of pts.values()) { gPts.begin(); gPtMeta.push(ji); at(x, y, z, gPts); }
+      const idx = [...pts.keys()].sort((a, b) => a - b); // across the line: right outermost .. left outermost
+      for (let q = 0; q + 1 < idx.length; q++) {
+        if (idx[q + 1] !== idx[q] + 1) continue; // only between neighbouring grid points
+        gLines.begin(); gLineMeta.push(ji);
+        for (const i of [idx[q], idx[q + 1]]) { const [x, y, z] = pts.get(i)!; at(x, y, z, gLines); }
+      }
+    }
+    for (let k = 0; k + 1 < rows.length; k++) // along the line: the same lateral index in consecutive rows
+      for (const [i, a] of rows[k]) {
+        const b = rows[k + 1].get(i);
+        if (!b) continue;
+        gLines.begin(); gLineMeta.push(ji);
+        at(a[0], a[1], a[2], gLines); at(b[0], b[1], b[2], gLines);
+      }
+  }
+
   return {
+    grids: { lines: { ...gLines.done(), meta: gLineMeta }, points: { positions: gPts.done().positions, meta: gPtMeta }, refLines: { ...jRef.done(), meta: jRefMeta } },
     junctions: { ...juncs.done(), meta: juncMeta },
     features: features.finish(),
-    zGround: medianZ(L.positions),
+    zGround,
     lanes: { ...L, meta: laneMeta },
     marks: { ...marks.done(), meta: markMeta },
     refs: { ...refs.done(), meta: refMeta },

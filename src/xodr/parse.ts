@@ -30,6 +30,10 @@ function geometry(g: XmlNode): Geom {
   return base;
 }
 
+const userData = (n: XmlNode | undefined) =>
+  kids(n, "userData").map((u) => ({ code: u.attrs.code ?? "", value: u.attrs.value ?? u.text.trim() }));
+const numList = (v: string | undefined) => (v ?? "").trim().split(/\s+/).filter(Boolean).map(Number);
+
 function lane(n: XmlNode): Lane {
   const l = kid(n, "link");
   const pred = kid(l, "predecessor"), succ = kid(l, "successor");
@@ -55,6 +59,13 @@ function lane(n: XmlNode): Lane {
       })),
     }))),
     pred: pred ? num(pred, "id") : null, succ: succ ? num(succ, "id") : null, speed: sp,
+    speeds: byS(kids(n, "speed").map((x) => ({ s: num(x, "sOffset"), max: num(x, "max", NaN), unit: x.attrs.unit ?? "m/s" }))),
+    materials: byS(kids(n, "material").map((x) => ({
+      s: num(x, "sOffset"), surface: x.attrs.surface ?? "", friction: num(x, "friction", NaN), roughness: num(x, "roughness", NaN),
+    }))),
+    access: byS(kids(n, "access").map((x) => ({ s: num(x, "sOffset"), rule: x.attrs.rule ?? "", restriction: x.attrs.restriction ?? "" }))),
+    rules: byS(kids(n, "rule").map((x) => ({ s: num(x, "sOffset"), value: x.attrs.value ?? "" }))),
+    userData: userData(n),
   };
 }
 
@@ -100,8 +111,6 @@ function object(n: XmlNode): RoadObject {
 function road(n: XmlNode): Road {
   const l = kid(n, "link");
   const lanes = kid(n, "lanes");
-  const userData: Record<string, string> = {};
-  for (const u of kids(n, "userData")) if (u.attrs.code) userData[u.attrs.code] = u.attrs.value ?? u.text;
   const rule = (n.attrs.rule ?? "RHT").toUpperCase() === "LHT" ? "LHT" : "RHT";
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", length: num(n, "length"), junction: n.attrs.junction ?? "-1", rule,
@@ -122,11 +131,12 @@ function road(n: XmlNode): Road {
       ...kids(kid(n, "objects"), "bridge").map((b) => ({ kind: "bridge" as const, id: b.attrs.id ?? "", name: b.attrs.name ?? "", s: num(b, "s"), length: num(b, "length"), type: b.attrs.type ?? "" })),
       ...kids(kid(n, "objects"), "tunnel").map((b) => ({ kind: "tunnel" as const, id: b.attrs.id ?? "", name: b.attrs.name ?? "", s: num(b, "s"), length: num(b, "length"), type: b.attrs.type ?? "" })),
     ],
-    userData,
+    userData: userData(n),
   };
 }
 
 function junction(n: XmlNode): Junction {
+  const grid = kid(n, "elevationGrid");
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", type: n.attrs.type ?? "default",
     connections: kids(n, "connection").map((c) => ({
@@ -150,6 +160,12 @@ function junction(n: XmlNode): Junction {
       jointLaneStart: g.attrs.jointLaneStart !== undefined ? num(g, "jointLaneStart") : null,
       jointLaneEnd: g.attrs.jointLaneEnd !== undefined ? num(g, "jointLaneEnd") : null,
     })),
+    refLine: byS(kids(kid(n, "planView"), "geometry").map(geometry)),
+    elevationGrid: grid ? {
+      gridSpacing: num(grid, "gridSpacing"), sStart: num(grid, "sStart"),
+      rows: kids(grid, "elevation").map((e) => ({ center: numList(e.attrs.center), left: numList(e.attrs.left), right: numList(e.attrs.right) })),
+    } : null,
+    userData: userData(n),
   };
 }
 

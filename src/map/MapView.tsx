@@ -23,7 +23,7 @@ export type HeightMode = "flat" | "relative" | "absolute";
 
 export interface MapLayers {
   lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
-  structures: boolean; crossPaths: boolean;
+  structures: boolean; crossPaths: boolean; grids: boolean; // grids: junction reference lines + elevation grids
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
@@ -424,6 +424,27 @@ export default function MapView(p: MapViewProps) {
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
           updateTriggers: { getWidth: [p.selectedJunction], getColor: [p.selectedJunction] },
         }));
+      // junction reference lines (§12.9, dashed) and elevation grids (§12.11): grid lines between neighbouring points
+      // and the points themselves, at the grid's z-values
+      const G = r.grids;
+      if (p.layers.grids && G.refLines.meta.length) {
+        const n2 = G.refLines.meta.length, nl = G.lines.meta.length, np = G.points.meta.length;
+        if (nl) out.push(new PathLayer({
+          id: "junction-grid", data: { length: nl, startIndices: sub(G.lines.starts, nl), attributes: { getPath: { value: G.lines.positions, size: 3 } } },
+          _pathType: "open", widthUnits: "pixels", getWidth: 1, getColor: [80, 220, 200, 200], pickable: true, modelMatrix: outlineMatrix,
+        }));
+        if (np) out.push(new ScatterplotLayer({
+          id: "junction-grid-points", data: { length: np, attributes: { getPosition: { value: G.points.positions, size: 3 } } },
+          getRadius: 2.5, radiusUnits: "pixels", getFillColor: [80, 220, 200, 255], stroked: true, getLineColor: [10, 12, 16, 255],
+          lineWidthUnits: "pixels", getLineWidth: 1, pickable: true, modelMatrix: outlineMatrix,
+        }));
+        // the reference line last: the grid's centre points lie on it
+        out.push(new PathLayer({
+          id: "junction-ref-lines", data: { length: n2, startIndices: sub(G.refLines.starts, n2), attributes: { getPath: { value: G.refLines.positions, size: 3 } } },
+          _pathType: "open", widthUnits: "pixels", getWidth: 3, getColor: [235, 64, 52, 255], pickable: true, modelMatrix: outlineMatrix,
+          getDashArray: [6, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        }));
+      }
       const R = r.refs, nr = R.meta.length;
       if (p.layers.refs && nr)
         out.push(new PathLayer({

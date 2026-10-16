@@ -38,6 +38,8 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
         ["junction area (<boundary>)", { kind: "fill", color: "rgba(245,184,74,.3)", border: "#f5b84a" }],
         ["approximate area", { kind: "line", color: "#f5b84a", dash: true, width: 2 }],
         ["cross path", { kind: "line", color: "#00cdff", dash: true, width: 2 }],
+        ["junction reference line", { kind: "line", color: "#eb4034", dash: true, width: 2 }],
+        ["elevation grid point / line", { kind: "dot", color: "#50dcc8" }],
       ]} />
       <Group title="Road marks" items={[
         ["solid", { kind: "line", color: "#f5f7fa" }], ["broken", { kind: "line", color: "#f5f7fa", dash: true }],

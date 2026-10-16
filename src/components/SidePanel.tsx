@@ -84,6 +84,7 @@ function LayersTab(p: SidePanelProps) {
         <div className="sub-title">Junctions</div>
         <Toggle label="Junction areas" on={L.junctions} set={set("junctions")} hint="Solid: the file's <boundary> (OpenDRIVE 1.8 §12.10); dashed: approximate outline of the connecting roads" />
         <Toggle label="Cross paths" on={L.crossPaths} set={set("crossPaths")} hint="Pedestrian crossings in junctions (OpenDRIVE 1.8 crossPath)" />
+        <Toggle label="Reference lines & elevation grids" on={L.grids} set={set("grids")} hint="Junction reference line (OpenDRIVE 1.8 §12.9, dashed red) and elevation grid (§12.11): grid points at their z-values, lines between neighbouring points" />
         <div className="sub-title">Furniture & structures</div>
         <Toggle label="Signals (signs, lights, stop lines)" on={L.signals} set={set("signals")} />
         <Toggle label="Objects (trees, poles, barriers, crosswalks)" on={L.objects} set={set("objects")} />

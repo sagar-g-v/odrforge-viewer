@@ -120,6 +120,7 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
       objects: { positions: new Float64Array(0), starts: Uint32Array.from([0]), meta: [] },
       junctions: { ...bin(jPos, jStarts), meta: jMeta },
       features: emptyFeatures(),
+      grids: { lines: { ...bin([], []), meta: [] }, points: { positions: new Float64Array(0), meta: [] }, refLines: { ...bin([], []), meta: [] } },
       points: { positions: new Float64Array(0), meta: [] },
       bounds: [minLon, minLat, maxLon, maxLat],
       zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],

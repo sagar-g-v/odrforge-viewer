@@ -1,5 +1,6 @@
-// Right-hand drawer: the clicked road and lane (s, t, width, height, links, OSM source ways).
+// Right-hand drawer: the clicked road and lane (s, t, width, height, links, material, speed, access, OSM source ways).
 import type { Network } from "../data/useNetwork";
+import type { UserData } from "../xodr/model";
 import type { LaneProbe } from "../xodr/query";
 
 export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; }
@@ -8,6 +9,30 @@ const f = (v: number | null | undefined, d = 2) => (v === null || v === undefine
 
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return <div className="kv"><span>{k}</span><span>{v}</span></div>;
+}
+
+/** the record in force at ds: the last whose s <= ds (records sorted by s), and how many the element has */
+function recAt<T extends { s: number }>(xs: T[], ds: number | undefined): T | undefined {
+  if (!xs.length) return undefined;
+  if (ds === undefined) return xs[0];
+  let r = xs[0];
+  for (const x of xs) if (x.s <= ds + 1e-9) r = x;
+  return r;
+}
+const of = (n: number) => (n > 1 ? ` (record ${n})` : "");
+const osmLink = (w: string) => (
+  <a key={w} href={`https://www.openstreetmap.org/way/${w.replace(/^-/, "")}`} target="_blank" rel="noreferrer">{w} </a>);
+
+/** every <userData> entry; OdrForge's osmWays link to the OSM ways a road was built from */
+function UserDataRows({ data }: { data: UserData[] }) {
+  if (!data.length) return null;
+  const ways = data.filter((u) => u.code === "osmWays").flatMap((u) => u.value.split(/[ ,]+/).filter(Boolean));
+  return (
+    <>
+      {ways.length > 0 && <Row k="OSM ways" v={ways.map(osmLink)} />}
+      {data.filter((u) => u.code !== "osmWays").map((u, i) => <Row key={`u${i}`} k={`userData ${u.code}`} v={u.value || "–"} />)}
+    </>
+  );
 }
 
 export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
@@ -20,7 +45,11 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
   const junction = road && road.junction !== "-1" ? net.od?.junctions.find((j) => j.id === road.junction) : undefined;
   const link = (l: { type: string; id: string; contact: string } | null) =>
     !l ? "–" : l.type === "road" ? <a onClick={() => onGoRoad(l.id)}>road {l.id}{l.contact ? ` (${l.contact})` : ""}</a> : `junction ${l.id}`;
-  const speed = road?.types.find((t) => t.speed !== null);
+  const speed = recAt(road?.types ?? [], pr?.s);
+  const ds = pr ? pr.s - pr.sectionStart : undefined; // lane records are offset from the lane section's start
+  const lSpeed = lane ? recAt(lane.speeds, ds) : undefined, mat = lane ? recAt(lane.materials, ds) : undefined;
+  const acc = lane?.access.filter((a) => a.s === recAt(lane.access, ds)?.s) ?? []; // all <access> records at that sOffset
+  const rule = lane ? recAt(lane.rules, ds) : undefined, height = lane ? recAt(lane.heights, ds) : undefined;
   return (
     <aside className="inspector">
       <header className="drawer-head">
@@ -45,8 +74,13 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
           <Row k="width" v={`${f(pr?.width)} m`} />
           <Row k="border t inner / outer" v={`${f(pr?.inner)} / ${f(pr?.outer)}`} />
           {lane && <Row k="links" v={`${lane.pred ?? "–"} → ${lane.succ ?? "–"}`} />}
-          {lane?.speed && <Row k="speed" v={`${f(lane.speed * 3.6, 0)} km/h`} />}
-          {lane?.heights.length ? <Row k="height inner / outer" v={`${lane.heights[0].inner} / ${lane.heights[0].outer} m`} /> : null}
+          {lSpeed && <Row k={`speed${of(lane!.speeds.length)}`} v={`max ${lSpeed.max} ${lSpeed.unit}${lSpeed.unit === "m/s" ? ` (${f(lSpeed.max * 3.6, 1)} km/h)` : ""}`} />}
+          {height && <Row k={`height inner / outer${of(lane!.heights.length)}`} v={`${height.inner} / ${height.outer} m`} />}
+          {mat && <Row k={`material${of(lane!.materials.length)}`}
+            v={`${mat.surface || "–"} · friction ${f(mat.friction)} · roughness ${f(mat.roughness)}`} />}
+          {acc.map((a, i) => <Row key={`a${i}`} k="access" v={`${a.rule} ${a.restriction}`} />)}
+          {rule && <Row k="rule" v={rule.value} />}
+          {lane && <UserDataRows data={lane.userData} />}
           {lane?.marks.length ? <Row k="road mark" v={lane.marks.map((m) => `${m.type} ${m.color}`).join(", ")} /> : null}
           <Row k="section" v={`#${pr?.section ?? "–"} from s ${f(pr?.sectionStart)}`} />
         </section>
@@ -59,9 +93,8 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
         {road && <Row k="successor" v={link(road.succ)} />}
         {road && <Row k="lane sections" v={road.sections.length} />}
         {road && <Row k="geometry" v={[...new Set(road.geoms.map((g) => g.kind))].join(", ")} />}
-        {speed && <Row k="speed limit" v={`${speed.speed} ${speed.unit}`} />}
-        {road?.userData.osmWays && <Row k="OSM ways" v={road.userData.osmWays.split(/[ ,]+/).map((w) => (
-          <a key={w} href={`https://www.openstreetmap.org/way/${w.replace(/^-/, "")}`} target="_blank" rel="noreferrer">{w} </a>))} />}
+        {speed && <Row k={`type${of(road!.types.length)}`} v={`${speed.type || "–"}${speed.speed !== null ? ` · speed ${speed.speed} ${speed.unit}` : ""}`} />}
+        {road && <UserDataRows data={road.userData} />}
       </section>
       {junction && (
         <section>
@@ -87,6 +120,10 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
   const arms = j ? [...new Set(j.connections.map((c) => c.incomingRoad))] : [];
   const connecting = net.roads.filter((r) => r.junction === m.id);
   const turns = j?.connections.reduce((n, c) => n + c.laneLinks.length, 0) ?? 0;
+  const g = j?.elevationGrid ?? null;
+  const gridZ = g ? g.rows.flatMap((r) => [...r.center, ...r.left, ...r.right]) : [], gridPts = gridZ.length;
+  const lineEnd = j ? j.refLine.reduce((a, q) => Math.max(a, q.s + q.length), 0) : 0;
+  const beyond = g ? g.rows.filter((_, k) => g.sStart + k * g.gridSpacing > lineEnd + 1e-6).length : 0;
   return (
     <aside className="inspector">
       <header className="drawer-head">
@@ -100,7 +137,19 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         <h3>Area</h3>
         <Row k="outline" v={m.exact ? "<boundary> (OpenDRIVE 1.8 §12.10)" : "approximate (hull of connecting roads)"} />
         {j && <Row k="boundary segments" v={j.boundary.length ? `${j.boundary.filter((b) => b.type === "lane").length} lane, ${j.boundary.filter((b) => b.type === "joint").length} joint` : "none"} />}
+        {j && j.refLine.length > 0 && <Row k="reference line (§12.9)"
+          v={`${j.refLine.map((g) => g.kind).join(", ")} · ${f(j.refLine.reduce((a, g) => a + g.length, 0))} m · hdg ${f((j.refLine[0].hdg * 180) / Math.PI, 1)}°`} />}
       </section>
+      {g && (
+        <section>
+          <h3>Elevation grid (§12.11)</h3>
+          <Row k="grid spacing / sStart" v={`${f(g.gridSpacing)} m / ${f(g.sStart)} m`} />
+          <Row k="rows × points" v={`${g.rows.length} rows, ${gridPts} points (left up to ${Math.max(0, ...g.rows.map((r) => r.left.length))}, right up to ${Math.max(0, ...g.rows.map((r) => r.right.length))})`} />
+          <Row k="z range" v={gridPts ? `${f(Math.min(...gridZ))} … ${f(Math.max(...gridZ))} m` : "–"} />
+          {beyond > 0 && <Row k="rows past the line end" v={`${beyond} (the line is extended straight)`} />}
+        </section>
+      )}
+      {j && j.userData.length > 0 && <section><h3>User data</h3><UserDataRows data={j.userData} /></section>}
       <section>
         <h3>Connections</h3>
         {j && <Row k="connections" v={j.connections.length} />}
