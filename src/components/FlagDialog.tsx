@@ -1,6 +1,7 @@
 // Create / edit a review flag in a modal <dialog>: Save, Cancel, Delete and Esc all close it.
 import { useEffect, useRef, useState } from "react";
 import { CATEGORIES, type Flag } from "../review/flags";
+import { Icon } from "./Icon";
 
 export interface FlagDraft { flag: Flag; isNew: boolean; where: string; }
 
@@ -26,7 +27,7 @@ function FlagForm({ draft, onSave, onDelete, onClose }: Props & { draft: FlagDra
     <form method="dialog" onSubmit={(e) => { e.preventDefault(); onSave({ ...f, category, note: note.trim() }); }}>
       <header className="dialog-head">
         <h2>{draft.isNew ? "New review flag" : `Flag #${f.id}`}</h2>
-        <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>✕</button>
+        <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}><Icon name="x" /></button>
       </header>
       <p className="muted small">{draft.where}</p>
       {!draft.isNew && f.reply && (

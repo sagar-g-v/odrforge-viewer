@@ -1,6 +1,7 @@
 // Right-hand drawer: the clicked road and lane (s, t, width, height, links, material, speed, access, OSM source ways).
 import type { Network } from "../data/useNetwork";
 import type { UserData } from "../xodr/model";
+import { Icon } from "./Icon";
 import type { LaneProbe } from "../xodr/query";
 
 export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; }
@@ -62,7 +63,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
           <div className="eyebrow">{info.junction !== "-1" ? `Connecting road · junction ${info.junction}` : "Road"}</div>
           <h2>Road {info.id}{info.name ? ` · ${info.name}` : ""}</h2>
         </div>
-        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}>✕</button>
+        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}><Icon name="x" /></button>
       </header>
       <section>
         <h3>Position</h3>
@@ -110,7 +111,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
         </section>
       )}
       <footer className="drawer-foot">
-        <button className="btn primary" onClick={onFlag}>⚑ Flag something here</button>
+        <button className="btn primary" onClick={onFlag}><Icon name="flag" />Flag something here</button>
       </footer>
     </aside>
   );
@@ -138,7 +139,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
           <div className="eyebrow">Junction{j ? ` · ${j.type}` : ""}</div>
           <h2>Junction {m.id}{j?.name ? ` · ${j.name}` : ""}</h2>
         </div>
-        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}>✕</button>
+        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}><Icon name="x" /></button>
       </header>
       <section>
         <h3>Area</h3>
@@ -183,7 +184,7 @@ export function JunctionInspector({ net, index, onClose, onFlag, onGoRoad }: {
         </section>
       )}
       <footer className="drawer-foot">
-        <button className="btn primary" onClick={onFlag}>⚑ Flag this junction</button>
+        <button className="btn primary" onClick={onFlag}><Icon name="flag" />Flag this junction</button>
       </footer>
     </aside>
   );
@@ -301,7 +302,7 @@ export function FeatureInspector({ net, sel, onClose, onGoRoad }: {
     <aside className="inspector">
       <header className="drawer-head">
         <div><div className="eyebrow">{eyebrow}</div><h2>{title}</h2></div>
-        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}>✕</button>
+        <button className="icon-btn" aria-label="Close inspector" onClick={onClose}><Icon name="x" /></button>
       </header>
       {body}
     </aside>

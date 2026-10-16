@@ -74,7 +74,8 @@ function Slider({ label, value, min, max, step, onChange, disabled, format }: {
   return (
     <label className="field row">
       <span>{label} <b className="val">{format ? format(value) : `${Math.round(value * 100)}%`}</b></span>
-      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(+e.target.value)} />
+      <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} onChange={(e) => onChange(+e.target.value)}
+        style={{ "--pct": `${((value - min) / (max - min)) * 100}%` } as React.CSSProperties} />
     </label>
   );
 }
@@ -201,7 +202,7 @@ function FlagsTab(p: SidePanelProps) {
         </div>
       </section>
       <p className="muted small">
-        Saved {p.flagStoreKind === "server" ? "to the review server" : "in this browser"}. Press <kbd>F</kbd> or ⚑, then click the map.
+        Saved {p.flagStoreKind === "server" ? "to the review server" : "in this browser"}. Press <kbd>F</kbd> or the Flag button, then click the map.
       </p>
       <div className="list">
         {list.map((f) => (
@@ -316,14 +317,14 @@ function CompareTab(p: SidePanelProps) {
           </section>
           <div className="chips">
             {(["changed", "added", "removed"] as DiffKind[]).map((k) => (
-              <button key={k} className={`chip ${show[k] ? "status-open" : ""}`} onClick={() => setShow({ ...show, [k]: !show[k] })}>{k} {count(k)}</button>
+              <button key={k} className={`chip ${show[k] ? (k === "removed" ? "err" : k === "added" ? "ok" : "warn") : ""}`} aria-pressed={show[k]} onClick={() => setShow({ ...show, [k]: !show[k] })}>{k} {count(k)}</button>
             ))}
           </div>
           {!R.items.length && <p className="muted small">No differences.</p>}
           <div className="list">
             {items.slice(0, 500).map((d, i) => (
               <div key={i} className="item small" {...rowButton(() => c.onItem(d))} title={Number.isFinite(d.lon) ? "Fly there" : "Not on the map"}>
-                <div className="item-head"><span className={`chip ${d.kind === "removed" ? "level-error" : d.kind === "added" ? "status-fixed" : "level-warning"}`}>{d.kind}</span><b>{d.what} {d.id}</b></div>
+                <div className="item-head"><span className={`chip ${d.kind === "removed" ? "err" : d.kind === "added" ? "ok" : "warn"}`}>{d.kind}</span><b>{d.what} {d.id}</b></div>
                 <span className="muted">{d.detail}</span>
               </div>
             ))}
@@ -349,8 +350,11 @@ export default function SidePanel(p: SidePanelProps) {
               e.preventDefault(); p.setTab(next);
               (e.currentTarget.parentElement?.children[all.indexOf(next)] as HTMLElement | undefined)?.focus();
             }}>
-            {t === "layers" ? "Layers" : t === "flags" ? `Flags${nFlags ? ` · ${nFlags}` : ""}` : t === "findings" ? `Findings${p.findings.length ? ` · ${p.findings.length}` : ""}`
-              : `Compare${p.compare.result ? ` · ${p.compare.result.items.length}` : ""}`}
+            {t === "layers" ? "Layers" : t === "flags" ? "Flags" : t === "findings" ? "Findings" : "Compare"}
+            {(() => {
+              const n = t === "flags" ? nFlags : t === "findings" ? p.findings.length : t === "compare" ? p.compare.result?.items.length ?? 0 : 0;
+              return n ? <span className="chip">{n.toLocaleString()}</span> : null;
+            })()}
           </button>
         ))}
       </nav>

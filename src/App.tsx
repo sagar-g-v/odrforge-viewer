@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
 import Inspector, { FeatureInspector, JunctionInspector, type Selection } from "./components/Inspector";
 import SidePanel, { type Tab } from "./components/SidePanel";
+import { Icon, Logo } from "./components/Icon";
 import { listServerFiles, useNetwork } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
@@ -12,11 +13,12 @@ import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
 import { fetchGrid, type GroundGrid } from "./map/odrz";
 
+// review marker colours (design system --data-flag-*, --data-finding-*)
 const STATUS_COLOR: Record<string, [number, number, number, number]> = {
-  open: [245, 184, 74, 255], fixed: [62, 207, 142, 255], question: [90, 169, 255, 255], wontfix: [140, 146, 158, 255],
+  open: [242, 181, 68, 255], fixed: [124, 201, 90, 255], question: [92, 182, 242, 255], wontfix: [140, 146, 158, 255],
 };
 const LEVEL_COLOR: Record<string, [number, number, number, number]> = {
-  error: [255, 92, 92, 230], warning: [255, 170, 60, 220], info: [120, 170, 255, 210],
+  error: [255, 106, 92, 235], warning: [255, 170, 60, 230], info: [92, 182, 242, 225],
 };
 
 const store = (k: string, v?: string) => {
@@ -69,6 +71,7 @@ export default function App() {
   const [cursor, setCursor] = useState<[number, number] | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => { document.documentElement.dataset.theme = theme; store("odrv.theme", theme); }, [theme]);
@@ -315,18 +318,28 @@ export default function App() {
 
   // drop files anywhere: a network (.xodr / OdrForge page) and / or checker results
   useEffect(() => {
+    let depth = 0; // dragenter / dragleave fire for every child element
+    const files = (e: DragEvent) => [...(e.dataTransfer?.types ?? [])].includes("Files");
+    const enter = (e: DragEvent) => { if (files(e)) { depth++; setDragging(true); } };
+    const leave = (e: DragEvent) => { if (files(e) && --depth <= 0) { depth = 0; setDragging(false); } };
     const over = (e: DragEvent) => e.preventDefault();
     const drop = (e: DragEvent) => {
       e.preventDefault();
+      depth = 0; setDragging(false);
       const fs = [...(e.dataTransfer?.files ?? [])];
       const network = fs.find((f) => /\.(xodr|html)$/i.test(f.name));
       const rest = fs.filter((f) => f !== network);
       if (network) openLocal(network);
       if (rest.length) loadFindings(rest);
     };
+    window.addEventListener("dragenter", enter);
+    window.addEventListener("dragleave", leave);
     window.addEventListener("dragover", over);
     window.addEventListener("drop", drop);
-    return () => { window.removeEventListener("dragover", over); window.removeEventListener("drop", drop); };
+    return () => {
+      window.removeEventListener("dragenter", enter); window.removeEventListener("dragleave", leave);
+      window.removeEventListener("dragover", over); window.removeEventListener("drop", drop);
+    };
   }, [openLocal, loadFindings]);
 
   const cursorXY = cursor && net ? net.proj.inverse(cursor[0], cursor[1]) : null;
@@ -334,8 +347,8 @@ export default function App() {
   return (
     <div className={`app ${panelOpen ? "" : "panel-closed"}`}>
       <header className="topbar">
-        <button className="icon-btn" aria-label={panelOpen ? "Hide panel" : "Show panel"} title="Panel" onClick={() => setPanelOpen((v) => !v)}>☰</button>
-        <div className="brand"><span className="logo">◆</span> OdrForge <span className="muted">Viewer</span></div>
+        <button className="icon-btn" aria-label={panelOpen ? "Hide panel" : "Show panel"} title="Panel" onClick={() => setPanelOpen((v) => !v)}><Icon name="menu" /></button>
+        <div className="brand"><Logo /><span><b>OdrForge</b> <span className="muted">Viewer</span></span></div>
         <div className="source">
           <span className={`dot ${serverState}`} title={serverState === "ok" ? "Review server connected" : "Review server not reachable"} />
           <input className="server" value={server} onChange={(e) => setServer(e.target.value)} onBlur={() => connect(server)}
@@ -347,8 +360,12 @@ export default function App() {
           <button className="btn" onClick={() => fileInput.current?.click()}>Open file…</button>
           <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => { if (e.target.files?.[0]) openLocal(e.target.files[0]); e.target.value = ""; }} />
         </div>
-        <input id="search" className="search" placeholder="Road id, name or j 103   /" value={search}
-          onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
+        <div className="search-box">
+          <Icon name="search" />
+          <input id="search" className="search" placeholder="Road id, name or j 103" aria-label="Search a road or junction" value={search}
+            onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === "Enter" && goRoad(search)} disabled={!net} />
+          <kbd>/</kbd>
+        </div>
         <span className="grow" />
         <div className="seg" role="group" aria-label="Basemap">
           <button className={basemap === "osm" ? "on" : ""} onClick={() => setBasemap("osm")} title="OpenStreetMap">Map</button>
@@ -360,13 +377,13 @@ export default function App() {
           <button className={mode === "3d" ? "on" : ""} onClick={() => setMode("3d")}>3D</button>
         </div>
         <button className={`btn ${flagMode ? "warn" : ""}`} onClick={() => setFlagMode((v) => !v)} disabled={!net} title="Flag mode (F)">
-          ⚑ {flagMode ? "Click the map…" : "Flag"}
+          <Icon name="flag" />{flagMode ? "Click the map…" : "Flag"}
         </button>
-        <button className="icon-btn" aria-label="Fit network" title="Fit network" onClick={() => setFitKey((k) => k + 1)} disabled={!net}>⤢</button>
+        <button className="icon-btn" aria-label="Fit network" title="Fit network" onClick={() => setFitKey((k) => k + 1)} disabled={!net}><Icon name="fit" /></button>
         <button className="icon-btn" aria-label="Toggle theme" title="Theme" onClick={() => {
           const t = theme === "dark" ? "light" : "dark";
           setTheme(t);
-        }}>◐</button>
+        }}><Icon name="theme" /></button>
       </header>
 
       {panelOpen && (
@@ -411,20 +428,27 @@ export default function App() {
         />
         {!net && !loading && (
           <div className="empty">
+            <Logo />
             <h1>Review an OpenDRIVE network</h1>
             <p>Choose a file from the review server above, click <b>Open file…</b>, or drop a <code>.xodr</code> (or an OdrForge viewer page) anywhere.</p>
             {serverState === "error" && (
-              <p className="muted small">Review server not reachable at {server}. Start it with <code>python tools/inspect/viz_server.py --dir …</code></p>
+              <>
+                <p className="muted small">Review server not reachable at {server}. Start it with <code>python tools/inspect/viz_server.py --dir …</code></p>
+                <button className="btn" onClick={() => connect(server)}>Retry</button>
+              </>
             )}
           </div>
         )}
         <div className="overlays">
           {loading && <div className="loading"><span className="spinner" />{loading}</div>}
           {groundLoading && <div className="loading"><span className="spinner" />{groundLoading}</div>}
-          {error && <div className="banner error" role="alert">{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
+          {error && <div className="banner error" role="alert"><Icon name="alert" />{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
           {flagMode && <div className="banner info">Flag mode: click where something is wrong. <kbd>Esc</kbd> to stop.</div>}
         </div>
         {toast && <div className="toast" role="status">{toast}</div>}
+        {dragging && (
+          <div className="dropzone"><div><Icon name="upload" size={32} /><span>Drop a .xodr, an OdrForge page, or checker results</span></div></div>
+        )}
         {net && selF && (
           <FeatureInspector net={net} sel={selF} onClose={() => setSelF(null)} onGoRoad={goRoad} />
         )}

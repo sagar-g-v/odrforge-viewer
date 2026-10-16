@@ -91,6 +91,14 @@ const OSM_STYLE: StyleSpecification = {
   layers: [{ id: "bg", type: "background", paint: { "background-color": "#f2efe9" } }, { id: "osm", type: "raster", source: "osm" }],
 };
 const EMPTY_STYLE = (bg: string): StyleSpecification => ({ version: 8, sources: {}, layers: [{ id: "bg", type: "background", paint: { "background-color": bg } }] });
+/** the MapLibre style of a basemap (the theme only matters for "none": the empty map takes the page background) */
+function styleFor(basemap: Basemap, theme: "dark" | "light"): StyleSpecification | string {
+  if (basemap === "none") return EMPTY_STYLE(theme === "dark" ? "#06112a" : "#e8f2fb"); // --bg (haze-950 / haze-50)
+  if (basemap === "osm") return OSM_STYLE;
+  if (basemap.startsWith("satellite")) return SATELLITE_STYLE;
+  return STYLE_URL[basemap as keyof typeof STYLE_URL];
+}
+const styleKey = (basemap: Basemap, theme: "dark" | "light") => (basemap === "none" ? `none-${theme}` : basemap.startsWith("satellite") ? "satellite" : basemap);
 const TERRAIN_SOURCE = "odrv-terrain";
 const BUILDINGS = "odrv-buildings-3d";
 const FOOTPRINT = "odrv-buildings-footprint", FOOTPRINT_EDGE = "odrv-buildings-edge"; // bottom face and border
@@ -223,6 +231,7 @@ export default function MapView(p: MapViewProps) {
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
+  const shownStyle = useRef(styleKey(p.basemap, p.theme)); // the style the map has (or is loading)
   // terrain source for the current grid: a new grid gets a new source (MapLibre caches tiles per url)
   const terrainSrc = useMemo<TerrainSrc>(() => {
     if (!p.ground || !p.proj) return TERRARIUM_SRC;
@@ -241,7 +250,8 @@ export default function MapView(p: MapViewProps) {
   // map + overlay, once
   useEffect(() => {
     const map = new maplibregl.Map({
-      container: host.current!, style: STYLE_URL.dark, center: [0, 20], zoom: 1.5, maxPitch: 85,
+      // the basemap the app starts with (a placeholder style replaced at once would abort its first requests)
+      container: host.current!, style: styleFor(propsRef.current.basemap, propsRef.current.theme), center: [0, 20], zoom: 1.5, maxPitch: 85,
       attributionControl: { compact: true }, canvasContextAttributes: { antialias: true },
     });
     deckTransformCompat(map);
@@ -286,17 +296,15 @@ export default function MapView(p: MapViewProps) {
 
   // basemap style
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-    const bg = p.theme === "dark" ? "#14171c" : "#eef0f3";
+    const map = mapRef.current, key = styleKey(p.basemap, p.theme);
+    if (!map || shownStyle.current === key) return; // e.g. the theme changed but the style does not depend on it
+    shownStyle.current = key;
     styleReady.current = false;
     // until the new style has loaded our layers, the OpenDRIVE layers go without beforeId (same layers, so deck.gl
     // keeps them): it inserts its layer groups on every styledata event and fails while the building layer they are
     // placed before does not exist yet
     overlay.current?.setProps({ layers: layersRef.current.map((l) => l.clone({ beforeId: undefined } as never)) });
-    map.setStyle(p.basemap === "none" ? EMPTY_STYLE(bg) : p.basemap === "osm" ? OSM_STYLE
-      : p.basemap.startsWith("satellite") ? SATELLITE_STYLE : STYLE_URL[p.basemap as keyof typeof STYLE_URL],
-    { diff: false }); // a full reload, so style.load always fires and our sources and layers are added again
+    map.setStyle(styleFor(p.basemap, p.theme), { diff: false }); // a full reload: style.load fires, our sources and layers are added again
   }, [p.basemap, p.theme]);
 
   useEffect(() => {
@@ -445,7 +453,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new SolidPolygonLayer({
           id: "junctions", data: jData, _full3d: true, pickable: true, modelMatrix, parameters: bias(1), opacity: p.roadOpacity,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            index === p.selectedJunction ? [90, 169, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
+            index === p.selectedJunction ? [30, 155, 255, 110] : J.meta[index].exact ? [245, 184, 74, 70] : [245, 184, 74, 38],
           updateTriggers: { getFillColor: [p.selectedJunction] },
         }));
       }
@@ -487,7 +495,7 @@ export default function MapView(p: MapViewProps) {
           data: { length: nj, startIndices: sub(J.starts, nj), attributes: { getPath: { value: J.positions, size: 3 } } },
           _pathType: "loop", widthUnits: "pixels", modelMatrix, parameters: bias(6),
           getWidth: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? 3.5 : 2.2),
-          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? [90, 169, 255, 255] : [245, 184, 74, 230]),
+          getColor: (_: unknown, { index }: { index: number }) => (index === p.selectedJunction ? [30, 155, 255, 255] : [245, 184, 74, 230]),
           getDashArray: (_: unknown, { index }: { index: number }) => (J.meta[index].exact ? [0, 0] : [4, 3]),
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
           updateTriggers: { getWidth: [p.selectedJunction], getColor: [p.selectedJunction] },
@@ -503,7 +511,7 @@ export default function MapView(p: MapViewProps) {
         }));
         if (np) out.push(new ScatterplotLayer({
           id: "junction-grid-points", data: { length: np, attributes: { getPosition: { value: G.points.positions, size: 3 } } },
-          getRadius: 2.5, radiusUnits: "pixels", getFillColor: [80, 220, 200, 255], stroked: true, getLineColor: [10, 12, 16, 255],
+          getRadius: 2.5, radiusUnits: "pixels", getFillColor: [80, 220, 200, 255], stroked: true, getLineColor: [10, 16, 23, 255],
           lineWidthUnits: "pixels", getLineWidth: 1, pickable: true, modelMatrix, parameters: bias(6),
         }));
         // the reference line last: the grid's centre points lie on it
@@ -543,7 +551,7 @@ export default function MapView(p: MapViewProps) {
           id: "structures", data: { length: ns, startIndices: sub(S.starts, ns), attributes: { getPolygon: { value: S.positions, size: 3 } } },
           _normalize: false, extruded: true, pickable: true, modelMatrix, parameters: bias(5), wireframe: true,
           getElevation: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? 4.5 : 0.05),
-          getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? [90, 169, 255, 120] : S.meta[index].tunnel ? [110, 112, 122, 70] : [70, 130, 230, 70]),
+          getFillColor: (_: unknown, { index }: { index: number }) => (isSel(S.meta[index]) ? [30, 155, 255, 120] : S.meta[index].tunnel ? [110, 112, 122, 70] : [70, 130, 230, 70]),
           getLineColor: (_: unknown, { index }: { index: number }) => (S.meta[index].tunnel ? [90, 92, 100, 220] : [70, 130, 230, 230]),
           updateTriggers: { getFillColor: [selF] },
         }));
@@ -564,7 +572,7 @@ export default function MapView(p: MapViewProps) {
             getPosition: { value: c.positions, size: 3 }, getElevation: { value: c.elevations, size: 1 } } },
           radius: c.radius, diskResolution: c.radius >= 0.5 ? 14 : 8, extruded: true, pickable: true, modelMatrix,
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? [90, 169, 255, 255]
+            !keep[index] ? [0, 0, 0, 0] : isSel(c.meta[index]) ? [30, 155, 255, 255]
               : [c.colors[4 * index], c.colors[4 * index + 1], c.colors[4 * index + 2], c.colors[4 * index + 3]],
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects] },
         }));
@@ -576,7 +584,7 @@ export default function MapView(p: MapViewProps) {
           _normalize: false, extruded: true, pickable: true, modelMatrix,
           getElevation: (_: unknown, { index }: { index: number }) => (showFeature(B.meta[index]) ? B.elevations[index] : 0),
           getFillColor: (_: unknown, { index }: { index: number }) =>
-            !showFeature(B.meta[index]) ? [0, 0, 0, 0] : isSel(B.meta[index]) ? [90, 169, 255, 255]
+            !showFeature(B.meta[index]) ? [0, 0, 0, 0] : isSel(B.meta[index]) ? [30, 155, 255, 255]
               : [B.colors[4 * index], B.colors[4 * index + 1], B.colors[4 * index + 2], B.colors[4 * index + 3]],
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects], getElevation: [p.layers.signals, p.layers.objects] },
         }));
@@ -596,7 +604,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new ScatterplotLayer({
           id: "signals",
           data: { length: P.meta.length, attributes: { getPosition: { value: P.positions, size: 3 } } },
-          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: [10, 12, 16, 255],
+          getRadius: 0.7, radiusUnits: "meters", radiusMinPixels: 0.5, radiusMaxPixels: 7, stroked: true, getLineColor: [10, 16, 23, 255],
           lineWidthUnits: "pixels", getLineWidth: 1, lineWidthMaxPixels: 1,
           getFillColor: (_: unknown, { index }: { index: number }) =>
             P.meta[index].kind === "object" ? [180, 140, 255, 230] : P.meta[index].dynamic ? [37, 194, 110, 255] : [255, 107, 107, 255],
@@ -609,7 +617,7 @@ export default function MapView(p: MapViewProps) {
       const nl = C.lanes.meta.length, nr = C.refs.meta.length;
       out.push(new PathLayer({
         id: "cmp-lanes", data: { length: nl, startIndices: sub(C.lanes.starts, nl), attributes: { getPath: { value: C.lanes.positions, size: 3 } } },
-        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 230], modelMatrix, parameters: bias(6),
+        _pathType: "loop", widthUnits: "pixels", getWidth: 1.5, getColor: [255, 64, 200, 235], modelMatrix, parameters: bias(6),
       }));
       if (nr) out.push(new PathLayer({
         id: "cmp-refs", data: { length: nr, startIndices: sub(C.refs.starts, nr), attributes: { getPath: { value: C.refs.positions, size: 3 } } },
@@ -620,7 +628,7 @@ export default function MapView(p: MapViewProps) {
     const markers = (id: string, pts: MarkerPoint[], radius: number) => [
       new ScatterplotLayer<MarkerPoint>({
         id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + 3 : radius), radiusUnits: "pixels",
-        getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? [255, 255, 255, 255] : [10, 12, 16, 255]),
+        getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? [255, 255, 255, 255] : [10, 16, 23, 255]),
         lineWidthUnits: "pixels", getLineWidth: (d) => (d.selected ? 2.5 : 1.5), pickable: true, billboard: true,
         parameters: { depthCompare: "always" }, updateTriggers: { getRadius: pts, getLineColor: pts },
       }),

@@ -13,7 +13,7 @@ type Swatch =
 
 function Sw({ s }: { s: Swatch }) {
   if (s.kind === "fill") return <i className="sw" style={{ background: s.color, borderColor: s.border ?? "var(--line-2)" }} />;
-  if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? "#0b0e12" }} />;
+  if (s.kind === "dot") return <i className="sw dot" style={{ background: s.color, borderColor: s.ring ?? "#0a1017" }} />;
   if (s.kind === "light")
     return <i className="sw light"><b style={{ background: "#eb3434" }} /><b style={{ background: "#f5aa28" }} /><b style={{ background: "#2ecc62" }} /></i>;
   const w = s.width ?? 3;
@@ -59,9 +59,10 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
       <p className="muted small">Signals and objects are symbols (boards, lamps, columns, boxes) at the file's position, height and size;
         where the file gives no size a typical one is drawn (inspector says so). Other tools draw their own models there.</p>
       <Group title="Review" items={[
-        ["flag: open", { kind: "dot", color: "#f5b84a" }], ["flag: fixed", { kind: "dot", color: "#3ecf8e" }],
-        ["flag: question", { kind: "dot", color: "#5aa9ff" }], ["finding: error", { kind: "dot", color: "#ff5c5c" }],
+        ["flag: open", { kind: "dot", color: "#f2b544" }], ["flag: fixed", { kind: "dot", color: "#7cc95a" }],
+        ["flag: question", { kind: "dot", color: "#5cb6f2" }], ["finding: error", { kind: "dot", color: "#ff6a5c" }],
         ["finding: warning", { kind: "dot", color: "#ffaa3c" }],
+        ["selected", { kind: "fill", color: "#1e9bff" }], ["compare B (outlines)", { kind: "line", color: "#ff40c8", width: 2 }],
       ]} />
     </>
   );

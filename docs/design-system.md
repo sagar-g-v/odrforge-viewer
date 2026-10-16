@@ -1,6 +1,6 @@
 # OdrForge Viewer design system: "Sky & Meadow"
 
-Status: **proposal for review**. The app is not restyled yet. `src/design/tokens.css` exists but nothing imports it.
+Status: **adopted** (2026-10-17). `src/main.tsx` imports `src/design/tokens.css` before `src/styles.css`, which takes every colour, size and duration from it. Icons are drawn inline in the Lucide style (`src/components/Icon.tsx`) instead of adding the `lucide-react` package; the tooltip component (§5) is still the browser's `title`.
 
 - Figma library: https://www.figma.com/design/4XVC3fKkAl3bJMRh8GeY1C (Starter plan, venky s's team)
 - Logo: [`docs/brand/logo-mark.svg`](brand/logo-mark.svg) (one colour, `currentColor`) and [`docs/brand/logo-tile.svg`](brand/logo-tile.svg) (app tile / favicon)
