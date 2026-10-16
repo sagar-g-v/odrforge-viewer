@@ -4,7 +4,8 @@ import type { UserData } from "../xodr/model";
 import { Icon } from "./Icon";
 import type { LaneProbe } from "../xodr/query";
 
-export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; }
+/** a lane, or with whole = true its road (all lanes highlighted) */
+export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; whole?: boolean; }
 
 const f = (v: number | null | undefined, d = 2) => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -40,8 +41,8 @@ function UserDataRows({ data }: { data: UserData[] }) {
   );
 }
 
-export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
-  net: Network; sel: Selection; onClose: () => void; onFlag: () => void; onGoRoad: (id: string) => void;
+export default function Inspector({ net, sel, onClose, onFlag, onGoRoad, onWhole }: {
+  net: Network; sel: Selection; onClose: () => void; onFlag: () => void; onGoRoad: (id: string) => void; onWhole: (whole: boolean) => void;
 }) {
   const info = net.roads[sel.road];
   if (!info) return null;
@@ -65,6 +66,14 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
         </div>
         <button className="icon-btn" aria-label="Close inspector" onClick={onClose}><Icon name="x" /></button>
       </header>
+      {sel.laneId !== null && (
+        <div className="drawer-tools">
+          <div className="seg" role="group" aria-label="Select">
+            <button className={sel.whole ? "" : "on"} onClick={() => onWhole(false)} title="This lane">Lane</button>
+            <button className={sel.whole ? "on" : ""} onClick={() => onWhole(true)} title="The whole road: all its lanes (Shift+click a lane)">Road</button>
+          </div>
+        </div>
+      )}
       <section>
         <h3>Position</h3>
         <Row k="s / t" v={`${f(pr?.s)} m / ${f(pr?.t)} m`} />
@@ -72,7 +81,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad }: {
         <Row k="surface z" v={`${f(pr?.z)} m`} />
         <Row k="superelevation" v={pr ? `${f((pr.superelevation * 180) / Math.PI, 2)}°` : "–"} />
       </section>
-      {(lane || sel.laneId !== null) && (
+      {!sel.whole && (lane || sel.laneId !== null) && (
         <section>
           <h3>Lane {sel.laneId}</h3>
           <Row k="type" v={lane?.type ?? net.render.lanes.meta[sel.laneIndex ?? 0]?.type} />

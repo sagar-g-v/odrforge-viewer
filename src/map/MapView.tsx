@@ -19,6 +19,7 @@ import { groundHeight, type GroundGrid } from "./odrz";
 import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid } from "./groundTiles";
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
+import { LaneZIndex } from "./markerZ";
 import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
 import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, viewHeights, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
@@ -66,13 +67,14 @@ export interface MapViewProps {
   ground: GroundGrid | null; // the network's own ground grid (converter .odrz): the terrain where present
   compare: RenderData | null; // B of a comparison: its lane outlines and reference lines over A
   selectedLane: number | null;
+  selectedRoad: number | null; // a whole road selected (all its lanes highlighted)
   selectedJunction: number | null;
   selectedFeature: { kind: string; road: number; index: number } | null;
   flags: MarkerPoint[];
   findings: MarkerPoint[];
   flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
   fitKey: number;
-  onPick: (info: PickingInfo) => void;
+  onPick: (info: PickingInfo, shift: boolean) => void; // shift: Shift held (select the whole road)
   onCursor: (lonLat: [number, number] | null) => void;
   cursorCrosshair: boolean;
 }
@@ -299,7 +301,7 @@ export default function MapView(p: MapViewProps) {
     deckTransformCompat(map);
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
-    const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info) => propsRef.current.onPick(info) });
+    const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey) });
     map.addControl(ov);
     map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
     map.on("mouseout", () => propsRef.current.onCursor(null));
@@ -472,6 +474,11 @@ export default function MapView(p: MapViewProps) {
       return { lanePoints: d.length, zoom: +map.getZoom().toFixed(2), lift: +lift.toFixed(3), plan, median: q(s, 0.5), p5: q(s, 0.05), p95: q(s, 0.95), p95abs: q(a, 0.95) };
     };
   }, [draped, p.render, plan, lift]);
+  // lane heights as drawn (draped positions where the network is laid on the ground), for the review markers
+  const laneZ = useMemo(() => {
+    const r = draped?.render ?? p.render;
+    return r && Number.isFinite(r.bounds[1]) ? new LaneZIndex(r.lanes.positions, (r.bounds[1] + r.bounds[3]) / 2) : null;
+  }, [draped, p.render]);
   const modelMatrix = useMemo(() => new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, plan.scale, 0, 0, 0,
     -plan.base * plan.scale + (plan.liftFromGround ? lift : 0), 1]), [plan, lift]);
 
@@ -497,8 +504,9 @@ export default function MapView(p: MapViewProps) {
           data: { length: n, startIndices: sub(L.starts, n), attributes: { getPolygon: { value: L.positions, size: 3 } } },
           _normalize: false, _full3d: true, extruded: false, pickable: true, autoHighlight: true,
           highlightColor: OVERLAY.hover, modelMatrix, parameters: depthBias("lanes"), opacity: p.roadOpacity,
-          getFillColor: (_: unknown, { index }: { index: number }) => laneColor(L.meta[index], p.theme, index === p.selectedLane),
-          updateTriggers: { getFillColor: [p.theme, p.selectedLane] },
+          getFillColor: (_: unknown, { index }: { index: number }) =>
+            laneColor(L.meta[index], p.theme, index === p.selectedLane || L.meta[index].road === p.selectedRoad),
+          updateTriggers: { getFillColor: [p.theme, p.selectedLane, p.selectedRoad] },
         }));
       if (p.layers.borders)
         out.push(new PathLayer({
@@ -566,7 +574,7 @@ export default function MapView(p: MapViewProps) {
         out.push(new PathLayer({
           id: "refs",
           data: { length: nr, startIndices: sub(R.starts, nr), attributes: { getPath: { value: R.positions, size: 3 } } },
-          _pathType: "open", getColor: OVERLAY.refLine, getWidth: 1.5, widthUnits: "pixels", modelMatrix, parameters: depthBias("refs"),
+          _pathType: "open", getColor: OVERLAY.refLine, getWidth: 1.5, widthUnits: "pixels", pickable: true, modelMatrix, parameters: depthBias("refs"),
         }));
       const O = r.objects, no = O.meta.length;
       if (p.layers.objects && no)
@@ -665,15 +673,21 @@ export default function MapView(p: MapViewProps) {
         getDashArray: [4, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
       }));
     }
+    // review markers on the lane under them, at its drawn height (at z = 0 a flag on a road 500 m above sea level showed
+    // far from it in a tilted view); where no lane is near, on the drawn ground
+    const markerZ = (d: MarkerPoint) => {
+      const z = laneZ?.nearestZ(d.lon, d.lat) ?? (terrainOn && groundAt ? groundAt(d.lon, d.lat) : NaN);
+      return Number.isFinite(z) ? drawnZ(plan, z, lift) : 0;
+    };
     const markers = (id: string, pts: MarkerPoint[], radius: number) => [
       new ScatterplotLayer<MarkerPoint>({
-        id, data: pts, getPosition: (d) => [d.lon, d.lat], getRadius: (d) => (d.selected ? radius + MARKER.selectedGrow : radius), radiusUnits: "pixels",
+        id, data: pts, getPosition: (d) => [d.lon, d.lat, markerZ(d)], getRadius: (d) => (d.selected ? radius + MARKER.selectedGrow : radius), radiusUnits: "pixels",
         getFillColor: (d) => d.color, stroked: true, getLineColor: (d) => (d.selected ? EDGE.ringSelected : EDGE.ring),
         lineWidthUnits: "pixels", getLineWidth: (d) => (d.selected ? MARKER.ringWidthSelected : MARKER.ringWidth), pickable: true, billboard: true,
         parameters: { depthCompare: "always" }, updateTriggers: { getRadius: pts, getLineColor: pts },
       }),
       new TextLayer<MarkerPoint>({
-        id: id + "-label", data: pts.filter((d) => d.label), getPosition: (d) => [d.lon, d.lat], getText: (d) => d.label!,
+        id: id + "-label", data: pts.filter((d) => d.label), getPosition: (d) => [d.lon, d.lat, markerZ(d)], getText: (d) => d.label!,
         getSize: LABEL.flagSize, getColor: LABEL.ink, fontFamily: LABEL.fontFamily, fontWeight: 700, billboard: true, parameters: { depthCompare: "always" },
         background: true, getBackgroundColor: LABEL.background, backgroundPadding: LABEL.padding, backgroundBorderRadius: LABEL.borderRadius,
         getPixelOffset: LABEL.flagOffset,
@@ -684,8 +698,8 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, MARKER.findingRadius));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
-  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
-      beforeId, p.mode, p.roadOpacity, cmpDraped]);
+  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
+      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt]);
 
   useEffect(() => {
     layersRef.current = layers;

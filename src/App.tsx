@@ -220,7 +220,7 @@ export default function App() {
     setDraft({ flag: f, isNew: true, where: where(f) });
   }, [flags, net]);
 
-  const onPick = useCallback((info: PickingInfo) => {
+  const onPick = useCallback((info: PickingInfo, shift: boolean) => {
     if (!net || !info.coordinate) return;
     const layer = info.layer?.id ?? "";
     if (layer === "flags") {
@@ -238,9 +238,16 @@ export default function App() {
     if (fm && !flagMode) { setSelF({ kind: fm.kind, road: fm.road, index: fm.index }); setSel(null); setSelJ(null); return; }
     let s: Selection | null = null;
     if (layer === "lanes" && info.index >= 0) {
+      // a lane; Shift+click selects its whole road
       const m = net.render.lanes.meta[info.index];
       const road = net.od?.roads[m.road];
-      s = { road: m.road, laneId: m.lane, laneIndex: info.index, x, y, probe: road ? probe(road, m.lane, x, y) : null };
+      s = { road: m.road, laneId: m.lane, laneIndex: info.index, x, y, probe: road ? probe(road, m.lane, x, y) : null, whole: shift };
+    } else if (layer === "refs" && info.index >= 0) {
+      // a reference line: its road
+      const ri = net.render.refs.meta[info.index], road = net.od?.roads[ri];
+      const li = net.render.lanes.meta.findIndex((q) => q.road === ri);
+      s = { road: ri, laneId: li >= 0 ? net.render.lanes.meta[li].lane : null, laneIndex: li >= 0 ? li : null, x, y,
+        probe: road && li >= 0 ? probe(road, net.render.lanes.meta[li].lane, x, y) : null, whole: true };
     }
     if (flagMode) { newFlagAt(x, y, s); return; }
     setSel(s);
@@ -285,7 +292,7 @@ export default function App() {
     const [x, y] = net.proj.inverse(lon, lat);
     const road = net.od?.roads[idx];
     setSelF(null); setSelJ(null);
-    setSel({ road: idx, laneId, laneIndex: li >= 0 ? li : null, x, y, probe: road ? probe(road, laneId, x, y) : null });
+    setSel({ road: idx, laneId, laneIndex: li >= 0 ? li : null, x, y, probe: road ? probe(road, laneId, x, y) : null, whole: true }); // a searched road: all of it
   }, [net]);
 
   // keyboard: F flag mode, V 2D / 3D, Esc leaves flag mode or closes the inspector, / search
@@ -420,7 +427,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel?.laneIndex ?? null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
@@ -461,7 +468,8 @@ export default function App() {
             }} />
         )}
         {net && sel && (
-          <Inspector net={net} sel={sel} onClose={() => setSel(null)} onGoRoad={goRoad} onFlag={() => newFlagAt(sel.x, sel.y, sel)} />
+          <Inspector net={net} sel={sel} onClose={() => setSel(null)} onGoRoad={goRoad} onFlag={() => newFlagAt(sel.x, sel.y, sel)}
+            onWhole={(whole) => setSel({ ...sel, whole })} />
         )}
       </main>
 

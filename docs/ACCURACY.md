@@ -119,3 +119,6 @@ colour, not the limit.
   objects are drawn as their footprints: each column as the polygon ColumnLayer draws (same radius, same disk
   resolution, same centre), and each box as its own outline. They are ordered lowest top first, as a look straight down
   at the 3D scene shows them. No 3D shape is drawn in 2D. Guarded by `tests/footprints.test.ts`.
+- **Review markers sit on the lane under them**, at its drawn height (`LaneZIndex`, through the height plan). Drawn at
+  z = 0 instead, a flag on a road 500 m above sea level showed far from it in a tilted view. Guarded by
+  `tests/markerZ.test.ts`.
