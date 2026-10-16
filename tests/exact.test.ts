@@ -34,3 +34,16 @@ describe("superelevation sign (1.8.0 §10.5: positive = the road falls to the ri
     expect(high).toBeCloseTo(517.25, 9); // the right lane's inner border lies on the reference line
   });
 });
+
+describe("lane offset (1.8.0 §9.3: lane 0 sits at t = laneOffset(s), not on the reference line)", () => {
+  // flag #19-#23 (Munich road 242) asked whether the viewer shifts lanes off the reference line: it draws what the file says
+  const xml = XODR.replace("<lanes>", '<lanes><laneOffset s="0" a="-1.5" b="0" c="0" d="0"/>');
+  const od = parseOpenDrive(xml), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
+  it("the reference line stays at t = 0; the right lane spans t = -1.5 .. -5.0", () => {
+    const local = (a: Float64Array) => Array.from({ length: a.length / 3 }, (_, i) => proj.inverse(a[3 * i], a[3 * i + 1]));
+    for (const [, y] of local(r.refs.positions)) expect(y).toBeCloseTo(0, 6);
+    const ys = local(r.lanes.positions).map(([, y]) => y);
+    expect(Math.max(...ys)).toBeCloseTo(-1.5, 6);
+    expect(Math.min(...ys)).toBeCloseTo(-5.0, 6);
+  });
+});
