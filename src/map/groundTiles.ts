@@ -1,35 +1,46 @@
 // MapLibre terrain from the network's own ground grid: a custom tile protocol that renders Terrarium-encoded DEM tiles
 // on request. Each pixel holds the ground height at its centre (MapLibre DEMData samples DEM pixels at cell centres):
 // the grid where it has a value, blended into the open Terrarium DEM near its edge, and Terrarium outside it. Tiles
-// that do not touch the grid are Terrarium's own bytes.
+// that do not touch the grid are Terrarium's own bytes. Under the roads the ground is pressed down to the road floor
+// (map/roadFloor.ts): the road wins.
 import * as maplibregl from "maplibre-gl";
 import { DEM_MAXZOOM, TERRARIUM_TILES, decodeTerrarium } from "./dem";
 import { groundHeight, type GroundGrid } from "./odrz";
+import { floorAt, floorRadius, type RoadFloor } from "./roadFloor";
 import type { Projector } from "../xodr/geo";
 
 export const GROUND_PROTOCOL = "odrv-ground";
 const DIM = 256;
 
-export interface Active { grid: GroundGrid; proj: Projector; bbox: [number, number, number, number]; }
+// grid: the network's ground grid (null: Terrarium only); floor: the road floor (null: the ground as it is)
+export interface Active { grid: GroundGrid | null; floor: RoadFloor | null; proj: Projector; bbox: [number, number, number, number]; }
 let active: Active | null = null;
 
-/** lon / lat box of the grid (its corners and edge midpoints projected), padded by a cell */
-function gridBox(g: GroundGrid, proj: Projector): [number, number, number, number] {
-  const x0 = g.originX - g.cell, y0 = g.originY - g.cell, x1 = g.originX + g.nx * g.cell, y1 = g.originY + g.ny * g.cell;
+/** lon / lat box of a file-coordinate box (its corners and edge midpoints projected) */
+function lonLatBox(proj: Projector, x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
   const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [(x0 + x1) / 2, y0], [(x0 + x1) / 2, y1], [x0, (y0 + y1) / 2], [x1, (y0 + y1) / 2]]
     .map(([x, y]) => proj.forward(x, y));
   return [Math.min(...pts.map((p) => p[0])), Math.min(...pts.map((p) => p[1])), Math.max(...pts.map((p) => p[0])), Math.max(...pts.map((p) => p[1]))];
 }
 
-export const activeGrid = (grid: GroundGrid, proj: Projector): Active => ({ grid, proj, bbox: gridBox(grid, proj) });
+/** the box tiles must be rendered in: the grid padded by a cell, and the floor's lattice */
+export function activeGrid(grid: GroundGrid | null, proj: Projector, floor: RoadFloor | null = null): Active {
+  const boxes: [number, number, number, number][] = [];
+  if (grid) boxes.push(lonLatBox(proj, grid.originX - grid.cell, grid.originY - grid.cell, grid.originX + grid.nx * grid.cell, grid.originY + grid.ny * grid.cell));
+  if (floor) boxes.push(lonLatBox(proj, ...floor.box));
+  const bbox: [number, number, number, number] = boxes.length
+    ? [Math.min(...boxes.map((b) => b[0])), Math.min(...boxes.map((b) => b[1])), Math.max(...boxes.map((b) => b[2])), Math.max(...boxes.map((b) => b[3]))]
+    : [Infinity, Infinity, -Infinity, -Infinity];
+  return { grid, floor, proj, bbox };
+}
 
-/** the grid tiles are drawn from (null: Terrarium only); a new grid needs a new source url (tiles are cached by url) */
-export function setGroundGrid(grid: GroundGrid | null, proj: Projector | null) {
-  active = grid && proj ? activeGrid(grid, proj) : null;
+/** what tiles are drawn from (neither: Terrarium only); a new grid or floor needs a new source url (tiles are cached by url) */
+export function setGroundGrid(grid: GroundGrid | null, proj: Projector | null, floor: RoadFloor | null = null) {
+  active = proj && (grid || floor) ? activeGrid(grid, proj, floor) : null;
 }
 
 /** finest tile zoom worth rendering for a grid: pixels about the grid cell, at most z17 */
-export function groundMaxZoom(g: GroundGrid, lat: number): number {
+export function groundMaxZoom(g: { cell: number }, lat: number): number {
   const z = Math.log2((40075016.686 * Math.cos((lat * Math.PI) / 180)) / (DIM * g.cell));
   return Math.max(DEM_MAXZOOM, Math.min(17, Math.ceil(z)));
 }
@@ -98,12 +109,15 @@ export function encodeTerrarium(h: Float32Array): Uint8ClampedArray {
   return out;
 }
 
-/** heights at the pixel centres of tile z/x/y: grid (blended at its edge) over Terrarium */
+/** heights at the pixel centres of tile z/x/y: grid (blended at its edge) over Terrarium, pressed under the road floor */
 export async function groundTileHeights(z: number, x: number, y: number, a: Active): Promise<Float32Array> {
   return groundTileFromBase(z, x, y, a, await terrariumAt(z, x, y));
 }
 
-/** the pure part: grid heights (blended into `base` at the grid edge) at the pixel centres of tile z/x/y */
+/**
+ * The pure part: grid heights (blended into `base` at the grid edge) at the pixel centres of tile z/x/y, each at most the
+ * road floor's lowest cap within floorRadius of the pixel along each axis (map/roadFloor.ts)
+ */
 export function groundTileFromBase(z: number, x: number, y: number, a: Active, base: Float32Array): Float32Array {
   // the projection is locally affine at tile scale: project a 17 x 17 lattice and interpolate between its points
   const L = 16, gx = new Float64Array((L + 1) ** 2), gy = new Float64Array((L + 1) ** 2);
@@ -112,7 +126,9 @@ export function groundTileFromBase(z: number, x: number, y: number, a: Active, b
       const [fx, fy] = a.proj.inverse(tileLon(x + c / L, z), tileLat(y + b / L, z));
       gx[b * (L + 1) + c] = fx; gy[b * (L + 1) + c] = fy;
     }
-  const out = new Float32Array(DIM * DIM);
+  const out = new Float32Array(DIM * DIM), F = a.floor;
+  // the DEM pixel in file units (the lattice spans L / DIM of a tile per step)
+  const radius = F ? floorRadius(Math.hypot(gx[1] - gx[0], gy[1] - gy[0]) * (L / DIM)) : 0;
   for (let j = 0; j < DIM; j++)
     for (let i = 0; i < DIM; i++) {
       const u = ((i + 0.5) / DIM) * L, v = ((j + 0.5) / DIM) * L, c0 = Math.min(L - 1, Math.floor(u)), b0 = Math.min(L - 1, Math.floor(v));
@@ -120,13 +136,14 @@ export function groundTileFromBase(z: number, x: number, y: number, a: Active, b
       const px = gx[k00] * (1 - fu) * (1 - fv) + gx[k01] * fu * (1 - fv) + gx[k10] * (1 - fu) * fv + gx[k11] * fu * fv;
       const py = gy[k00] * (1 - fu) * (1 - fv) + gy[k01] * fu * (1 - fv) + gy[k10] * (1 - fu) * fv + gy[k11] * fu * fv;
       const f = base[j * DIM + i];
-      out[j * DIM + i] = groundHeight(a.grid, px, py, () => f);
+      const h = a.grid ? groundHeight(a.grid, px, py, () => f) : f;
+      out[j * DIM + i] = F ? Math.min(h, floorAt(F, px, py, radius)) : h;
     }
   return out;
 }
 
 let registered = false;
-/** the tile protocol: odrv-ground://{z}/{x}/{y}?g=<grid key> */
+/** the tile protocol: odrv-ground://{z}/{x}/{y}?g=<grid and floor key> */
 export function registerGroundProtocol() {
   if (registered) return;
   registered = true;

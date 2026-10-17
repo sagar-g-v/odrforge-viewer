@@ -21,6 +21,7 @@ import { visibleTiles, type ImageTile, type LocalImagery } from "./localImagery"
 import { DEM_MAXZOOM, Dem, TERRARIUM_TILES } from "./dem";
 import { groundHeight, type GroundGrid } from "./odrz";
 import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid } from "./groundTiles";
+import { buildRoadFloor } from "./roadFloor";
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
 import { LaneZIndex } from "./markerZ";
@@ -325,21 +326,10 @@ export default function MapView(p: MapViewProps) {
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
   const [hoverAt, setHoverAt] = useState<{ layer: string; index: number; x: number; y: number } | null>(null); // the hover tooltip's target (client px)
+  const terrainSrcRef = useRef<TerrainSrc>(TERRARIUM_SRC); // the terrain source (set below, once the road floor is known)
   // 2D is a plan view: drawn flat, no terrain (map/heights.ts viewHeights); 3D uses the chosen mode and terrain
   const vh = viewHeights(p.mode, p.heightMode, p.layers.terrain), terrainOn = vh.terrain;
   const shownStyle = useRef(styleKey(p.basemap, p.theme)); // the style the map has (or is loading)
-  // terrain source for the current grid: a new grid gets a new source (MapLibre caches tiles per url)
-  const terrainSrc = useMemo<TerrainSrc>(() => {
-    if (!p.ground || !p.proj) return TERRARIUM_SRC;
-    const n = ++groundSeq, c = p.proj.forward(p.ground.originX + (p.ground.nx * p.ground.cell) / 2, p.ground.originY + (p.ground.ny * p.ground.cell) / 2);
-    return {
-      id: GROUND_SOURCE + n, tiles: `${GROUND_PROTOCOL}://{z}/{x}/{y}?g=${n}`, maxzoom: groundMaxZoom(p.ground, c[1]),
-      attribution: `Terrain: network ground grid (${p.ground.datum || "datum not given"}, ${p.ground.cell} m), Mapzen Terrarium around it`,
-    };
-  }, [p.ground, p.proj]);
-  const terrainSrcRef = useRef(terrainSrc);
-  // layout effect: the tile protocol knows the grid before the (passive) effect that adds the source runs
-  useLayoutEffect(() => { setGroundGrid(p.ground, p.proj); terrainSrcRef.current = terrainSrc; }, [terrainSrc, p.ground, p.proj]);
   const [styleEpoch, setStyleEpoch] = useState(0); // bumped on every style.load: the overlay's layers are set again
   useLayoutEffect(() => { propsRef.current = p; }); // map event handlers read the latest props
 
@@ -427,11 +417,6 @@ export default function MapView(p: MapViewProps) {
     if (map && styleReady.current) ensureDim(map, p.dim);
   }, [p.dim]);
 
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map && styleReady.current) ensureTerrain(map, terrainOn, p.exaggeration, terrainSrc);
-  }, [terrainOn, p.exaggeration, terrainSrc]);
-
   // camera: 2D looks straight down, 3D tilts
   useEffect(() => {
     const map = mapRef.current;
@@ -496,6 +481,42 @@ export default function MapView(p: MapViewProps) {
   }), [vh.mode, terrainOn, groundAt, p.render, realHeights, p.exaggeration]);
   const draped = useMemo(() => (plan.drape && p.render && groundAt ? drapeRender(p.render, groundAt, plan.drape) : null),
   [plan.drape, p.render, groundAt]);
+  // the road wins (map/roadFloor.ts, docs/ACCURACY.md §4): over terrain, wherever the drawn lanes keep heights above the
+  // same datum as the ground (base 0: absolute, real heights, or laid on the ground), the ground is pressed under them.
+  // Not under tunnels: their roads run under the ground on purpose (and are shown through it)
+  const floorOn = terrainOn && plan.scale > 0 && plan.base === 0;
+  const floorRender = draped?.render ?? p.render;
+  const floor = useMemo(() => {
+    const pr = p.proj, r = floorRender;
+    if (!floorOn || !pr || !r) return null;
+    const toXY = (lon: number, lat: number) => pr.inverse(lon, lat) as [number, number], S = r.features.structures, tunnels = new Map<number, [number, number][][]>();
+    S.meta.forEach((m, k) => {
+      if (!m.tunnel) return;
+      const ring: [number, number][] = [];
+      for (let v = S.starts[k]; v < S.starts[k + 1]; v++) ring.push(toXY(S.positions[3 * v], S.positions[3 * v + 1]));
+      tunnels.set(m.road, [...(tunnels.get(m.road) ?? []), ring]);
+    });
+    return buildRoadFloor(r.lanes, toXY, tunnels);
+  }, [floorOn, floorRender, p.proj]);
+  // terrain source for the current grid and floor: a new one gets a new source (MapLibre caches tiles per url)
+  const terrainSrc = useMemo<TerrainSrc>(() => {
+    const g = p.ground, pr = p.proj;
+    if (!pr || (!g && !floor)) return TERRARIUM_SRC;
+    const n = ++groundSeq, box = g ? [g.originX, g.originY, g.originX + g.nx * g.cell, g.originY + g.ny * g.cell] : floor!.box;
+    const lat = pr.forward((box[0] + box[2]) / 2, (box[1] + box[3]) / 2)[1];
+    const what = g ? `network ground grid (${g.datum || "datum not given"}, ${g.cell} m)` : "Mapzen Terrarium";
+    return {
+      id: GROUND_SOURCE + n, tiles: `${GROUND_PROTOCOL}://{z}/{x}/{y}?g=${n}`,
+      maxzoom: Math.max(g ? groundMaxZoom(g, lat) : DEM_MAXZOOM, floor ? groundMaxZoom(floor, lat) : DEM_MAXZOOM),
+      attribution: `Terrain: ${what}${g ? ", Mapzen Terrarium around it" : ""}${floor ? "; pressed under the roads" : ""}`,
+    };
+  }, [p.ground, p.proj, floor]);
+  // layout effect: the tile protocol knows the grid and floor before the (passive) effect that adds the source runs
+  useLayoutEffect(() => { setGroundGrid(p.ground, p.proj, floor); terrainSrcRef.current = terrainSrc; }, [terrainSrc, p.ground, p.proj, floor]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && styleReady.current) ensureTerrain(map, terrainOn, p.exaggeration, terrainSrc);
+  }, [terrainOn, p.exaggeration, terrainSrc]);
   const cmpDraped = useMemo(() => {
     const c = p.compare;
     if (!c || !groundAt) return c;

@@ -41,6 +41,11 @@ The lift is a display offset. It is applied only over terrain and measured only 
   In view the lift is 0 there: Adam Street median +0.001 m, Lancaster Place +0.003 m. Guarded by
   `tests/heights.test.ts` ("only points in view count", "MapView measures the lift in view", mutation-checked).
 - It starts at 0 and is reset to 0 wherever it does not apply.
+- **With the road floor (§4) it measures 0.** The ground is pressed under the lanes, so the drawn surface never rises over
+  the ground under them. The roads then keep the file's heights exactly. Measured in the browser on 2026-10-18 (3D, terrain,
+  `odrvAudit()`): before the floor the lift was 0.05 m (Munich, z16.5 to z18.5) to 0.12 m (Stelvio hairpins, z18), and at
+  z16.5 in Munich 5 % of lane points were still under the drawn ground (p5 −0.02 m). With the floor the lift is 0 in every
+  view, and no lane point is under the drawn ground (p5 +0.08 to +0.11 m in Munich, +0.33 m on Stelvio).
 
 Guarded by `tests/heights.test.ts` ("the lift is measured against the ground") and `tests/terrain.test.ts`.
 
@@ -65,6 +70,32 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
   weights renormalised (`tests/odrz.test.ts`).
 - **Terrain tiles** carry the grid's height at every pixel centre, within 1 cm (`tests/groundTiles.test.ts`). They are
   Terrarium-encoded to 1/256 m (`tests/odrz.test.ts`).
+- **The road wins** (`src/map/roadFloor.ts`). Where the ground and a road compete, the road keeps its heights and the
+  drawn ground is pressed under it. The road floor is a cap on a 1 m lattice over the network. Under every lane (all
+  types, junctions included) the cap is the lowest road height over the cell, minus 0.05 m, from a conservative raster:
+  every cell a lane triangle touches, with a lower bound of the triangle's plane over the cell. Away from the lanes the
+  cap rises at 2 m per metre, a 63° cut, so the ground meets its own heights a short way off; it does not change the
+  ground there.
+  - **The radius.** Each terrain tile pixel takes min(ground, the lowest cap within 1.5 pixels along each axis). MapLibre
+    5 draws a mesh with one cell per DEM pixel (a 128-cell mesh on 512 px render tiles, DEM tiles one zoom down), its
+    vertices sampled bilinearly from pixel centres. Every pixel a drawn point depends on is therefore within 1.5 pixels
+    of it along each axis, so no drawn ground point under a lane can be above the lane, at any zoom.
+  - **Tunnels are left alone.** A tunnel road's lanes inside its own tunnel footprint do not press the ground; a road
+    over the tunnel still does.
+  - **Applies** wherever the drawn heights share the ground's datum: base 0, over terrain (absolute mode, real heights,
+    or laid on the ground).
+  - **Guards.** `tests/roadFloor.test.ts` checks the cap under a lane, the cut, tunnels, overlapping lanes and lanes
+    thinner than a cell. `tests/groundTiles.test.ts` checks that the drawn mesh is under every lane point at z17 and z15,
+    with the lane at six offsets within a pixel, and that ground 30 m off is unchanged. `tests/realdata.test.ts` checks
+    that no lane point outside tunnels has ground above it in the four test areas. Mutation-checked: no min with the
+    floor, a centre-only raster, no plane slack, a window one cell short, a radius ignoring the mesh (1.0 pixel) and
+    float32 rounding up each fail a test.
+  - **The cost**, reported by `ROAD_FLOOR=1 npx vitest run tests/realdata.test.ts`. Where two roads at different heights
+    lie within the radius, the higher one floats over pressed ground. Lane points more than 1 m over the drawn ground,
+    off bridges and tunnels, without → with the floor (2026-10-18): Munich 7 → 164, London 32 → 354, Stelvio 658 → 3,628
+    (hairpins stacked on the slope), Frankfurt 87 → 675. The floor takes 0.1–0.7 s to build.
+  - **Reproducibility.** The floor is a viewer rendering of the file's own roads over the converter's grid. CARLA and
+    Blender show the same only when the published grid carries the same cap (asked of the converter on 2026-10-18).
 - **Terrarium is sampled as MapLibre samples it** (`DEMData.sampleBilinear`: cell centres, bilinear across tile edges), so
   the drape agrees with the drawn surface. Measured in the browser: |difference| < 1e-9 m at review zoom
   (`tests/terrain.test.ts` guards the convention).

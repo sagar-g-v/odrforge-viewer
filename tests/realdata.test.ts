@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { heightPlan, hasRealHeights } from "../src/map/heights";
 import { datumMismatch, groundGridFiles, parseOdrz, sampleGrid, type GroundGrid } from "../src/map/odrz";
+import { buildRoadFloor, FLOOR, floorAt, floorRadius } from "../src/map/roadFloor";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { evalRoad } from "../src/xodr/geometry";
@@ -117,6 +118,45 @@ for (const area of AREAS) {
       }
       expect(n).toBeGreaterThan(0);
       expect(off).toEqual([]);
+    });
+    it("the road wins: with the floor, the ground drawn under every lane point (not in a tunnel) is under the lane", () => {
+      // the floor the viewer builds (map/roadFloor.ts) over the grid it draws: min(grid, floor within the z17 radius) at
+      // every lane vertex outside tunnel footprints must be at least FLOOR.epsilon under the vertex. Proven 2026-10-18:
+      // 0 above in all four areas (before: every driving lane on the conformed grid, half its points under it). The cost,
+      // reported with ROAD_FLOOR=1: lanes next to a lower road within the floor radius float over the pressed ground
+      const { proj, r } = data(), g = grid(groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!);
+      const toXY = (lon: number, lat: number) => proj.inverse(lon, lat) as [number, number], S = r.features.structures, tunnels = new Map<number, [number, number][][]>();
+      S.meta.forEach((m, k) => {
+        if (!m.tunnel) return;
+        const ring: [number, number][] = [];
+        for (let v = S.starts[k]; v < S.starts[k + 1]; v++) ring.push(toXY(S.positions[3 * v], S.positions[3 * v + 1]));
+        tunnels.set(m.road, [...(tunnels.get(m.road) ?? []), ring]);
+      });
+      const t0 = performance.now(), f = buildRoadFloor(r.lanes, toXY, tunnels)!, ms = performance.now() - t0;
+      const tunnelRoads = new Set(S.meta.filter((m) => m.tunnel).map((m) => m.road));
+      const L = r.lanes.positions, M = r.lanes.meta, St = r.lanes.starts, R = floorRadius(0.8);
+      let n = 0, above = 0, pressed = 0, deepest = 0;
+      let floatBefore = 0, floatAfter = 0;
+      const deep = new Map<string, number>(); // roads (off bridges and tunnels) the grid stands more than 0.3 m above
+      for (let k = 0; k < M.length; k++) {
+        if (tunnelRoads.has(M[k].road)) continue; // tunnel roads keep the ground over them (their open approaches are checked by the unit tests)
+        for (let v = St[k]; v < St[k + 1]; v++) {
+          const [x, y] = toXY(L[3 * v], L[3 * v + 1]), h = sampleGrid(g, x, y);
+          if (!Number.isFinite(h)) continue;
+          n++;
+          const drawn = Math.min(h, floorAt(f, x, y, R)), z = L[3 * v + 2];
+          if (drawn > z - FLOOR.epsilon + 1e-4) above++;
+          if (drawn < h - 1e-4) { pressed++; deepest = Math.max(deepest, h - drawn); }
+          if (!data().od.roads[M[k].road].structures.length) {
+            if (z - h > 1) floatBefore++;
+            if (z - drawn > 1) floatAfter++;
+            if (h - z > 0.3) { const id = data().od.roads[M[k].road].id; deep.set(id, Math.max(deep.get(id) ?? 0, h - z)); }
+          }
+        }
+      }
+      if (process.env.ROAD_FLOOR) console.log(`ROAD-FLOOR ${area}: ${n} lane points, ${above} above, ${pressed} pressed, deepest ${deepest.toFixed(2)} m; floor ${f.nx} x ${f.ny} cells in ${ms.toFixed(0)} ms; lane points more than 1 m over the drawn ground (off bridges and tunnels) ${floatBefore} -> ${floatAfter}; grid > 0.3 m over the road: ${[...deep].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ') || 'none'}`);
+      expect(n).toBeGreaterThan(1000);
+      expect(above).toBe(0);
     });
     it("the file and the grid the viewer draws are heights above the same vertical datum", () => {
       const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!;
