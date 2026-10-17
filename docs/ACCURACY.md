@@ -156,3 +156,7 @@ colour, not the limit.
   ground on purpose. Counting them made Frankfurt's |p95| 5.9 m; off them it is 0.151 m (Munich 0.151, London 0.150,
   Stelvio 0.192). From OdrForge 6537d93 (deck grid filtered) Frankfurt passes every check: the fit, driving lanes,
   datum, objects on the ground, nothing buried. `tests/realdata.test.ts` now covers four areas.
+- **No cliffs.** No road is steeper than 50 % between 0.25 m samples, the converter's contract "cliffs" check, mirrored
+  here. Measured 2026-10-17: none in Munich and Frankfurt. London road 250 (61 %) and Stelvio road 31 (54 %) are its known
+  open cases, listed in `KNOWN_CLIFFS`, and the test fails if that list changes. Fit and driving-lane checks leave bridges
+  and tunnels out (the Frankfurt car park P15 depth is still provisional).

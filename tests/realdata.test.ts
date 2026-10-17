@@ -14,10 +14,12 @@ import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 const AREAS = ["munich", "london", "stelvio", "frankfurt_kreuz"]; // built with absolute heights and road-conformed grids (Frankfurt from 2026-10-17, OdrForge 6537d93)
-const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05, objectBase: 0.3, buried: 2 }; // m (driving: measured <= 0.002; objects: <= 0.0001)
+const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05, objectBase: 0.3, buried: 2, cliff: 0.5 }; // m (driving: measured <= 0.002; objects: <= 0.0001)
 
 // known open defects, by area: roads with a lane buried more than LIMIT.buried (remove an entry when the converter fixes it)
 const KNOWN_BURIED: Record<string, string[]> = { stelvio: ["22"] }; // Stelvio road 22: hairpin work in progress (2026-10-17)
+// roads steeper than LIMIT.cliff between 0.25 m samples (the converter's contract "cliffs" check): known open cases, exactly
+const KNOWN_CLIFFS: Record<string, string[]> = { london: ["250"], stelvio: ["31"] }; // measured 2026-10-17: 61 %, 54 %
 const grid = (file: string): GroundGrid => { const b = readFileSync(`${DIR}/${file}`); return parseOdrz(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const stats = (d: number[]) => { const a = d.map(Math.abs).sort((x, y) => x - y), s = [...d].sort((x, y) => x - y); return { n: d.length, median: s[s.length >> 1], p95abs: a[Math.floor(0.95 * (a.length - 1))] }; };
 
@@ -86,6 +88,16 @@ for (const area of AREAS) {
         }
       }
       expect([...buried].sort()).toEqual(KNOWN_BURIED[area] ?? []);
+    });
+    it("no road has a cliff: at most 50 % between 0.25 m samples (OdrForge contract 'cliffs')", () => {
+      // proven 2026-10-17 after the deck filter (OdrForge 6537d93): none in Munich and Frankfurt; London 250 and Stelvio 31
+      // are the converter's known open cases. Exact list: the test also fails when one is fixed (then update KNOWN_CLIFFS)
+      const { od } = data(), cliffs: string[] = [];
+      for (const road of od.roads) {
+        for (let s = 0; s + 0.25 <= road.length + 1e-9; s += 0.25)
+          if (Math.abs(elevationAt(road, s + 0.25) - elevationAt(road, s)) / 0.25 > LIMIT.cliff) { cliffs.push(road.id); break; }
+      }
+      expect(cliffs.sort()).toEqual(KNOWN_CLIFFS[area] ?? []);
     });
     it("trees, poles and other point objects stand on that ground (off bridges): base = elevation(s) + zOffset (1.8.1 XSD)", () => {
       // proven 2026-10-17 after the converter seated them (02a8d5c): max |base - ground| 0.0001 m in Munich, London, Stelvio,
