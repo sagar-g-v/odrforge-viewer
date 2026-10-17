@@ -28,6 +28,10 @@ describe("hover tooltip text", () => {
     expect(hoverText("findings", 0, r, { findings: [{ tip: "error · lane gap 0.4 m" }] })).toBe("error · lane gap 0.4 m");
     expect(hoverText("flags", 0, r, { flags: [{ label: "16" }] })).toBe("flag #16");
   });
+  it("an LLM review ring is named by its tip", () => {
+    expect(hoverText("review", 0, r, { review: [{ tip: "review #19 · critical · leads_nowhere: …" }] })).toBe("review #19 · critical · leads_nowhere: …");
+    expect(hoverText("review", 3, r, { review: [] })).toBeNull();
+  });
   it("nothing for no pick or an unknown layer", () => {
     expect(hoverText("lanes", -1, r)).toBeNull();
     expect(hoverText("basemap", 0, r)).toBeNull();

@@ -1,5 +1,7 @@
 // Left panel: layers & display, review flags, checker findings.
 import { useMemo, useState } from "react";
+import ReviewTab from "./ReviewTab";
+import type { ReviewFilter, ReviewItem, ReviewLoad } from "../review/llmReview";
 import { CARTO_AVAILABLE, type Basemap, type HeightMode, type MapLayers } from "../map/MapView";
 import { OdrLegend, OsmLegend } from "./Legend";
 import { concreteBasemap } from "../map/basemap";
@@ -28,6 +30,14 @@ export interface SidePanelProps {
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
   onLoadFindings: (files: FileList) => void;
   compare: CompareProps;
+  review: ReviewProps;
+}
+
+/** the LLM review of the open page (read-only) */
+export interface ReviewProps {
+  load: ReviewLoad | null; filter: ReviewFilter; setFilter: (f: ReviewFilter) => void; shown: ReviewItem[]; selected: string | null;
+  onItem: (i: ReviewItem) => void; count: number; // items with a defect / uncertain verdict
+  view: "checks" | "review"; setView: (v: "checks" | "review") => void; // the Findings tab: checker results or the LLM review
 }
 
 /** comparing the network under review (A) with another build (B) */
@@ -170,6 +180,7 @@ function LayersTab(p: SidePanelProps) {
         <div className="sub-title">Review</div>
         <Toggle label="Flags" on={L.flags} set={set("flags")} />
         <Toggle label="Findings" on={L.findings} set={set("findings")} />
+        <Toggle label="LLM review" on={L.review} set={set("review")} hint="The LLM review's items (<page>.review.json), rings by severity; see the Review tab" />
       </Section>
       <Section id="road-display" title="Road display">
         <Slider label="Road opacity" value={p.roadOpacity} min={0.1} max={1} step={0.05} onChange={p.setRoadOpacity} />
@@ -263,6 +274,20 @@ function FlagsTab(p: SidePanelProps) {
         <Toggle label="Show deleted" on={p.showDeleted} set={p.setShowDeleted} />
         <button className="btn small" onClick={p.onExportFlags} disabled={!p.flags.length}>Export JSON</button>
       </section>
+    </>
+  );
+}
+
+/** the Findings tab: checker results (loaded by you) or the LLM review of the page (from the review server) */
+function FindingsPanel(p: SidePanelProps) {
+  const v = p.review.view;
+  return (
+    <>
+      <div className="seg" role="group" aria-label="Findings source" style={{ alignSelf: "flex-start" }}>
+        <button className={v === "checks" ? "on" : ""} onClick={() => p.review.setView("checks")}>Checkers{p.findings.length ? ` ${p.findings.length.toLocaleString()}` : ""}</button>
+        <button className={v === "review" ? "on" : ""} onClick={() => p.review.setView("review")}>LLM review{p.review.count ? ` ${p.review.count}` : ""}</button>
+      </div>
+      {v === "checks" ? <FindingsTab {...p} /> : <ReviewTab {...p.review} roads={p.net?.od?.roads ?? []} />}
     </>
   );
 }
@@ -392,14 +417,14 @@ export default function SidePanel(p: SidePanelProps) {
             }}>
             {t === "layers" ? "Layers" : t === "flags" ? "Flags" : t === "findings" ? "Findings" : "Compare"}
             {(() => {
-              const n = t === "flags" ? nFlags : t === "findings" ? p.findings.length : t === "compare" ? p.compare.result?.items.length ?? 0 : 0;
+              const n = t === "flags" ? nFlags : t === "findings" ? p.findings.length + p.review.count : t === "compare" ? p.compare.result?.items.length ?? 0 : 0;
               return n ? <span className="chip">{n.toLocaleString()}</span> : null;
             })()}
           </button>
         ))}
       </nav>
       <div className="panel-body">
-        {p.tab === "layers" ? <LayersTab {...p} /> : p.tab === "flags" ? <FlagsTab {...p} /> : p.tab === "findings" ? <FindingsTab {...p} /> : <CompareTab {...p} />}
+        {p.tab === "layers" ? <LayersTab {...p} /> : p.tab === "flags" ? <FlagsTab {...p} /> : p.tab === "findings" ? <FindingsPanel {...p} /> : <CompareTab {...p} />}
       </div>
     </aside>
   );

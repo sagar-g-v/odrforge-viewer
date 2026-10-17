@@ -410,6 +410,7 @@ meadow from the reference. Lane outlines are night or ink at about 30% (`EDGE.la
 |---|---|---|---|---|
 | Flag (open / fixed / question / won't fix) | 7px radius (+3 when selected) | `#f2b544` / `#7cc95a` / `#5cb6f2` / `#8c929e` | 1.5px `#0a1017`; selected 2.5px white | flag number: Inter 700 11px ink on a white pill, offset +10 / −10px |
 | Finding (error / warning / info) | 5px radius (+3 when selected) | `#ff6a5c` / `#ffaa3c` / `#5cb6f2` | as flag | none (the list and the tooltip name it) |
+| LLM review item (critical / major / minor / info; legitimate on request) | hollow ring 9 / 7 / 6 / 5 px (+3 selected), 2.5px stroke on a `#0a1017` centre at 59 % | stroke `#ff6a5c` / `#ff6a5c` / `#ffaa3c` / `#5cb6f2`; legitimate `#7cc95a` | selected: white stroke 3px | none: the Findings tab (Checkers \| LLM review) and the tooltip name it. Read-only, never mixed with the hand-made flags |
 | 2D signal / object dots | 0.7 m, clamped to 0.5–7px | traffic light `#2ecc62`, sign `#f6f6f6`, stop `#cc2028`, object `#d6b47a` | 1px `#0a1017` | none |
 | Elevation grid point | 2.5px | `#50dcc8` | 1px `#0a1017` | none |
 | Hover (any pickable) | n/a | white 24% highlight | n/a | n/a |

@@ -101,6 +101,11 @@ export const BUILDING = { light: "#d5dde6", dark: "#24324a", opacity: 0.85 };
 export const MARKER = {
   flag: { open: [242, 181, 68, 255], fixed: [124, 201, 90, 255], question: [92, 182, 242, 255], wontfix: [140, 146, 158, 255] } as Record<string, Rgba>,
   finding: { error: [255, 106, 92, 240], warning: [255, 170, 60, 230], info: [92, 182, 242, 220] } as Record<string, Rgba>,
+  // LLM review items (a tool's findings, read-only): the finding hues by severity, drawn as hollow rings on a dark centre so
+  // they never read as a hand-made flag or a checker dot; critical / major / minor / info also differ in size
+  review: { critical: [255, 106, 92, 255], major: [255, 106, 92, 255], minor: [255, 170, 60, 255], info: [92, 182, 242, 255],
+    legitimate: [124, 201, 90, 255] } as Record<string, Rgba>,
+  reviewRadius: { critical: 9, major: 7, minor: 6, info: 5, legitimate: 5 } as Record<string, number>,
   dot: { light: SIGNAL.green, sign: SIGNAL.signWhite, stop: SIGNAL.signStop, object: ASSET.object },
   /** radii in px: flags 7 (+3 when selected), findings 5 (+3); dots 0.7 m clamped to 0.5–7 px */
   flagRadius: 7, findingRadius: 5, selectedGrow: 3, ringWidth: 1.5, ringWidthSelected: 2.5,

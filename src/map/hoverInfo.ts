@@ -9,7 +9,7 @@ export interface HoverMarker { label?: string; tip?: string; }
 
 const KIND: Record<string, string> = { signal: "signal", object: "object", structure: "structure", crossPath: "cross path" };
 
-export function hoverText(layer: string, index: number, r: RenderData, extra: { flags?: HoverMarker[]; findings?: HoverMarker[] } = {}): string | null {
+export function hoverText(layer: string, index: number, r: RenderData, extra: { flags?: HoverMarker[]; findings?: HoverMarker[]; review?: HoverMarker[] } = {}): string | null {
   if (index < 0) return null;
   const road = (i: number) => {
     const rd = r.roads?.[i];
@@ -45,6 +45,7 @@ export function hoverText(layer: string, index: number, r: RenderData, extra: { 
       const m = F?.barrierLines.meta[index];
       return m ? `${m.label} · ${road(m.road)}` : null;
     }
+    case "review": return extra.review?.[index]?.tip ?? null;
     case "flags": case "findings": {
       const m = (layer === "flags" ? extra.flags : extra.findings)?.[index];
       return m ? m.tip ?? (m.label ? `flag #${m.label}` : null) : null;

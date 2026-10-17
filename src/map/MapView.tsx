@@ -52,10 +52,11 @@ export interface MapLayers {
   structures: boolean; crossPaths: boolean; grids: boolean; // grids: junction reference lines + elevation grids
   directions: boolean; // driving-direction arrows on the traffic lanes
   tunnels: boolean; // 3D with terrain: tunnel roads under the ground drawn through it (map/tunnelXray.ts)
+  review: boolean; // the LLM review's items (<page>.review.json)
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
-export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; tip?: string; } // tip: the hover tooltip
+export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; tip?: string; radius?: number } // tip: the hover tooltip
 
 export interface MapViewProps {
   render: RenderData | null;
@@ -78,6 +79,7 @@ export interface MapViewProps {
   selectedFeature: { kind: string; road: number; index: number } | null;
   flags: MarkerPoint[];
   findings: MarkerPoint[];
+  review: MarkerPoint[]; // LLM review items (read-only), drawn as rings
   flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
   fitKey: number;
   onPick: (info: PickingInfo, shift: boolean) => void; // shift: Shift held (select the whole road)
@@ -795,10 +797,19 @@ export default function MapView(p: MapViewProps) {
         pickable: true, modelMatrix, parameters: { ...depthBias("tunnel-xray"), depthCompare: "always" },
         getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
       }));
+    // LLM review items: hollow rings in the severity hue on a dark centre, under the checker findings and the flags
+    if (p.layers.review && p.review.length)
+      out.push(new ScatterplotLayer<MarkerPoint>({
+        id: "review", data: p.review, getPosition: (d) => [d.lon, d.lat, markerZ(d)], radiusUnits: "pixels",
+        getRadius: (d) => (d.radius ?? 6) + (d.selected ? MARKER.selectedGrow : 0), getFillColor: withAlpha(EDGE.ring, 150),
+        stroked: true, getLineColor: (d) => (d.selected ? EDGE.ringSelected : d.color), lineWidthUnits: "pixels",
+        getLineWidth: (d) => (d.selected ? 3 : 2.5), pickable: true, billboard: true, parameters: { depthCompare: "always" },
+        updateTriggers: { getRadius: p.review, getLineColor: p.review, getLineWidth: p.review },
+      }));
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, MARKER.findingRadius));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
-  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
+  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, p.review, modelMatrix,
       beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, barrierLinesOn, xray]);
 
   useEffect(() => {
@@ -827,8 +838,8 @@ export default function MapView(p: MapViewProps) {
   // the pointer while it stays on it, gone when it leaves
   const tipText = useMemo(() => {
     const r = draped?.render ?? p.render;
-    return hoverAt && r ? hoverText(hoverAt.layer, hoverAt.index, r, { flags: p.flags, findings: p.findings }) : null;
-  }, [hoverAt?.layer, hoverAt?.index, draped, p.render, p.flags, p.findings]); // eslint-disable-line react-hooks/exhaustive-deps
+    return hoverAt && r ? hoverText(hoverAt.layer, hoverAt.index, r, { flags: p.flags, findings: p.findings, review: p.review }) : null;
+  }, [hoverAt?.layer, hoverAt?.index, draped, p.render, p.flags, p.findings, p.review]); // eslint-disable-line react-hooks/exhaustive-deps
   const tipKey = tipText && hoverAt ? `${hoverAt.layer}:${hoverAt.index}` : "";
   const [tipShown, setTipShown] = useState("");
   useEffect(() => {

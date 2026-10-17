@@ -11,6 +11,7 @@ import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoin
 import { storedBasemap } from "./map/basemap";
 import { fetchPageMetrics, matchProvenance, metres, shortTime, type Provenance } from "./data/provenance";
 import { datumMismatch } from "./map/odrz";
+import { DEFAULT_FILTER, fetchReview, filterReview, readReview, type ReviewFilter, type ReviewLoad } from "./review/llmReview";
 import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
@@ -57,7 +58,7 @@ export default function App() {
   useEffect(() => { store("odrv.basemap2", basemap); }, [basemap]);
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
-    lanes: true, junctions: true, marks: true, borders: true, refs: true, signals: true, objects: true, structures: true, crossPaths: true, grids: false, directions: true, tunnels: true, buildings: true, terrain: false, flags: true, findings: true,
+    lanes: true, junctions: true, marks: true, borders: true, refs: true, signals: true, objects: true, structures: true, crossPaths: true, grids: false, directions: true, tunnels: true, review: true, buildings: true, terrain: false, flags: true, findings: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -205,6 +206,22 @@ export default function App() {
       .catch((e) => { if (live) setProv({ net, p: { status: "invalid", reason: e instanceof Error ? e.message : String(e) } }); });
     return () => { live = false; };
   }, [net, server]);
+  // the LLM review of the open page (<page>.review.json beside it), read-only; tied to the page by the sha256 of the bytes
+  const [reviewState, setReviewState] = useState<{ net: Network; load: ReviewLoad } | null>(null);
+  useEffect(() => {
+    if (!net || !net.fromServer) return;
+    let live = true;
+    fetchReview(server, net.page)
+      .then((raw) => { if (live) setReviewState({ net, load: readReview(raw, net.source?.sha256 ?? null) }); })
+      .catch((e) => { if (live) setReviewState({ net, load: { status: "invalid", reason: e instanceof Error ? e.message : String(e) } }); });
+    return () => { live = false; };
+  }, [net, server]);
+  const reviewNow = useMemo<ReviewLoad | null>(() => (!net ? null : !net.fromServer ? { status: "none" } : reviewState && reviewState.net === net ? reviewState.load : null), [net, reviewState]);
+  const [reviewFilter, setReviewFilter] = useState<ReviewFilter>(DEFAULT_FILTER);
+  const [selectedReview, setSelectedReview] = useState<string | null>(null);
+  const [findingsView, setFindingsView] = useState<"checks" | "review">("checks");
+  const reviewShown = useMemo(() => (reviewNow?.status === "ok" ? filterReview(reviewNow.review.items, reviewFilter) : []), [reviewNow, reviewFilter]);
+  const reviewCount = reviewNow?.status === "ok" ? reviewNow.review.items.filter((i) => i.verdict !== "legitimate").length : 0;
   const provNow: Provenance | null = !net ? null : !net.fromServer || !net.source ? { status: "local" } : prov && prov.net === net ? prov.p : null;
   // the file's vertical datum against its ground grid's (they must be the same reference, docs/ACCURACY.md)
   const datumNote = groundNow ? datumMismatch(net?.od?.header.userData.find((u) => u.code === "verticalDatum")?.value, groundNow.grid.datum) : null;
@@ -247,6 +264,17 @@ export default function App() {
     });
   }, [findings, ruleOff, net, toLonLat]);
 
+  const reviewMarkers = useMemo<MarkerPoint[]>(() => {
+    if (!net) return [];
+    return reviewShown.map((i) => {
+      const [lon, lat] = toLonLat(i.x, i.y), tone = i.verdict === "legitimate" ? "legitimate" : i.severity;
+      return {
+        id: `review-${i.key}`, lon, lat, color: MARKER.review[tone], radius: MARKER.reviewRadius[tone], selected: i.key === selectedReview,
+        tip: `review #${i.id} · ${tone}${i.verdict === "uncertain" ? " (uncertain)" : ""} · ${i.kind || i.category}: ${clip(i.note)}`,
+      };
+    });
+  }, [reviewShown, net, selectedReview, toLonLat]);
+
   const where = (f: Flag) =>
     f.road
       ? `Road ${f.road}${f.lane != null ? ` · lane ${f.lane}${f.laneType ? ` (${f.laneType})` : ""}` : ""}${f.s != null ? ` · s ${f.s.toFixed(1)} m` : ""}${f.junction && f.junction !== "-1" ? ` · junction ${f.junction}` : ""}`
@@ -266,6 +294,11 @@ export default function App() {
   const onPick = useCallback((info: PickingInfo, shift: boolean) => {
     if (!net || !info.coordinate) return;
     const layer = info.layer?.id ?? "";
+    if (layer === "review") {
+      const it = reviewShown[info.index];
+      if (it) { setSelectedReview(it.key); setTab("findings"); setFindingsView("review"); }
+      return;
+    }
     if (layer === "flags") {
       const f = visibleFlags[info.index];
       if (f) { setSelectedFlag(f.id); setDraft({ flag: f, isNew: false, where: where(f) }); }
@@ -302,7 +335,7 @@ export default function App() {
       : layer === "junction-ref-lines" ? G.refLines.meta[info.index]
       : layer === "junction-grid" ? G.lines.meta[info.index] : layer === "junction-grid-points" ? G.points.meta[info.index] : -1;
     setSelJ(!s && ji !== undefined && ji >= 0 ? { index: ji, x, y } : null);
-  }, [net, visibleFlags, flagMode, newFlagAt]);
+  }, [net, visibleFlags, flagMode, newFlagAt, reviewShown]);
 
   const goRoad = useCallback((q: string) => {
     if (!net) return;
@@ -462,6 +495,11 @@ export default function App() {
             else setToast("This finding has no position");
           }}
           onLoadFindings={(fl) => loadFindings([...fl])}
+          review={{
+            load: reviewNow, filter: reviewFilter, setFilter: setReviewFilter, shown: reviewShown, selected: selectedReview, count: reviewCount,
+            view: findingsView, setView: setFindingsView,
+            onItem: (i) => { setSelectedReview(i.key); const [lon, lat] = toLonLat(i.x, i.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); },
+          }}
           compare={{
             net: cmp.network, loading: cmp.loading, error: cmp.error, result: cmpResult, files,
             openServer: (f) => cmp.openServerFile(server, f), openLocal: cmp.openLocalFile, clear: cmp.clear,
@@ -474,7 +512,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (

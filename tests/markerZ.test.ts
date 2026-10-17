@@ -18,10 +18,10 @@ describe("review marker heights", () => {
     expect(idx.nearestZ(11, 48 + 40 / 111190)).toBeNull();
     expect(idx.nearestZ(11, 48 + 25 / 111190)).toBe(510);
   });
-  it("MapView places flags and findings (and their labels) at markerZ, through the height plan", () => {
+  it("MapView places flags, findings (and their labels) and LLM review rings at markerZ, through the height plan", () => {
     const src = readFileSync(new URL("../src/map/MapView.tsx", import.meta.url), "utf8");
     expect(src).toMatch(/getPosition: \(d\) => \[d\.lon, d\.lat, markerZ\(d\)\],/);
-    expect(src.match(/markerZ\(d\)\]/g)?.length).toBe(2);
+    expect(src.match(/markerZ\(d\)\]/g)?.length).toBe(3); // markers(), their labels, the review rings
     expect(src).toMatch(/drawnZ\(plan, z, lift\)/);
   });
 });
