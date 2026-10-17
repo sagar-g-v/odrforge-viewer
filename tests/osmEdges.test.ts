@@ -5,7 +5,7 @@
 // result is proven (docs/ACCURACY.md).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coveredShare, densify, edgeStats, insideClip, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
+import { coveredShare, densify, edgeStats, headerClip, insideClip, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -42,6 +42,11 @@ describe("OSM edge geometry", () => {
     expect(sharedKerbStats([[[2, 3.5], [2.6, 3.5]]], edges, none)).toMatchObject({ samples: 0, dropped: 0 }); // shorter than 1 m
     const island = new PolygonDistance([[[1, 3.2], [5, 3.2], [5, 4], [1, 4]]]);
     expect(sharedKerbStats([[[2, 3.5], [4, 3.5]]], edges, island)).toMatchObject({ dropped: 1, samples: 0 });
+  });
+  it("reads the clip box an output records in its header", () => {
+    expect(headerClip([{ code: "clip", value: "48.132,11.560,48.145,11.585" }])).toEqual([48.132, 11.56, 48.145, 11.585]);
+    expect(headerClip([{ code: "clip", value: "48.1,11.5" }])).toBeNull();
+    expect(headerClip([])).toBeNull();
   });
   it("samples at 0.5, 1.5 ... m, endpoints left out", () => {
     expect(midSamples([[0, 0], [3, 0]])).toEqual([[0.5, 0], [1.5, 0], [2.5, 0]]);
@@ -101,7 +106,8 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
         const pc = (a: number, b: number) => `${(100 * a / Math.max(1, b)).toFixed(1)} %`;
         const k = kerb.kerbs ? `kerbs (shared measure): ${kerb.kerbs} open kerb ways, ${kerb.dropped} of islands / pedestrian areas dropped; ${kerb.samples} samples, ${pc(kerb.matched, kerb.samples)} with a parallel plain-road edge within 10 m: median ${kerb.medianSigned.toFixed(2)} m (+ road too narrow), |p95| ${kerb.p95abs.toFixed(2)} m, ${pc(kerb.within03, kerb.matched)} within 0.3 m, ${pc(kerb.within05, kerb.matched)} within 0.5 m` : "kerbs: none in OSM";
         const w = walk.samples ? `sidewalk ways: ${walk.samples} samples, ${pc(walk.nearNetwork, walk.samples)} near the network; vs drawn sidewalk lanes ${pc(walk.matched, walk.nearNetwork)} matched, inside ${pc(walk.inside, walk.matched)}, median ${walk.median.toFixed(2)} m, p95 ${walk.p95.toFixed(2)} m` : "sidewalk ways: none in OSM";
-        const lots = K.parking.filter((l) => insideClip(l, CLIP[area])).map(toXY), parkCover = new PolygonDistance(polys(new Set(["parking"])));
+        const clip = headerClip(od.header.userData) ?? CLIP[area]; // the file's own record first, gate.py's box otherwise
+        const lots = K.parking.filter((l) => insideClip(l, clip)).map(toXY), parkCover = new PolygonDistance(polys(new Set(["parking"])));
         const shares = lots.map((l) => coveredShare(l, parkCover)), mean = shares.reduce((a, b) => a + b, 0) / Math.max(1, shares.length);
         const pk = lots.length ? `street-side parking (street_side|lane|layby, wholly inside the clip): ${shares.filter((v) => v >= 0.8).length}/${lots.length} at least 80 % under drawn parking lanes, mean share ${mean.toFixed(2)}` : "street-side parking: none inside the clip";
         console.log(`OSM-EDGES ${area} | ${k} | ${w} | ${pk}`);

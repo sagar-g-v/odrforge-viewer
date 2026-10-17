@@ -161,6 +161,11 @@ export function coveredShare(poly: P2[], cover: PolygonDistance, step = 0.25): n
 
 /** lat0, lon0, lat1, lon1 of the converter's --clip box per area (OdrForge tools/inspect/gate.py) */
 export type ClipBox = [number, number, number, number];
+/** the clip box an output records in its header (userData code "clip" = "lat0,lon0,lat1,lon1"), or null */
+export function headerClip(userData: { code: string; value: string }[]): ClipBox | null {
+  const v = userData.find((u) => u.code === "clip")?.value.split(",").map(Number);
+  return v && v.length === 4 && v.every(Number.isFinite) ? [v[0], v[1], v[2], v[3]] : null;
+}
 export const insideClip = (ring: P2[], c: ClipBox) => ring.every(([lon, lat]) => lat >= c[0] && lat <= c[2] && lon >= c[1] && lon <= c[3]);
 
 export interface OsmKerbData {
