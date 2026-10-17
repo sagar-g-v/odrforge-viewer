@@ -6,7 +6,7 @@ import { concreteBasemap } from "../map/basemap";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
-import { shortTime, type Provenance } from "../data/provenance";
+import { metres, shortTime, type Provenance } from "../data/provenance";
 import type { OpenDrive } from "../xodr/model";
 import type { CompareResult, DiffItem, DiffKind } from "../xodr/compare";
 import type { LocalImagery } from "../map/localImagery";
@@ -84,7 +84,7 @@ function Slider({ label, value, min, max, step, onChange, disabled, format }: {
 
 /** the converter build that wrote the page (data/provenance.ts): shown only when its record is tied to these bytes */
 function BuildRows({ p, kv }: { p: Provenance; kv: (k: string, v: React.ReactNode) => React.ReactNode }) {
-  const m = (v: number | null, d = 2) => (v === null ? "–" : `${v.toFixed(d)} m`);
+  const m = metres;
   if (p.status === "match") {
     const f = p.facts;
     return (

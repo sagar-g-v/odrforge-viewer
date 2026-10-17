@@ -2,7 +2,7 @@
 // Another build's numbers are never shown. That happened on 2026-10-17: a test-area folder held one page from an earlier
 // run next to a grid from a later one.
 import { describe, expect, it } from "vitest";
-import { matchProvenance, sha256Hex, type PageSource } from "../src/data/provenance";
+import { matchProvenance, metres, sha256Hex, type PageSource } from "../src/data/provenance";
 
 const PAGE: PageSource = {
   file: "stelvio_standard.xodr", sha256: "a".repeat(64), bytes: 1361243, lastModified: "Sat, 17 Oct 2026 02:32:10 GMT",
@@ -62,5 +62,14 @@ describe("matchProvenance", () => {
 describe("sha256Hex", () => {
   it("hashes the bytes (FIPS 180-2 test vector \"abc\")", async () => {
     expect(await sha256Hex(new TextEncoder().encode("abc").buffer as ArrayBuffer)).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  });
+});
+
+describe("metres", () => {
+  it("shows a millimetre fit as such, not as 0.00 m (Munich conformed p95 0.0021 m)", () => {
+    expect(metres(0.0021)).toBe("0.002 m");
+    expect(metres(0.132)).toBe("0.13 m");
+    expect(metres(3.1706)).toBe("3.17 m");
+    expect(metres(null)).toBe("–");
   });
 });

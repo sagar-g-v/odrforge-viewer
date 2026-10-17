@@ -101,5 +101,8 @@ export async function fetchPageMetrics(server: string, file: string): Promise<un
   return r.json();
 }
 
+/** a fit in metres: millimetres below 0.1 m (a 2 mm fit must not read as "0.00 m"), centimetres above */
+export const metres = (v: number | null) => (v === null ? "–" : `${v.toFixed(Math.abs(v) < 0.1 ? 3 : 2)} m`);
+
 /** "2026-10-17T05:13:27" -> "2026-10-17 05:13" */
 export const shortTime = (t: string | null) => (t ? t.replace("T", " ").slice(0, 16) : "–");

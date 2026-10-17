@@ -9,7 +9,7 @@ import { listServerFiles, useNetwork, type Network } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
 import { storedBasemap } from "./map/basemap";
-import { fetchPageMetrics, matchProvenance, shortTime, type Provenance } from "./data/provenance";
+import { fetchPageMetrics, matchProvenance, metres, shortTime, type Provenance } from "./data/provenance";
 import { datumMismatch } from "./map/odrz";
 import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
@@ -41,7 +41,7 @@ function BuildStatus({ p }: { p: Provenance }) {
     return (
       <span title={`${f.label} · run ${f.runTime}${f.binaryBuilt ? ` · converter built ${f.binaryBuilt}` : ""} · tied by ${f.by}`}>
         build <b className="mono">{f.commit}</b>{f.dirty && <span className="warn-text"> dirty</span>} · {shortTime(f.runTime)}
-        {f.conformedP95 !== null && <> · conformed p95 <b>{f.conformedP95.toFixed(2)} m</b></>}
+        {f.conformedP95 !== null && <> · conformed p95 <b>{metres(f.conformedP95)}</b></>}
       </span>
     );
   }
