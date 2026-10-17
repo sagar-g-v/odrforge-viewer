@@ -148,3 +148,7 @@ colour, not the limit.
   (zOffset = ground - elevation(s); OdrForge 02a8d5c). Measured 2026-10-17: |base - ground| at most 0.0001 m in Munich (679
   objects), London (598), Frankfurt (276) and Stelvio (2). Before the fix, Munich had 141 more than 0.3 m off, the worst 8.2 m
   under the ground. `tests/realdata.test.ts` checks every point object off bridges at 0.3 m (mutation-checked).
+- **No lane is buried off bridges and tunnels.** No lane point on a road without a bridge or tunnel lies more than 2 m under
+  the road-conformed ground. Proven 2026-10-17 after OdrForge 145cd82 + ef47f9b (underpasses, tunnel ends, car-park junction
+  roads): none in Munich, London and Frankfurt. Stelvio road 22 is the one known open case (hairpin work). It is listed in
+  `KNOWN_BURIED`, and the test fails if that list changes either way. `tests/realdata.test.ts`, mutation-checked.

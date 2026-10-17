@@ -14,8 +14,10 @@ import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 const AREAS = ["munich", "london", "stelvio"]; // built with absolute heights and road-conformed grids
-const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05, objectBase: 0.3 }; // m (driving: measured <= 0.002; objects: <= 0.0001)
+const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05, objectBase: 0.3, buried: 2 }; // m (driving: measured <= 0.002; objects: <= 0.0001)
 
+// known open defects, by area: roads with a lane buried more than LIMIT.buried (remove an entry when the converter fixes it)
+const KNOWN_BURIED: Record<string, string[]> = { stelvio: ["22"] }; // Stelvio road 22: hairpin work in progress (2026-10-17)
 const grid = (file: string): GroundGrid => { const b = readFileSync(`${DIR}/${file}`); return parseOdrz(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const stats = (d: number[]) => { const a = d.map(Math.abs).sort((x, y) => x - y), s = [...d].sort((x, y) => x - y); return { n: d.length, median: s[s.length >> 1], p95abs: a[Math.floor(0.95 * (a.length - 1))] }; };
 
@@ -57,6 +59,23 @@ for (const area of AREAS) {
       const s = stats(d);
       expect(s.n).toBeGreaterThan(1000);
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.drivingMedian);
+    });
+    it("no lane is buried: off bridges and tunnels, no lane point is more than 2 m under that ground", () => {
+      // proven 2026-10-17 (OdrForge 145cd82 + ef47f9b: underpasses, tunnel ends, car-park junctions): none in Munich, London
+      // (and Frankfurt, not in these areas yet). Stelvio road 22 is a known open defect (the hairpin work); the list must
+      // match exactly, so the test also fails when it is fixed (then remove it from KNOWN_BURIED)
+      const { proj, r } = data(), od = parseOpenDrive(readFileSync(xodr, "utf8"));
+      const g = grid(groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!);
+      const L = r.lanes.positions, M = r.lanes.meta, S = r.lanes.starts, buried = new Set<string>();
+      for (let k = 0; k < M.length; k++) {
+        const road = od.roads[M[k].road];
+        if (road.structures.length) continue; // bridges and tunnels lie off the ground on purpose
+        for (let v = S[k]; v < S[k + 1]; v++) {
+          const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]), h = sampleGrid(g, x, y);
+          if (Number.isFinite(h) && L[3 * v + 2] - h < -LIMIT.buried) buried.add(road.id);
+        }
+      }
+      expect([...buried].sort()).toEqual(KNOWN_BURIED[area] ?? []);
     });
     it("trees, poles and other point objects stand on that ground (off bridges): base = elevation(s) + zOffset (1.8.1 XSD)", () => {
       // proven 2026-10-17 after the converter seated them (02a8d5c): max |base - ground| 0.0001 m in Munich, London, Stelvio,
