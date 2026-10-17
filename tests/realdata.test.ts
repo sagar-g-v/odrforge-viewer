@@ -60,10 +60,10 @@ for (const area of AREAS) {
     it("driving lanes sit on that grid (it holds the road surface; curbs and sidewalks stand their curb height above it)", () => {
       // proven 2026-10-17: driving-lane median +0.002 (Stelvio), 0.000 (Munich, London); curb / walking +0.150. The overall
       // median mixes the two (Stelvio +0.133 with 56 % curb and walking lanes), so the road fit is checked on driving lanes
-      const { proj, r } = data(), file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!, g = grid(file);
+      const { proj, r, od } = data(), file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!, g = grid(file);
       const L = r.lanes.positions, M = r.lanes.meta, S = r.lanes.starts, d: number[] = [];
       for (let k = 0; k < M.length; k++) {
-        if (M[k].type !== "driving") continue;
+        if (M[k].type !== "driving" || od.roads[M[k].road].structures.length) continue; // off bridges and tunnels (the car park P15 depth is provisional)
         for (let v = S[k]; v < S[k + 1]; v++) { const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]); const h = sampleGrid(g, x, y); if (Number.isFinite(h)) d.push(L[3 * v + 2] - h); }
       }
       const s = stats(d);
