@@ -13,7 +13,7 @@ import { elevationAt } from "../src/xodr/lanes";
 import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
-const AREAS = ["munich", "london", "stelvio"]; // built with absolute heights and road-conformed grids
+const AREAS = ["munich", "london", "stelvio", "frankfurt_kreuz"]; // built with absolute heights and road-conformed grids (Frankfurt from 2026-10-17, OdrForge 6537d93)
 const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05, objectBase: 0.3, buried: 2 }; // m (driving: measured <= 0.002; objects: <= 0.0001)
 
 // known open defects, by area: roads with a lane buried more than LIMIT.buried (remove an entry when the converter fixes it)
@@ -23,27 +23,37 @@ const stats = (d: number[]) => { const a = d.map(Math.abs).sort((x, y) => x - y)
 
 for (const area of AREAS) {
   const xodr = `${DIR}/${area}_standard.xodr`;
-  describe.skipIf(!existsSync(xodr))(`real data: ${area}`, () => {
+  describe.skipIf(!existsSync(xodr))(`real data: ${area}`, { timeout: 60000 }, () => {
     // read lazily, inside the tests: a skipped describe's body still runs (to collect its tests) where the data is absent
-    let loaded: { proj: ReturnType<typeof makeProjector>; r: ReturnType<typeof buildRender>; L: Float64Array } | null = null;
+    let loaded: { od: ReturnType<typeof parseOpenDrive>; proj: ReturnType<typeof makeProjector>; r: ReturnType<typeof buildRender>; L: Float64Array } | null = null;
     const data = () => {
       if (!loaded) {
         const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
-        loaded = { proj, r, L: r.lanes.positions };
+        loaded = { od, proj, r, L: r.lanes.positions };
       }
       return loaded;
     };
-    const against = (g: GroundGrid) => {
-      const { proj, L } = data();
+    // lane vertices against a grid; onGround: only roads without a bridge or tunnel (those lie off the ground on purpose)
+    const against = (g: GroundGrid, onGround = false) => {
+      const { proj, L, r, od: all } = data(), od = onGround ? all : null;
       const d: number[] = [];
-      for (let v = 0; v < L.length / 3; v++) { const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]); const h = sampleGrid(g, x, y); if (Number.isFinite(h)) d.push(L[3 * v + 2] - h); }
-      return stats(d);
+      let total = 0;
+      for (let k = 0; k < r.lanes.meta.length; k++) {
+        if (od && od.roads[r.lanes.meta[k].road].structures.length) continue;
+        for (let v = r.lanes.starts[k]; v < r.lanes.starts[k + 1]; v++) {
+          total++;
+          const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]); const h = sampleGrid(g, x, y); if (Number.isFinite(h)) d.push(L[3 * v + 2] - h);
+        }
+      }
+      return { ...stats(d), total };
     };
-    it("the viewer finds a road-conformed grid for it, and every lane lies on that grid", () => {
-      const { L } = data(), file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`));
+    it("the viewer finds a road-conformed grid for it, and every lane off bridges and tunnels lies on that grid", () => {
+      // off bridges and tunnels, measured 2026-10-17: |p95| 0.151 Munich, 0.150 London, 0.192 Stelvio, 0.151 Frankfurt (whose
+      // bridges and car-park tunnels made the all-lane p95 5.9 m: they are off the ground by design)
+      const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`));
       expect(file).toMatch(/_ground_conformed\.odrz$/);
-      const s = against(grid(file!));
-      expect(s.n).toBeGreaterThan(0.95 * (L.length / 3));
+      const s = against(grid(file!), true);
+      expect(s.n).toBeGreaterThan(0.95 * s.total);
       expect(s.p95abs).toBeLessThanOrEqual(LIMIT.conformedP95);
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.conformedMedian);
     });
@@ -64,7 +74,7 @@ for (const area of AREAS) {
       // proven 2026-10-17 (OdrForge 145cd82 + ef47f9b: underpasses, tunnel ends, car-park junctions): none in Munich, London
       // (and Frankfurt, not in these areas yet). Stelvio road 22 is a known open defect (the hairpin work); the list must
       // match exactly, so the test also fails when it is fixed (then remove it from KNOWN_BURIED)
-      const { proj, r } = data(), od = parseOpenDrive(readFileSync(xodr, "utf8"));
+      const { proj, r } = data(), od = data().od;
       const g = grid(groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!);
       const L = r.lanes.positions, M = r.lanes.meta, S = r.lanes.starts, buried = new Set<string>();
       for (let k = 0; k < M.length; k++) {
@@ -80,7 +90,7 @@ for (const area of AREAS) {
     it("trees, poles and other point objects stand on that ground (off bridges): base = elevation(s) + zOffset (1.8.1 XSD)", () => {
       // proven 2026-10-17 after the converter seated them (02a8d5c): max |base - ground| 0.0001 m in Munich, London, Stelvio,
       // Frankfurt; before, Munich had 141 of 679 more than 0.3 m off (worst 8.2 m under the ground)
-      const od = parseOpenDrive(readFileSync(xodr, "utf8"));
+      const { od } = data();
       const g = grid(groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!);
       const off: string[] = [];
       let n = 0;
@@ -98,7 +108,7 @@ for (const area of AREAS) {
     });
     it("the file and the grid the viewer draws are heights above the same vertical datum", () => {
       const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!;
-      const od = parseOpenDrive(readFileSync(xodr, "utf8"));
+      const { od } = data();
       const fileDatum = od.header.userData.find((u) => u.code === "verticalDatum")?.value;
       expect(fileDatum).toBeTruthy();
       expect(datumMismatch(fileDatum, grid(file).datum)).toBeNull();
