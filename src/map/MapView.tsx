@@ -275,6 +275,7 @@ function asLanePick<T extends { layer?: { id: string } | null; index: number; ob
 
 const TIP_DELAY = 400; // ms, design §5
 export const SIGN_LABEL_MAX_MPP = 0.6; // m per screen pixel: sign labels from about a 1:2000 view in (design §8 Labels)
+export const BARRIER_LINE_MAX_MPP = 0.3; // m per screen pixel: the barriers' top-edge line from about zoom 17.5 in (design §8)
 
 /** the map's tooltip: the design's .tooltip, 6px below the pointer, kept in the viewport */
 function MapTip({ x, y, text }: { x: number; y: number; text: string }) {
@@ -297,6 +298,7 @@ export default function MapView(p: MapViewProps) {
   // the view (file-coordinate box, metres per screen pixel) the imagery tiles are chosen for; updated when the camera rests
   const [view, setView] = useState<{ box: [number, number, number, number]; mpp: number } | null>(null);
   const signLabelsOn = !view || view.mpp <= SIGN_LABEL_MAX_MPP;
+  const barrierLinesOn = !view || view.mpp <= BARRIER_LINE_MAX_MPP;
   // terrain: the DEM under the network (the same tiles MapLibre's terrain draws) and the lift that keeps the draped
   // roads above the surface as drawn (re-measured whenever the map comes to rest)
   const [dem, setDem] = useState<{ render: RenderData; dem: Dem } | null>(null);
@@ -674,17 +676,20 @@ export default function MapView(p: MapViewProps) {
           updateTriggers: { getFillColor: [selF] },
         }));
       }
-      // guard rails, jersey barriers, walls, fences: a 3px light line with a dark casing on their top edge, in both views, so
-      // a 10 cm rail reads at any zoom over light and dark ground (the bodies keep their real size)
-      if (p.layers.objects && F.barrierLines.meta.length) {
+      // guard rails, jersey barriers, walls, fences: a thin light line with a soft dark casing on their top edge, in both
+      // views, so a 10 cm rail reads over light and dark ground once zoomed in; it never outweighs the lanes (at most
+      // 2 px, metre-based) and is not drawn zoomed out (the bodies keep their real size)
+      if (p.layers.objects && F.barrierLines.meta.length && barrierLinesOn) {
         const BL = F.barrierLines, nb = BL.meta.length;
         const bData = { length: nb, startIndices: sub(BL.starts, nb), attributes: { getPath: { value: BL.positions, size: 3 } } };
         out.push(new PathLayer({
-          id: "barrier-casing", data: bData, _pathType: "open", widthUnits: "pixels", getWidth: 5, getColor: EDGE.ring,
+          id: "barrier-casing", data: bData, _pathType: "open", widthUnits: "meters", getWidth: 0.45, widthMinPixels: 2, widthMaxPixels: 3.5,
+          getColor: withAlpha(EDGE.ring, 140),
           capRounded: true, jointRounded: true, modelMatrix, parameters: depthBias("barrier-casing"),
         }));
         out.push(new PathLayer({
-          id: "barrier-lines", data: bData, _pathType: "open", widthUnits: "pixels", getWidth: 3, capRounded: true, jointRounded: true,
+          id: "barrier-lines", data: bData, _pathType: "open", widthUnits: "meters", getWidth: 0.25, widthMinPixels: 1, widthMaxPixels: 2,
+          capRounded: true, jointRounded: true,
           getColor: (_: unknown, { index }: { index: number }) => (isSel(BL.meta[index]) ? OVERLAY.selected : ASSET.barrierLine),
           pickable: true, modelMatrix, parameters: depthBias("barrier-lines"), updateTriggers: { getColor: [selF] },
         }));
@@ -794,7 +799,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
-      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, xray]);
+      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, barrierLinesOn, xray]);
 
   useEffect(() => {
     layersRef.current = layers;
