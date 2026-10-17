@@ -4,7 +4,7 @@
 // Shapes are built from two primitives deck.gl draws without extra packages: round columns (ColumnLayer: radius,
 // base height, extrusion) and extruded rectangles (SolidPolygonLayer, base at the polygon's z).
 import { evalRoad } from "./geometry";
-import { laneBorders, laneOffsetAt, sectionIndex, surfaceZ } from "./lanes";
+import { elevationAt, laneBorders, laneOffsetAt, sectionIndex, surfaceZ } from "./lanes";
 import { sampleS } from "./build";
 import type { OpenDrive, Road, RoadObject, Signal } from "./model";
 import { ASSET, SIGNAL, TREE } from "../design/scene";
@@ -140,7 +140,9 @@ export class FeatureBuilder {
   private signal(road: Road, ri: number, sg: Signal, index: number) {
     const ref: FeatureRef = { kind: "signal", road: ri, index };
     const p = evalRoad(road, Math.min(Math.max(sg.s, 0), road.length));
-    const x = p.x - sg.t * Math.sin(p.hdg), y = p.y + sg.t * Math.cos(p.hdg), ground = surfaceZ(road, sg.s, sg.t);
+    // zOffset is "relative to the elevation of the road reference line" (1.8.1 XSD t_road_signals_signal/@zOffset): the base
+    // is the reference line's elevation at s, not the banked road surface at t
+    const x = p.x - sg.t * Math.sin(p.hdg), y = p.y + sg.t * Math.cos(p.hdg), ground = elevationAt(road, Math.min(Math.max(sg.s, 0), road.length));
     const a = p.hdg + sg.hOffset; // the board spans across the road; it is thin along it
     const kind = signalKind(sg);
     const w = sg.width > 0 ? sg.width : kind === "light" ? 0.4 : 0.6, h = sg.height > 0 ? sg.height : kind === "light" ? 1 : 0.6;
@@ -169,7 +171,9 @@ export class FeatureBuilder {
     if (o.outlines.length && !o.repeats.length) return; // outlines are drawn from build.ts (flat areas, lines, prisms)
     const at = (s: number, t: number) => {
       const p = evalRoad(road, Math.min(Math.max(s, 0), road.length));
-      return { x: p.x - t * Math.sin(p.hdg), y: p.y + t * Math.cos(p.hdg), hdg: p.hdg, z: surfaceZ(road, s, t) };
+      // zOffset, zOffsetStart / End are "relative to the elevation of the road reference line" (1.8.1 XSD t_road_objects_object,
+      // t_road_objects_object_repeat): the reference line's elevation at s, not the banked surface at t
+      return { x: p.x - t * Math.sin(p.hdg), y: p.y + t * Math.cos(p.hdg), hdg: p.hdg, z: elevationAt(road, Math.min(Math.max(s, 0), road.length)) };
     };
     if (o.repeats.length) {
       for (const r of o.repeats) {

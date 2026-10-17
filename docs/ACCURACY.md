@@ -136,3 +136,7 @@ colour, not the limit.
   surface (`map/tunnelXray.ts`). This is a rendering choice: the overlay uses the lane's own vertices and the lanes' height
   transform, and it moves nothing. Clicks and hovers act on the lane. Guarded by `tests/tunnelXray.test.ts`, mutation-checked.
   Frankfurt, 2026-10-17: 3,929 of the 3,942 lane points more than 2 m under the ground are on tunnel roads.
+- **Objects and signals stand where the spec puts them.** Their base is the reference line's elevation at s plus `zOffset`
+  (1.8.1 XSD: "z-offset of object's origin relative to the elevation of the road reference line"; the same for signals and
+  `<repeat>` zOffsetStart / End). The banked road surface at t is not used: it put them up to 0.3 m off on a 5 % bank
+  6 m out. Guarded by `tests/exact.test.ts` (mutation-checked).

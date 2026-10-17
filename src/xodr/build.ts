@@ -270,14 +270,14 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
       const p = evalRoad(road, sg.s);
       const x = p.x - sg.t * Math.sin(p.hdg), y = p.y + sg.t * Math.cos(p.hdg);
       const [lon, lat] = geo(x, y);
-      pts.push(lon, lat, surfaceZ(road, sg.s, sg.t) + sg.zOffset + off.z);
+      pts.push(lon, lat, elevationAt(road, sg.s) + sg.zOffset + off.z); // zOffset: relative to the reference line's elevation (1.8.1 XSD)
       ptMeta.push({ road: ri, index: si, kind: "signal", dynamic: sg.dynamic, stop: signalKind(sg) === "stop",
         label: sg.name || `${sg.type}${sg.subtype && sg.subtype !== "-1" ? "-" + sg.subtype : ""}` });
     });
     road.objects.forEach((o, oi) => {
       const p = evalRoad(road, o.s);
       const x0 = p.x - o.t * Math.sin(p.hdg), y0 = p.y + o.t * Math.cos(p.hdg);
-      const h = p.hdg + o.hdg, z0 = surfaceZ(road, o.s, o.t) + o.zOffset;
+      const h = p.hdg + o.hdg, z0 = elevationAt(road, o.s) + o.zOffset; // zOffset: relative to the reference line's elevation (1.8.1 XSD)
       const meta: PointMeta = { road: ri, index: oi, kind: "object", dynamic: false, label: o.name || o.type };
       if (o.repeats.length) return;
       // corners in file coordinates: <cornerLocal> rotated by the object's heading about its insertion point (z from the

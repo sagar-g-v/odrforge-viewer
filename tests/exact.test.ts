@@ -47,3 +47,25 @@ describe("lane offset (1.8.0 §9.3: lane 0 sits at t = laneOffset(s), not on the
     expect(Math.min(...ys)).toBeCloseTo(-5.0, 6);
   });
 });
+
+describe("object and signal heights (1.8.1 XSD: zOffset is relative to the elevation of the road reference line)", () => {
+  // the same road banked by superelevation 0.05; a tree at t = -6 and a sign at t = -4, zOffset 2: their bases are the
+  // reference line's elevation (+ zOffset), not the banked surface at t (which is 6 tan(0.05) = 0.30 m lower)
+  const xml = XODR.replace('<elevationProfile><elevation s="0" a="517.25" b="0" c="0" d="0"/></elevationProfile>',
+    '<elevationProfile><elevation s="0" a="517.25" b="0" c="0" d="0"/></elevationProfile><lateralProfile><superelevation s="0" a="0.05" b="0" c="0" d="0"/></lateralProfile>')
+    .replace("<objects>", '<objects><object id="t" type="tree" s="10" t="-6" zOffset="0" hdg="0" radius="1.5" height="6"/>')
+    .replace("</road>", '<signals><signal id="g" s="12" t="-4" zOffset="2" type="274" subtype="50" country="DE" dynamic="no" orientation="+" height="0.6" width="0.6"/></signals></road>');
+  const od = parseOpenDrive(xml), r = buildRender(od, makeProjector(od.header.geoReference).forward);
+  it("the crosswalk outline (cornerLocal z = 0) lies at the reference elevation", () => {
+    const zs = new Set(Array.from({ length: r.objects.positions.length / 3 }, (_, i) => r.objects.positions[3 * i + 2]));
+    expect([...zs]).toEqual([517.25]);
+  });
+  it("the sign's point is at elevation + zOffset", () => {
+    expect(r.points.positions[2]).toBeCloseTo(519.25, 9);
+  });
+  it("the tree stands on the reference elevation", () => {
+    const zs = r.features.columns.flatMap((c) => c.meta.map((m, i) => (m.kind === "object" ? c.positions[3 * i + 2] : NaN))).filter(Number.isFinite);
+    expect(zs.length).toBeGreaterThan(0);
+    expect(Math.min(...zs)).toBeCloseTo(517.25, 6); // the trunk's base
+  });
+});
