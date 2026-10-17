@@ -1,8 +1,8 @@
 // OSM edges against the drawn network (src/review/osmEdges.ts): the geometry, and a per-area report on the converter's test
 // areas (kerb lines vs drawn curb lanes, sidewalk ways vs drawn sidewalk lanes). The report prints with OSM_EDGES=1:
 //   OSM_EDGES=1 npx vitest run tests/osmEdges.test.ts --silent=false
-// No limits yet: the numbers are the baseline for the converter's OSM-geometry mode (2026-10-18); limits follow once a
-// result is proven (docs/ACCURACY.md).
+// Limits only for proven results (docs/ACCURACY.md): street-side parking coverage, proven 2026-10-18 on the converter's
+// parking build (8344403 + 92f58db). The kerb numbers are still the baseline for the OSM-geometry mode's kerb work.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { coveredShare, densify, edgeStats, headerClip, insideClip, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
@@ -75,6 +75,12 @@ describe("OSM edge geometry", () => {
 const OSM = process.env.ODRF_OSM ?? "C:/mywork/osm2carla/data/testareas";
 const OUT = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 const WALK = new Set(["sidewalk", "walking"]);
+// street-side parking areas at least 80 % under drawn parking lanes, and the mean share, proven 2026-10-18 (converter
+// 8344403 + 92f58db, measured here and by its parking_coverage.py alike): never lowered; raised when the converter improves
+const PARKING_MIN: Record<string, { covered: number; of: number; meanShare: number }> = {
+  munich: { covered: 20, of: 30, meanShare: 0.70 }, london: { covered: 12, of: 17, meanShare: 0.82 },
+  frankfurt_kreuz: { covered: 11, of: 12, meanShare: 0.89 }, stelvio: { covered: 1, of: 8, meanShare: 0.54 },
+};
 // the converter's --clip boxes (OdrForge tools/inspect/gate.py: lat0, lon0, lat1, lon1): polygons wholly inside count
 const CLIP: Record<string, ClipBox> = {
   munich: [48.132, 11.560, 48.145, 11.585], london: [51.505, -0.135, 51.517, -0.115], frankfurt_kreuz: [50.045, 8.585, 50.060, 8.615],
@@ -84,7 +90,7 @@ const CLIP: Record<string, ClipBox> = {
 for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) {
   const osmFile = `${OSM}/${area}.osm`, xodr = `${OUT}/${area}_standard.xodr`;
   describe.skipIf(!existsSync(osmFile) || !existsSync(xodr))(`OSM edges vs the drawn network: ${area}`, { timeout: 120000 }, () => {
-    it("measures kerb lines against curb lanes and sidewalk ways against sidewalk lanes", () => {
+    it("measures kerb lines against curb lanes and sidewalk ways against sidewalk lanes; street-side parking is covered", () => {
       const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
       const toXY = (line: P2[]) => line.map(([lon, lat]) => proj.inverse(lon, lat) as P2);
       const polys = (types: Set<string>) => {
@@ -101,16 +107,25 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
       const anyLane = new PolygonDistance(polys(new Set(r.lanes.meta.map((m) => m.type))));
       const areas = new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY));
       const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(plainRoadEdges(od)), areas);
+      // street-side parking: OSM areas wholly inside the clip (the file's own record first, gate.py's box otherwise)
+      const clip = headerClip(od.header.userData) ?? CLIP[area], inClip = K.parking.map((l) => insideClip(l, clip));
+      const lotIds = K.parkingIds.filter((_, i) => inClip[i]), parkCover = new PolygonDistance(polys(new Set(["parking"])));
+      const shares = K.parking.filter((_, i) => inClip[i]).map((l) => coveredShare(toXY(l), parkCover));
+      const covered = shares.filter((v) => v >= 0.8).length, mean = shares.reduce((a, b) => a + b, 0) / Math.max(1, shares.length);
       const walk = edgeStats(e.sidewalks.map(toXY), new PolygonDistance(polys(WALK)), anyLane);
       if (process.env.OSM_EDGES) {
         const pc = (a: number, b: number) => `${(100 * a / Math.max(1, b)).toFixed(1)} %`;
         const k = kerb.kerbs ? `kerbs (shared measure): ${kerb.kerbs} open kerb ways, ${kerb.dropped} of islands / pedestrian areas dropped; ${kerb.samples} samples, ${pc(kerb.matched, kerb.samples)} with a parallel plain-road edge within 10 m: median ${kerb.medianSigned.toFixed(2)} m (+ road too narrow), |p95| ${kerb.p95abs.toFixed(2)} m, ${pc(kerb.within03, kerb.matched)} within 0.3 m, ${pc(kerb.within05, kerb.matched)} within 0.5 m` : "kerbs: none in OSM";
         const w = walk.samples ? `sidewalk ways: ${walk.samples} samples, ${pc(walk.nearNetwork, walk.samples)} near the network; vs drawn sidewalk lanes ${pc(walk.matched, walk.nearNetwork)} matched, inside ${pc(walk.inside, walk.matched)}, median ${walk.median.toFixed(2)} m, p95 ${walk.p95.toFixed(2)} m` : "sidewalk ways: none in OSM";
-        const clip = headerClip(od.header.userData) ?? CLIP[area]; // the file's own record first, gate.py's box otherwise
-        const lots = K.parking.filter((l) => insideClip(l, clip)).map(toXY), parkCover = new PolygonDistance(polys(new Set(["parking"])));
-        const shares = lots.map((l) => coveredShare(l, parkCover)), mean = shares.reduce((a, b) => a + b, 0) / Math.max(1, shares.length);
-        const pk = lots.length ? `street-side parking (street_side|lane|layby, wholly inside the clip): ${shares.filter((v) => v >= 0.8).length}/${lots.length} at least 80 % under drawn parking lanes, mean share ${mean.toFixed(2)}` : "street-side parking: none inside the clip";
+        const uncovered = lotIds.map((id, i) => [id, shares[i]] as const).filter(([, v]) => v < 0.8).map(([id, v]) => `${id} ${v.toFixed(2)}`).join(", ");
+        const pk = shares.length ? `street-side parking (street_side|lane|layby, wholly inside the clip): ${covered}/${shares.length} at least 80 % under drawn parking lanes, mean share ${mean.toFixed(2)}${uncovered ? `; under 80 %: ${uncovered}` : ""}` : "street-side parking: none inside the clip";
         console.log(`OSM-EDGES ${area} | ${k} | ${w} | ${pk}`);
+      }
+      const min = PARKING_MIN[area];
+      if (min) {
+        expect(shares.length).toBe(min.of); // the same OSM areas inside the same clip
+        expect(covered).toBeGreaterThanOrEqual(min.covered);
+        expect(mean).toBeGreaterThanOrEqual(min.meanShare);
       }
       expect(kerb.dropped).toBeLessThanOrEqual(kerb.kerbs);
     });

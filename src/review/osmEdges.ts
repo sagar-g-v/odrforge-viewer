@@ -192,17 +192,18 @@ export interface OsmKerbData {
   islands: P2[][]; // area:highway=traffic_island, footway=traffic_island polygons
   pedestrian: P2[][]; // highway=pedestrian areas and area:highway=pedestrian polygons
   parking: P2[][]; // closed parking=street_side|lane|layby ways
+  parkingIds: string[]; // their OSM way ids, in the same order
 }
 
 /** everything the shared kerb and parking measures need from an .osm (lon / lat); ways missing a node are left out */
 export function osmKerbData(osmText: string): OsmKerbData {
-  const out: OsmKerbData = { kerbs: [], islands: [], pedestrian: [], parking: [] };
-  for (const { tags: t, refs, line, closed } of osmWays(osmText)) {
+  const out: OsmKerbData = { kerbs: [], islands: [], pedestrian: [], parking: [], parkingIds: [] };
+  for (const { id, tags: t, refs, line, closed } of osmWays(osmText)) {
     if (line.length !== refs.length || line.length < 2) continue;
     if (isKerb(t) && !closed) out.kerbs.push(line);
     if (closed && isTrafficIsland(t)) out.islands.push(line);
     if (closed && isPedestrianArea(t)) out.pedestrian.push(line);
-    if (closed && isStreetParking(t)) out.parking.push(line);
+    if (closed && isStreetParking(t)) { out.parking.push(line); out.parkingIds.push(id); }
   }
   return out;
 }
