@@ -4,6 +4,7 @@ import type { RenderData } from "../xodr/build";
 import type { OpenDrive } from "../xodr/model";
 import type { ExportRoad } from "../xodr/odrforgeExport";
 import { makeProjector, type Projector } from "../xodr/geo";
+import { sha256Hex, type PageSource } from "./provenance";
 
 export interface Network {
   name: string; // file name
@@ -15,6 +16,7 @@ export interface Network {
   proj: Projector;
   ms: number;
   fromServer: boolean;
+  source: PageSource | null; // the exact bytes fetched from the review server (identity for build provenance); null for a local file
 }
 
 type WorkerResult = { kind: "xodr"; od: OpenDrive; render: RenderData; georeferenced: boolean; ms: number }
@@ -44,7 +46,7 @@ export function useNetwork() {
   }, []);
 
   // every open takes a sequence number before any await; a result, error or spinner change of an older one is dropped
-  const parse = useCallback((id: number, name: string, text: string, fromServer: boolean) => {
+  const parse = useCallback((id: number, name: string, text: string, fromServer: boolean, source: PageSource | null = null) => {
     if (id !== seq.current) return;
     setLoading(`Building ${name}…`);
     setError(null);
@@ -60,7 +62,7 @@ export function useNetwork() {
       const roads = res.kind === "xodr" ? res.od.roads.map((r) => ({ id: r.id, name: r.name, junction: r.junction, length: r.length })) : res.info.roads;
       setNetwork({
         name, page: stem(name), kind: res.kind, od: res.kind === "xodr" ? res.od : null, roads, render: res.render,
-        proj: makeProjector(geo), ms: res.ms, fromServer,
+        proj: makeProjector(geo), ms: res.ms, fromServer, source,
       });
     };
     w.addEventListener("message", onMsg);
@@ -74,7 +76,10 @@ export function useNetwork() {
     try {
       const r = await fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${file}`);
-      parse(id, file, await r.text(), true);
+      // the bytes as served: hashed so the page's build record can be tied to exactly this file (data/provenance.ts)
+      const buf = await r.arrayBuffer();
+      const source: PageSource = { file, sha256: await sha256Hex(buf), bytes: buf.byteLength, lastModified: r.headers.get("Last-Modified") };
+      parse(id, file, new TextDecoder().decode(buf), true, source);
     } catch (e) {
       if (id !== seq.current) return;
       setLoading(null);

@@ -5,10 +5,11 @@ import Inspector, { FeatureInspector, JunctionInspector, type Selection } from "
 import SidePanel, { type Tab } from "./components/SidePanel";
 import { Icon, Logo } from "./components/Icon";
 import { MARKER } from "./design/scene";
-import { listServerFiles, useNetwork } from "./data/useNetwork";
+import { listServerFiles, useNetwork, type Network } from "./data/useNetwork";
 import { compareNetworks } from "./xodr/compare";
 import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoint } from "./map/MapView";
 import { storedBasemap } from "./map/basemap";
+import { fetchPageMetrics, matchProvenance, shortTime, type Provenance } from "./data/provenance";
 import { datumMismatch } from "./map/odrz";
 import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
@@ -27,6 +28,24 @@ const store = (k: string, v?: string) => {
 };
 
 const TOAST_ICON = { ok: "check", info: "info", warn: "alert", err: "alert" } as const;
+
+/** the status bar's build line: commit, dirty, run time and the conformed fit, or why there is none */
+function BuildStatus({ p }: { p: Provenance }) {
+  if (p.status === "local") return null;
+  if (p.status === "none") return <span className="muted">no metrics for this build</span>;
+  if (p.status === "match") {
+    const f = p.facts;
+    return (
+      <span title={`${f.label} · run ${f.runTime}${f.binaryBuilt ? ` · converter built ${f.binaryBuilt}` : ""} · tied by ${f.by}`}>
+        build <b className="mono">{f.commit}</b>{f.dirty && <span className="warn-text"> dirty</span>} · {shortTime(f.runTime)}
+        {f.conformedP95 !== null && <> · conformed p95 <b>{f.conformedP95.toFixed(2)} m</b></>}
+      </span>
+    );
+  }
+  const why = p.status === "mismatch" ? `metrics are for another build of this page: ${p.reasons.join("; ")}`
+    : p.status === "unverified" ? `metrics not shown: ${p.reason}` : `metrics unreadable: ${p.reason}`;
+  return <span className="warn-text" title={why}>{p.status === "mismatch" ? "metrics are for another build" : "metrics not shown"}</span>;
+}
 
 export default function App() {
   const params = useMemo(() => new URLSearchParams(location.search), []);
@@ -172,6 +191,18 @@ export default function App() {
     };
   }, [net, layers.terrain, mode, server, setToast]);
   const groundNow = ground && ground.net === net ? ground : null;
+  // which converter build produced the open page (<page>.metrics.json from the gate, tied to the page by its sha256)
+  const [prov, setProv] = useState<{ net: Network; p: Provenance } | null>(null);
+  useEffect(() => {
+    const src = net?.source;
+    if (!net || !net.fromServer || !src) return; // a local file has no build record
+    let live = true;
+    fetchPageMetrics(server, net.page)
+      .then((raw) => { if (live) setProv({ net, p: matchProvenance(raw, src) }); })
+      .catch((e) => { if (live) setProv({ net, p: { status: "invalid", reason: e instanceof Error ? e.message : String(e) } }); });
+    return () => { live = false; };
+  }, [net, server]);
+  const provNow: Provenance | null = !net ? null : !net.fromServer || !net.source ? { status: "local" } : prov && prov.net === net ? prov.p : null;
   // the file's vertical datum against its ground grid's (they must be the same reference, docs/ACCURACY.md)
   const datumNote = groundNow ? datumMismatch(net?.od?.header.userData.find((u) => u.code === "verticalDatum")?.value, groundNow.grid.datum) : null;
 
@@ -403,7 +434,7 @@ export default function App() {
 
       {panelOpen && (
         <SidePanel
-          tab={tab} setTab={setTab} net={net} imagery={imagery} theme={theme} layers={layers} setLayers={setLayers}
+          tab={tab} setTab={setTab} net={net} provenance={provNow} imagery={imagery} theme={theme} layers={layers} setLayers={setLayers}
           basemap={basemap} setBasemap={setBasemap} heightMode={heightMode} setHeightMode={setHeightMode}
           exaggeration={exaggeration} setExaggeration={setExaggeration}
           buildingOpacity={buildingOpacity} setBuildingOpacity={setBuildingOpacity}
@@ -491,6 +522,7 @@ export default function App() {
             <span><b>{net.name}</b> · {net.kind === "xodr" ? `OpenDRIVE ${net.od!.header.revMajor}.${net.od!.header.revMinor}` : "OdrForge export"}</span>
             <span>{net.render.stats.vertices.toLocaleString()} vertices · built in {(net.ms / 1000).toFixed(1)} s</span>
             {!net.proj.georeferenced && <span className="warn-text">no geoReference: placed at 0°, 0°</span>}
+            {provNow && <BuildStatus p={provNow} />}
           </>
         ) : <span className="muted">No network loaded</span>}
         <span className="grow" />

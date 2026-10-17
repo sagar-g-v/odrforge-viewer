@@ -6,6 +6,7 @@ import { concreteBasemap } from "../map/basemap";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
 import type { Network } from "../data/useNetwork";
+import { shortTime, type Provenance } from "../data/provenance";
 import type { OpenDrive } from "../xodr/model";
 import type { CompareResult, DiffItem, DiffKind } from "../xodr/compare";
 import type { LocalImagery } from "../map/localImagery";
@@ -13,7 +14,7 @@ import type { LocalImagery } from "../map/localImagery";
 export type Tab = "layers" | "flags" | "findings" | "compare";
 
 export interface SidePanelProps {
-  tab: Tab; setTab: (t: Tab) => void; net: Network | null; imagery: LocalImagery | null; theme: "dark" | "light";
+  tab: Tab; setTab: (t: Tab) => void; net: Network | null; provenance: Provenance | null; imagery: LocalImagery | null; theme: "dark" | "light";
   layers: MapLayers; setLayers: (l: MapLayers) => void;
   basemap: Basemap; setBasemap: (b: Basemap) => void;
   heightMode: HeightMode; setHeightMode: (h: HeightMode) => void;
@@ -81,8 +82,38 @@ function Slider({ label, value, min, max, step, onChange, disabled, format }: {
   );
 }
 
+/** the converter build that wrote the page (data/provenance.ts): shown only when its record is tied to these bytes */
+function BuildRows({ p, kv }: { p: Provenance; kv: (k: string, v: React.ReactNode) => React.ReactNode }) {
+  const m = (v: number | null, d = 2) => (v === null ? "–" : `${v.toFixed(d)} m`);
+  if (p.status === "match") {
+    const f = p.facts;
+    return (
+      <>
+        <div className="sub-title">Build</div>
+        {kv("commit", <span className="mono">{f.commit}{f.dirty && <span className="warn-text"> + uncommitted changes</span>}</span>)}
+        {kv("gate run", shortTime(f.runTime))}
+        {f.binaryBuilt && kv("converter built", shortTime(f.binaryBuilt))}
+        {kv("terrain fit: centre p95", m(f.centreP95))}
+        {kv("conformed p95 / p99", `${m(f.conformedP95)} / ${m(f.conformedP99)}`)}
+        {f.decksWithin05 !== null && kv("decks within 0.5 m", `${(f.decksWithin05 <= 1 ? f.decksWithin05 * 100 : f.decksWithin05).toFixed(1)} %`)}
+        {kv("tied to this file by", f.by === "sha256" ? "content hash (sha256)" : "size and modification time")}
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="sub-title">Build</div>
+      <p className={`small ${p.status === "none" ? "muted" : "warn-text"}`}>
+        {p.status === "none" ? "No metrics for this build."
+          : p.status === "mismatch" ? `The metrics next to this page are for another build${p.snapshotTime ? ` (run ${shortTime(p.snapshotTime)})` : ""}: ${p.reasons.join("; ")}. Not shown.`
+          : p.status === "unverified" ? `Metrics not shown: ${p.reason}.` : p.status === "invalid" ? `Metrics unreadable: ${p.reason}.` : ""}
+      </p>
+    </>
+  );
+}
+
 /** the file's <header> (1.8.0 §6.3): what it says about itself, its georeference, offset, license and user data */
-function FileSection({ od }: { od: OpenDrive }) {
+function FileSection({ od, provenance }: { od: OpenDrive; provenance: Provenance | null }) {
   const h = od.header, o = h.offset;
   const kv = (k: string, v: React.ReactNode) => <div className="kv" key={k}><span>{k}</span><span>{v}</span></div>;
   return (
@@ -100,6 +131,7 @@ function FileSection({ od }: { od: OpenDrive }) {
         : h.license.name || h.license.spdxid || h.license.text)}
       {h.userData.map((u, i) => <div className="kv" key={`u${i}`}><span>{`userData ${u.code}`}</span><span>{u.value}</span></div>)}
       {kv("junction groups", od.junctionGroups.length ? od.junctionGroups.map((g) => `${g.type || "group"} ${g.id} (${g.junctions.length})`).join(", ") : "none")}
+      {provenance && provenance.status !== "local" && <BuildRows p={provenance} kv={kv} />}
     </Section>
   );
 }
@@ -117,7 +149,7 @@ function LayersTab(p: SidePanelProps) {
           <div><b>{s.lengthKm.toFixed(1)}</b><span>km</span></div>
         </section>
       )}
-      {p.net?.od && <FileSection od={p.net.od} />}
+      {p.net?.od && <FileSection od={p.net.od} provenance={p.provenance} />}
       <Section id="odr" title="OpenDRIVE layers">
         <div className="sub-title">Road</div>
         <Toggle label="Lanes" on={L.lanes} set={set("lanes")} />

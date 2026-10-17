@@ -125,3 +125,9 @@ colour, not the limit.
 - **The file and its ground grid share one vertical datum.** The file's header `verticalDatum` must equal the datum label
   of the grid the viewer draws; otherwise the viewer says so over the map in 3D with terrain (`map/odrz.ts datumMismatch`).
   Guarded by `tests/odrz.test.ts` and, on the converter's test areas, `tests/realdata.test.ts`.
+- **Build provenance is shown only for the exact bytes it describes.** The gate writes `<page>.metrics.json` next to each
+  page: commit, run and build time, sha256, size and modification time of the `.xodr`, and its metrics. The viewer hashes
+  the bytes it fetched. It shows the build line (status bar) and the build rows (File section) only when the sha256 matches,
+  or, for a record without a hash, when both the size and the modification time match (to 2 s). A record for any other
+  build is reported as such and its numbers are never shown (`data/provenance.ts`, guarded by `tests/provenance.test.ts`).
+  The served folder is not visible to the viewer, so the content hash also stands in for the folder check.
