@@ -284,7 +284,7 @@ caps. They inherit `currentColor`. The Figma file draws a matching subset under 
 | ◆ | logo mark (`docs/brand/logo-mark.svg`) | ◐ | `sun-moon` |
 | ⚑ | `flag` | ✕ | `x` |
 | ▸ | `chevron-right` (rotates 90°) | search | `search` |
-| Map / Satellite | `map` / `globe` | Layers / Flags / Findings / Compare tabs | `layers`, `flag`, `triangle-alert`, `git-compare` |
+| Map / Satellite | text only (as the Figma screens) | Layers / Flags / Findings / Compare tabs | text only, with a count chip (decided 2026-10-17: the Figma screens show no tab icons, and four labels with chips fill the 320 px panel) |
 
 ## 5. Components
 

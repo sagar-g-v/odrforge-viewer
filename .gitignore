@@ -27,3 +27,6 @@ dist-ssr
 .env
 .env.*
 !.env.example
+
+# graphify code graph (local, rebuilt with graphify extract . --code-only / graphify update .)
+graphify-out/
