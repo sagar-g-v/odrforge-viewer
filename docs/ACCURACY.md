@@ -168,4 +168,11 @@ colour, not the limit.
     the kerbs), |p95| 6.0 m, 18.5 % within 0.5 m, and the road overruns the kerb by more than 0.5 m on 19 %. Some kerb
     lines bound islands or pedestrian areas, not the carriageway.
   - Sidewalk ways with a drawn sidewalk lane within 10 m: London 13 %, Munich 23 %, Tokyo 83 %, Frankfurt 76 % (83 samples).
+  - **Definitions shared with the converter** (2026-10-18; `src/review/osmEdges.ts`):
+    - Parking: closed `parking=street_side|lane|layby` polygons wholly inside the converter's `--clip` box, with the share of
+      area under drawn parking lanes on a 0.25 m grid, counted at 80 % or more. Baseline (01:42 outputs): Munich 0/30,
+      London 0/17, Frankfurt 5/12, Stelvio 0/8. This equals the converter's exact-area tool.
+    - Kerb gap (P2's proof): every 1 m along each open `barrier=kerb` way, the signed distance to the nearest roughly
+      parallel (< 25°) plain-road carriageway edge within 10 m. Kerbs bounding islands or pedestrian areas are dropped.
+      London: 652 kerbs (21 dropped), median +1.26 m, |p95| 6.6 m, 8.5 % within 0.3 m, 14.6 % within 0.5 m.
   - There are no limits yet. They follow once the converter's results are proven.

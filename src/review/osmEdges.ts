@@ -129,74 +129,6 @@ export function carriagewayEdges(od: OpenDrive): P2[][] {
   return out;
 }
 
-/** distance to a set of polylines through a grid of their segments; Infinity beyond maxDist */
-export class LineDistance {
-  private readonly cells = new Map<string, [P2, P2][]>();
-  private readonly cell: number;
-  constructor(lines: P2[][], cell = 10) {
-    this.cell = cell;
-    for (const line of lines) for (let i = 1; i < line.length; i++) {
-      const a = line[i - 1], b = line[i];
-      for (let cx = Math.floor(Math.min(a[0], b[0]) / cell); cx <= Math.floor(Math.max(a[0], b[0]) / cell); cx++)
-        for (let cy = Math.floor(Math.min(a[1], b[1]) / cell); cy <= Math.floor(Math.max(a[1], b[1]) / cell); cy++) {
-          const k = `${cx},${cy}`; const l = this.cells.get(k); if (l) l.push([a, b]); else this.cells.set(k, [[a, b]]);
-        }
-    }
-  }
-  distance([px, py]: P2, maxDist = UNMATCHED_M): number {
-    const r = Math.ceil(maxDist / this.cell), cx = Math.floor(px / this.cell), cy = Math.floor(py / this.cell);
-    let best = Infinity;
-    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const [[xa, ya], [xb, yb]] of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
-      const ex = xb - xa, ey = yb - ya, l2 = ex * ex + ey * ey, t = l2 > 0 ? Math.max(0, Math.min(1, ((px - xa) * ex + (py - ya) * ey) / l2)) : 0;
-      best = Math.min(best, Math.hypot(px - (xa + t * ex), py - (ya + t * ey)));
-    }
-    return best <= maxDist ? best : Infinity;
-  }
-}
-
-export interface KerbStats { samples: number; nearNetwork: number; matched: number; medianSigned: number; p95abs: number; within05: number; overrun: number }
-
-/**
- * Kerb lines against the drawn carriageway edge: per sample near the network (any lane within UNMATCHED_M), the signed
- * distance to the nearest edge: positive when the kerb lies outside the drawn carriageway (the road is drawn too narrow),
- * negative when inside it (drawn too wide, overrunning the kerb). Samples with no edge within UNMATCHED_M are unmatched.
- */
-export function kerbStats(lines: P2[][], edges: LineDistance, carriageway: PolygonDistance, anyLane: PolygonDistance): KerbStats {
-  const d: number[] = [];
-  let samples = 0, near = 0;
-  for (const line of lines) for (const p of densify(line)) {
-    samples++;
-    if (!Number.isFinite(anyLane.distance(p))) continue;
-    near++;
-    const e = edges.distance(p);
-    if (!Number.isFinite(e)) continue;
-    d.push(carriageway.distance(p, 0.001) === 0 ? -e : e);
-  }
-  const s = [...d].sort((a, b) => a - b), a = d.map(Math.abs).sort((x, y) => x - y);
-  return {
-    samples, nearNetwork: near, matched: d.length, medianSigned: s.length ? s[s.length >> 1] : NaN,
-    p95abs: a.length ? a[Math.floor(0.95 * (a.length - 1))] : NaN, within05: a.filter((v) => v <= 0.5).length, overrun: d.filter((v) => v < -0.5).length,
-  };
-}
-
-/** closed ways tagged parking=street_side|lane (separately drawn street-side parking), as lon / lat rings */
-export function osmStreetParking(osmText: string): P2[][] {
-  const osm = parseXml(osmText);
-  const root = kids(osm, "osm")[0] ?? osm;
-  const nodes = new Map<string, P2>();
-  for (const n of kids(root, "node")) nodes.set(n.attrs.id ?? "", [Number(n.attrs.lon), Number(n.attrs.lat)]);
-  const out: P2[][] = [];
-  for (const w of kids(root, "way")) {
-    const tags = new Map(kids(w, "tag").map((t) => [t.attrs.k ?? "", t.attrs.v ?? ""]));
-    if (!["street_side", "lane"].includes(tags.get("parking") ?? "")) continue;
-    const refs = kids(w, "nd").map((nd) => nd.attrs.ref ?? "");
-    if (refs.length < 4 || refs[0] !== refs[refs.length - 1]) continue; // closed rings only
-    const ring = refs.map((r) => nodes.get(r)).filter((p): p is P2 => !!p);
-    if (ring.length === refs.length) out.push(ring);
-  }
-  return out;
-}
-
 /** the share of a polygon's area (file metres) inside any of `cover`'s polygons, on a grid of `step` metres */
 export function coveredShare(poly: P2[], cover: PolygonDistance, step = 0.25): number {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -213,4 +145,106 @@ export function coveredShare(poly: P2[], cover: PolygonDistance, step = 0.25): n
     if (cover.distance([x, y], 0.001) === 0) inside++;
   }
   return n ? inside / n : 0;
+}
+
+// ---- the shared definitions agreed with the converter (2026-10-18), so both sides measure the same thing ----------------
+
+/** lat0, lon0, lat1, lon1 of the converter's --clip box per area (OdrForge tools/inspect/gate.py) */
+export type ClipBox = [number, number, number, number];
+export const insideClip = (ring: P2[], c: ClipBox) => ring.every(([lon, lat]) => lat >= c[0] && lat <= c[2] && lon >= c[1] && lon <= c[3]);
+
+export interface OsmKerbData {
+  kerbs: P2[][]; // open barrier=kerb ways (closed rings dropped)
+  islands: P2[][]; // area:highway=traffic_island, footway=traffic_island polygons
+  pedestrian: P2[][]; // highway=pedestrian areas and area:highway=pedestrian polygons
+  parking: P2[][]; // closed parking=street_side|lane|layby ways
+}
+
+/** everything the shared kerb and parking measures need from an .osm (lon / lat) */
+export function osmKerbData(osmText: string): OsmKerbData {
+  const osm = parseXml(osmText);
+  const root = kids(osm, "osm")[0] ?? osm;
+  const nodes = new Map<string, P2>();
+  for (const n of kids(root, "node")) nodes.set(n.attrs.id ?? "", [Number(n.attrs.lon), Number(n.attrs.lat)]);
+  const out: OsmKerbData = { kerbs: [], islands: [], pedestrian: [], parking: [] };
+  for (const w of kids(root, "way")) {
+    const t = new Map(kids(w, "tag").map((x) => [x.attrs.k ?? "", x.attrs.v ?? ""]));
+    const refs = kids(w, "nd").map((nd) => nd.attrs.ref ?? ""), closed = refs.length >= 4 && refs[0] === refs[refs.length - 1];
+    const line = refs.map((r) => nodes.get(r)).filter((p): p is P2 => !!p);
+    if (line.length !== refs.length || line.length < 2) continue;
+    if (t.get("barrier") === "kerb" && !closed) out.kerbs.push(line);
+    if (closed && (t.get("area:highway") === "traffic_island" || t.get("footway") === "traffic_island")) out.islands.push(line);
+    if (closed && (t.get("area:highway") === "pedestrian" || (t.get("highway") === "pedestrian" && t.get("area") === "yes"))) out.pedestrian.push(line);
+    if (closed && ["street_side", "lane", "layby"].includes(t.get("parking") ?? "")) out.parking.push(line);
+  }
+  return out;
+}
+
+export interface Seg { a: P2; b: P2 }
+
+/** the drawn carriageway edge of every plain (non-junction) road, as directed segments */
+export function plainRoadEdges(od: OpenDrive): P2[][] {
+  return carriagewayEdges({ ...od, roads: od.roads.filter((r) => r.junction === "-1") });
+}
+
+/** nearest segment within maxDist whose direction is within maxAngle of `dir` (either way); Infinity when none */
+export class ParallelEdges {
+  private readonly cells = new Map<string, Seg[]>();
+  private readonly cell: number;
+  constructor(lines: P2[][], cell = 10) {
+    this.cell = cell;
+    for (const line of lines) for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1], b = line[i];
+      for (let cx = Math.floor(Math.min(a[0], b[0]) / cell); cx <= Math.floor(Math.max(a[0], b[0]) / cell); cx++)
+        for (let cy = Math.floor(Math.min(a[1], b[1]) / cell); cy <= Math.floor(Math.max(a[1], b[1]) / cell); cy++) {
+          const k = `${cx},${cy}`; const l = this.cells.get(k); if (l) l.push({ a, b }); else this.cells.set(k, [{ a, b }]);
+        }
+    }
+  }
+  distance([px, py]: P2, dir: P2, maxDist = UNMATCHED_M, maxAngleDeg = 25): number {
+    const r = Math.ceil(maxDist / this.cell), cx = Math.floor(px / this.cell), cy = Math.floor(py / this.cell), cosMax = Math.cos((maxAngleDeg * Math.PI) / 180);
+    const dl = Math.hypot(dir[0], dir[1]) || 1;
+    let best = Infinity;
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const { a: [xa, ya], b: [xb, yb] } of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+      const ex = xb - xa, ey = yb - ya, l2 = ex * ex + ey * ey;
+      if (l2 === 0) continue;
+      if (Math.abs((ex * dir[0] + ey * dir[1]) / (Math.sqrt(l2) * dl)) < cosMax) continue; // not roughly parallel
+      const t = Math.max(0, Math.min(1, ((px - xa) * ex + (py - ya) * ey) / l2));
+      best = Math.min(best, Math.hypot(px - (xa + t * ex), py - (ya + t * ey)));
+    }
+    return best <= maxDist ? best : Infinity;
+  }
+}
+
+/** a kerb that bounds an island or a pedestrian area: half or more of its samples inside or within 0.5 m of one */
+export function kerbOfArea(kerb: P2[], areas: PolygonDistance): boolean {
+  const s = densify(kerb);
+  return s.filter((p) => areas.distance(p, 0.5) <= 0.5).length * 2 >= s.length;
+}
+
+export interface SharedKerbStats { kerbs: number; dropped: number; samples: number; matched: number; medianSigned: number; p95abs: number; within05: number; within03: number }
+
+/**
+ * The shared kerb-gap measure (P2's proof): every 1 m along each kept kerb, the signed distance to the nearest roughly
+ * parallel (< 25°) plain-road carriageway edge within 10 m: + outside the drawn carriageway (road too narrow), - inside.
+ * Closed kerbs are not passed in; kerbs of islands and pedestrian areas are dropped.
+ */
+export function sharedKerbStats(kerbs: P2[][], edges: ParallelEdges, carriageway: PolygonDistance, areas: PolygonDistance): SharedKerbStats {
+  const d: number[] = [];
+  let samples = 0, dropped = 0;
+  for (const k of kerbs) {
+    if (kerbOfArea(k, areas)) { dropped++; continue; }
+    const s = densify(k);
+    for (let i = 0; i < s.length; i++) {
+      samples++;
+      const a = s[Math.max(0, i - 1)], b = s[Math.min(s.length - 1, i + 1)];
+      const e = edges.distance(s[i], [b[0] - a[0], b[1] - a[1]]);
+      if (Number.isFinite(e)) d.push(carriageway.distance(s[i], 0.001) === 0 ? -e : e);
+    }
+  }
+  const sorted = [...d].sort((x, y) => x - y), abs = d.map(Math.abs).sort((x, y) => x - y);
+  return {
+    kerbs: kerbs.length, dropped, samples, matched: d.length, medianSigned: sorted.length ? sorted[sorted.length >> 1] : NaN,
+    p95abs: abs.length ? abs[Math.floor(0.95 * (abs.length - 1))] : NaN, within05: abs.filter((v) => v <= 0.5).length, within03: abs.filter((v) => v <= 0.3).length,
+  };
 }
