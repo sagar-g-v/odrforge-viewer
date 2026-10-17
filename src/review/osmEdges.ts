@@ -178,3 +178,39 @@ export function kerbStats(lines: P2[][], edges: LineDistance, carriageway: Polyg
     p95abs: a.length ? a[Math.floor(0.95 * (a.length - 1))] : NaN, within05: a.filter((v) => v <= 0.5).length, overrun: d.filter((v) => v < -0.5).length,
   };
 }
+
+/** closed ways tagged parking=street_side|lane (separately drawn street-side parking), as lon / lat rings */
+export function osmStreetParking(osmText: string): P2[][] {
+  const osm = parseXml(osmText);
+  const root = kids(osm, "osm")[0] ?? osm;
+  const nodes = new Map<string, P2>();
+  for (const n of kids(root, "node")) nodes.set(n.attrs.id ?? "", [Number(n.attrs.lon), Number(n.attrs.lat)]);
+  const out: P2[][] = [];
+  for (const w of kids(root, "way")) {
+    const tags = new Map(kids(w, "tag").map((t) => [t.attrs.k ?? "", t.attrs.v ?? ""]));
+    if (!["street_side", "lane"].includes(tags.get("parking") ?? "")) continue;
+    const refs = kids(w, "nd").map((nd) => nd.attrs.ref ?? "");
+    if (refs.length < 4 || refs[0] !== refs[refs.length - 1]) continue; // closed rings only
+    const ring = refs.map((r) => nodes.get(r)).filter((p): p is P2 => !!p);
+    if (ring.length === refs.length) out.push(ring);
+  }
+  return out;
+}
+
+/** the share of a polygon's area (file metres) inside any of `cover`'s polygons, on a grid of `step` metres */
+export function coveredShare(poly: P2[], cover: PolygonDistance, step = 0.25): number {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const [x, y] of poly) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  let n = 0, inside = 0;
+  for (let x = x0 + step / 2; x < x1; x += step) for (let y = y0 + step / 2; y < y1; y += step) {
+    let inPoly = false;
+    for (let a = 0, b = poly.length - 1; a < poly.length; b = a++) {
+      const [xa, ya] = poly[a], [xb, yb] = poly[b];
+      if ((ya > y) !== (yb > y) && x < ((xb - xa) * (y - ya)) / (yb - ya) + xa) inPoly = !inPoly;
+    }
+    if (!inPoly) continue;
+    n++;
+    if (cover.distance([x, y], 0.001) === 0) inside++;
+  }
+  return n ? inside / n : 0;
+}

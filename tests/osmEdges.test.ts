@@ -5,7 +5,7 @@
 // result is proven (docs/ACCURACY.md).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { carriagewayEdges, densify, edgeStats, kerbStats, LineDistance, osmEdgeLines, PolygonDistance, type P2 } from "../src/review/osmEdges";
+import { carriagewayEdges, coveredShare, densify, edgeStats, kerbStats, LineDistance, osmEdgeLines, osmStreetParking, PolygonDistance, type P2 } from "../src/review/osmEdges";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -37,6 +37,18 @@ describe("OSM edge geometry", () => {
     expect(out.medianSigned).toBeCloseTo(0.5, 9);
     expect(inn.medianSigned).toBeCloseTo(-0.5, 9);
     expect(out.nearNetwork).toBe(2);
+  });
+  it("the share of a polygon's area under covering polygons", () => {
+    const lot: P2[] = [[0, 0], [10, 0], [10, 2], [0, 2], [0, 0]];
+    expect(coveredShare(lot, new PolygonDistance([[[0, -1], [6, -1], [6, 3], [0, 3]]]))).toBeCloseTo(0.6, 2);
+    expect(coveredShare(lot, new PolygonDistance([[[20, 0], [30, 0], [30, 2]]]))).toBe(0);
+  });
+  it("reads closed parking=street_side|lane ways only", () => {
+    const osm = `<osm><node id="1" lat="48" lon="11"/><node id="2" lat="48" lon="11.0001"/><node id="3" lat="48.0001" lon="11.0001"/>
+      <way id="1"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/><tag k="amenity" v="parking"/><tag k="parking" v="street_side"/></way>
+      <way id="2"><nd ref="1"/><nd ref="2"/><nd ref="3"/><tag k="parking" v="lane"/></way>
+      <way id="3"><nd ref="1"/><nd ref="2"/><nd ref="3"/><nd ref="1"/><tag k="amenity" v="parking"/><tag k="parking" v="surface"/></way></osm>`;
+    expect(osmStreetParking(osm).length).toBe(1);
   });
   it("summarises: matched samples' distances, unmatched counted apart", () => {
     const s = edgeStats([[[1, 1], [1, 5]], [[40, 40], [41, 40]]], pd);
@@ -76,7 +88,10 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
         const pc = (a: number, b: number) => `${(100 * a / Math.max(1, b)).toFixed(1)} %`;
         const k = kerb.samples ? `kerb lines: ${kerb.samples} samples, ${pc(kerb.nearNetwork, kerb.samples)} near the network; vs the carriageway edge: ${pc(kerb.matched, kerb.nearNetwork)} matched, median ${kerb.medianSigned.toFixed(2)} m (+ road too narrow), |p95| ${kerb.p95abs.toFixed(2)} m, ${pc(kerb.within05, kerb.matched)} within 0.5 m, ${pc(kerb.overrun, kerb.matched)} overrun > 0.5 m; on a drawn curb lane ${pc(curb.matched, curb.nearNetwork)} (inside ${pc(curb.inside, curb.matched)})` : "kerb lines: none in OSM";
         const w = walk.samples ? `sidewalk ways: ${walk.samples} samples, ${pc(walk.nearNetwork, walk.samples)} near the network; vs drawn sidewalk lanes ${pc(walk.matched, walk.nearNetwork)} matched, inside ${pc(walk.inside, walk.matched)}, median ${walk.median.toFixed(2)} m, p95 ${walk.p95.toFixed(2)} m` : "sidewalk ways: none in OSM";
-        console.log(`OSM-EDGES ${area} | ${k} | ${w}`);
+        const lots = osmStreetParking(readFileSync(osmFile, "utf8")).map(toXY), parkCover = new PolygonDistance(polys(new Set(["parking"])));
+        const shares = lots.map((l) => coveredShare(l, parkCover));
+        const pk = lots.length ? `street-side parking polygons: ${shares.filter((v) => v >= 0.8).length}/${lots.length} at least 80 % under drawn parking lanes (median share ${(100 * ([...shares].sort((a, b) => a - b)[shares.length >> 1])).toFixed(0)} %)` : "street-side parking polygons: none in OSM";
+        console.log(`OSM-EDGES ${area} | ${k} | ${w} | ${pk}`);
       }
       expect(kerb.samples).toBe(curb.samples);
     });
