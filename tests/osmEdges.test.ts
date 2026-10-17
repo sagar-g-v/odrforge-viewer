@@ -5,7 +5,7 @@
 // result is proven (docs/ACCURACY.md).
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coveredShare, densify, edgeStats, insideClip, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
+import { coveredShare, densify, edgeStats, insideClip, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -31,17 +31,21 @@ describe("OSM edge geometry", () => {
     expect(e.kerbs).toEqual([[[11, 48], [11, 48.0001]]]);
     expect(e.sidewalks).toEqual([[[11, 48.0001], [11, 48.0002]]]);
   });
-  it("shared kerb gap: only roughly parallel edges count; island kerbs are dropped; + outside the road, - inside", () => {
-    const road = new PolygonDistance([[[0, 0], [10, 0], [10, 3], [0, 3]]]);
-    const edge = new ParallelEdges([[[0, 3], [10, 3]], [[5, 3.4], [5, 9]]]); // the road edge, and a crossing line
+  it("shared kerb gap: roughly parallel edges only; signed by the edge's outward normal; island kerbs and < 1 m left out", () => {
+    // a road along x: left edge at y = 3 (side +1), right edge at y = 0 (side -1); a crossing line at x = 5
+    const edges = new ParallelEdges([{ line: [[0, 3], [10, 3]], side: 1 }, { line: [[0, 0], [10, 0]], side: -1 }, { line: [[5, 3.4], [5, 9]], side: 1 }]);
     const none = new PolygonDistance([]);
-    expect(sharedKerbStats([[[2, 3.5], [3, 3.5]]], edge, road, none).medianSigned).toBeCloseTo(0.5, 9);
-    expect(sharedKerbStats([[[2, 2.5], [3, 2.5]]], edge, road, none).medianSigned).toBeCloseTo(-0.5, 9);
-    // a kerb crossing the road at right angles has no parallel edge near it except the crossing line
-    expect(sharedKerbStats([[[5.2, 4], [5.2, 8]]], edge, road, none).medianSigned).toBeCloseTo(0.2, 9);
-    const island = new PolygonDistance([[[1, 3.2], [4, 3.2], [4, 4], [1, 4]]]);
-    const s = sharedKerbStats([[[2, 3.5], [3, 3.5]]], edge, road, island);
-    expect(s).toMatchObject({ dropped: 1, samples: 0 });
+    expect(sharedKerbStats([[[2, 3.5], [4, 3.5]]], edges, none).medianSigned).toBeCloseTo(0.5, 9); // outside the left edge
+    expect(sharedKerbStats([[[2, 2.5], [4, 2.5]]], edges, none).medianSigned).toBeCloseTo(-0.5, 9); // inside it
+    expect(sharedKerbStats([[[2, -0.4], [4, -0.4]]], edges, none).medianSigned).toBeCloseTo(0.4, 9); // outside the right edge
+    expect(Math.abs(sharedKerbStats([[[5.2, 4], [5.2, 8]]], edges, none).medianSigned)).toBeCloseTo(0.2, 9); // only the crossing line is parallel
+    expect(sharedKerbStats([[[2, 3.5], [2.6, 3.5]]], edges, none)).toMatchObject({ samples: 0, dropped: 0 }); // shorter than 1 m
+    const island = new PolygonDistance([[[1, 3.2], [5, 3.2], [5, 4], [1, 4]]]);
+    expect(sharedKerbStats([[[2, 3.5], [4, 3.5]]], edges, island)).toMatchObject({ dropped: 1, samples: 0 });
+  });
+  it("samples at 0.5, 1.5 ... m, endpoints left out", () => {
+    expect(midSamples([[0, 0], [3, 0]])).toEqual([[0.5, 0], [1.5, 0], [2.5, 0]]);
+    expect(midSamples([[0, 0], [0.8, 0]])).toEqual([]);
   });
   it("the share of a polygon's area under covering polygons", () => {
     const lot: P2[] = [[0, 0], [10, 0], [10, 2], [0, 2], [0, 0]];
@@ -90,9 +94,8 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
       };
       const text = readFileSync(osmFile, "utf8"), e = osmEdgeLines(text), K = osmKerbData(text);
       const anyLane = new PolygonDistance(polys(new Set(r.lanes.meta.map((m) => m.type))));
-      const carriage = new PolygonDistance(polys(new Set(r.lanes.meta.map((m) => m.type).filter((t) => !["sidewalk", "walking", "curb", "border", "none", "median", "restricted"].includes(t)))));
       const areas = new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY));
-      const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(plainRoadEdges(od)), carriage, areas);
+      const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(plainRoadEdges(od)), areas);
       const walk = edgeStats(e.sidewalks.map(toXY), new PolygonDistance(polys(WALK)), anyLane);
       if (process.env.OSM_EDGES) {
         const pc = (a: number, b: number) => `${(100 * a / Math.max(1, b)).toFixed(1)} %`;

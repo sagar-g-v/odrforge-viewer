@@ -172,7 +172,11 @@ colour, not the limit.
     - Parking: closed `parking=street_side|lane|layby` polygons wholly inside the converter's `--clip` box, with the share of
       area under drawn parking lanes on a 0.25 m grid, counted at 80 % or more. Baseline (01:42 outputs): Munich 0/30,
       London 0/17, Frankfurt 5/12, Stelvio 0/8. This equals the converter's exact-area tool.
-    - Kerb gap (P2's proof): every 1 m along each open `barrier=kerb` way, the signed distance to the nearest roughly
-      parallel (< 25°) plain-road carriageway edge within 10 m. Kerbs bounding islands or pedestrian areas are dropped.
-      London: 652 kerbs (21 dropped), median +1.26 m, |p95| 6.6 m, 8.5 % within 0.3 m, 14.6 % within 0.5 m.
+    - Kerb gap (P2's proof): samples at 0.5, 1.5 ... m along each open `barrier=kerb` way of 1 m or more. Each sample
+      takes the signed distance to the nearest roughly parallel (< 25°) plain-road carriageway edge within 10 m. The sign
+      comes from the edge's own outward normal (+ outside the road). A side with no carriageway lanes (one carriageway of
+      a dual road) has its edge at the lane-0 line. Without that, median kerbs met the far edge and got the wrong sign:
+      77 % sign agreement with "inside a drawn carriageway lane", against 97.5 % with it. Kerbs bounding islands or
+      pedestrian areas are dropped. London (01:42): 17,876 samples, median +0.88 m, |p95| 6.0 m, 12.8 % within 0.3 m,
+      21.8 % within 0.5 m. Overall, 66 % of samples lie > 0.3 m outside the drawn road and 21 % overrun it.
   - There are no limits yet. They follow once the converter's results are proven.

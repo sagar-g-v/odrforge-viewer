@@ -6,7 +6,7 @@
 // Guarded by tests/osmEdges.test.ts.
 import { sampleS } from "../xodr/build";
 import { evalRoad } from "../xodr/geometry";
-import { laneBorders, sectionIndex } from "../xodr/lanes";
+import { laneBorders, laneOffsetAt, sectionIndex } from "../xodr/lanes";
 import type { OpenDrive } from "../xodr/model";
 import { kids, parseXml } from "../xodr/xml";
 
@@ -109,22 +109,32 @@ const OFF_CARRIAGEWAY = new Set(["sidewalk", "walking", "curb", "border", "none"
  * The drawn carriageway edge of every road (file metres): on each side, the outer border of the outermost lane that is
  * part of the carriageway (driving, parking, biking, bus, shoulder, ...), along the road. An OSM kerb line should lie on it.
  */
-export function carriagewayEdges(od: OpenDrive): P2[][] {
-  const out: P2[][] = [];
+export interface SidedEdge { line: P2[]; side: 1 | -1 } // side: +1 the road's left edge, -1 its right edge (s increasing)
+
+export function carriagewayEdges(od: OpenDrive): SidedEdge[] {
+  const out: SidedEdge[] = [];
   for (const road of od.roads) {
     const left: P2[] = [], right: P2[] = [];
     for (const s of sampleS(road)) {
       const sec = road.sections[sectionIndex(road, s)];
       if (!sec) continue;
       const b = laneBorders(road, sec, s), p = evalRoad(road, s);
-      for (const [lanes, side] of [[sec.left, left], [sec.right, right]] as const) {
+      const outer = (lanes: typeof sec.left) => {
         let t: number | null = null;
         for (const l of lanes) if (!OFF_CARRIAGEWAY.has(l.type)) t = b.get(l.id)?.outer ?? t; // lanes run inside out
-        if (t !== null) side.push([p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg)]);
-      }
+        return t;
+      };
+      let tl = outer(sec.left), tr = outer(sec.right);
+      // a side without carriageway lanes (one carriageway of a dual road): its edge is the lane-0 line (the lane offset),
+      // so a kerb in the central median meets its own edge, not the far edge across the carriageway
+      const t0 = laneOffsetAt(road, s);
+      if (tl === null && tr !== null) tl = t0;
+      if (tr === null && tl !== null) tr = t0;
+      if (tl !== null) left.push([p.x - tl * Math.sin(p.hdg), p.y + tl * Math.cos(p.hdg)]);
+      if (tr !== null) right.push([p.x - tr * Math.sin(p.hdg), p.y + tr * Math.cos(p.hdg)]);
     }
-    if (left.length > 1) out.push(left);
-    if (right.length > 1) out.push(right);
+    if (left.length > 1) out.push({ line: left, side: 1 });
+    if (right.length > 1) out.push({ line: right, side: -1 });
   }
   return out;
 }
@@ -180,45 +190,67 @@ export function osmKerbData(osmText: string): OsmKerbData {
   return out;
 }
 
-export interface Seg { a: P2; b: P2 }
+export interface Seg { a: P2; b: P2; out: P2 } // out: the unit normal pointing away from the road
 
-/** the drawn carriageway edge of every plain (non-junction) road, as directed segments */
-export function plainRoadEdges(od: OpenDrive): P2[][] {
+/** the drawn carriageway edge of every plain (non-junction) road, with its side */
+export function plainRoadEdges(od: OpenDrive): SidedEdge[] {
   return carriagewayEdges({ ...od, roads: od.roads.filter((r) => r.junction === "-1") });
 }
 
-/** nearest segment within maxDist whose direction is within maxAngle of `dir` (either way); Infinity when none */
+/**
+ * Nearest edge segment within maxDist whose direction is within maxAngle of `dir` (either way), and on which side of it
+ * the point lies: + away from its road (outside the drawn carriageway), - towards it. Signed by the edge's own outward
+ * normal (left edges: the left normal of the road's direction; right edges: the right normal), agreed with the converter.
+ */
 export class ParallelEdges {
   private readonly cells = new Map<string, Seg[]>();
   private readonly cell: number;
-  constructor(lines: P2[][], cell = 10) {
+  constructor(edges: SidedEdge[], cell = 10) {
     this.cell = cell;
-    for (const line of lines) for (let i = 1; i < line.length; i++) {
-      const a = line[i - 1], b = line[i];
+    for (const { line, side } of edges) for (let i = 1; i < line.length; i++) {
+      const a = line[i - 1], b = line[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (l === 0) continue;
+      const out: P2 = side === 1 ? [-(b[1] - a[1]) / l, (b[0] - a[0]) / l] : [(b[1] - a[1]) / l, -(b[0] - a[0]) / l];
       for (let cx = Math.floor(Math.min(a[0], b[0]) / cell); cx <= Math.floor(Math.max(a[0], b[0]) / cell); cx++)
         for (let cy = Math.floor(Math.min(a[1], b[1]) / cell); cy <= Math.floor(Math.max(a[1], b[1]) / cell); cy++) {
-          const k = `${cx},${cy}`; const l = this.cells.get(k); if (l) l.push({ a, b }); else this.cells.set(k, [{ a, b }]);
+          const k = `${cx},${cy}`; const c = this.cells.get(k); if (c) c.push({ a, b, out }); else this.cells.set(k, [{ a, b, out }]);
         }
     }
   }
-  distance([px, py]: P2, dir: P2, maxDist = UNMATCHED_M, maxAngleDeg = 25): number {
+  /** signed distance (see the class comment); NaN when no roughly parallel edge is within maxDist */
+  signed([px, py]: P2, dir: P2, maxDist = UNMATCHED_M, maxAngleDeg = 25): number {
     const r = Math.ceil(maxDist / this.cell), cx = Math.floor(px / this.cell), cy = Math.floor(py / this.cell), cosMax = Math.cos((maxAngleDeg * Math.PI) / 180);
     const dl = Math.hypot(dir[0], dir[1]) || 1;
-    let best = Infinity;
-    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const { a: [xa, ya], b: [xb, yb] } of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+    let best = Infinity, sign = 1;
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const { a: [xa, ya], b: [xb, yb], out } of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
       const ex = xb - xa, ey = yb - ya, l2 = ex * ex + ey * ey;
-      if (l2 === 0) continue;
       if (Math.abs((ex * dir[0] + ey * dir[1]) / (Math.sqrt(l2) * dl)) < cosMax) continue; // not roughly parallel
-      const t = Math.max(0, Math.min(1, ((px - xa) * ex + (py - ya) * ey) / l2));
-      best = Math.min(best, Math.hypot(px - (xa + t * ex), py - (ya + t * ey)));
+      const t = Math.max(0, Math.min(1, ((px - xa) * ex + (py - ya) * ey) / l2)), fx = xa + t * ex, fy = ya + t * ey;
+      const d = Math.hypot(px - fx, py - fy);
+      if (d < best) { best = d; sign = (px - fx) * out[0] + (py - fy) * out[1] >= 0 ? 1 : -1; }
     }
-    return best <= maxDist ? best : Infinity;
+    return best <= maxDist ? sign * best : NaN;
   }
+}
+
+/**
+ * Samples at 0.5, 1.5, 2.5 ... m along a line (endpoints left out, so consecutive ways never share a sample); none for a
+ * line shorter than 1 m. The kerb sampling agreed with the converter
+ */
+export function midSamples(line: P2[], step = 1): P2[] {
+  const out: P2[] = [];
+  let next = step / 2, run = 0;
+  for (let i = 1; i < line.length; i++) {
+    const [ax, ay] = line[i - 1], [bx, by] = line[i], len = Math.hypot(bx - ax, by - ay);
+    while (len > 0 && next <= run + len) { const f = (next - run) / len; out.push([ax + (bx - ax) * f, ay + (by - ay) * f]); next += step; }
+    run += len;
+  }
+  return run < 1 ? [] : out;
 }
 
 /** a kerb that bounds an island or a pedestrian area: half or more of its samples inside or within 0.5 m of one */
 export function kerbOfArea(kerb: P2[], areas: PolygonDistance): boolean {
-  const s = densify(kerb);
+  const s = midSamples(kerb);
   return s.filter((p) => areas.distance(p, 0.5) <= 0.5).length * 2 >= s.length;
 }
 
@@ -227,19 +259,21 @@ export interface SharedKerbStats { kerbs: number; dropped: number; samples: numb
 /**
  * The shared kerb-gap measure (P2's proof): every 1 m along each kept kerb, the signed distance to the nearest roughly
  * parallel (< 25°) plain-road carriageway edge within 10 m: + outside the drawn carriageway (road too narrow), - inside.
- * Closed kerbs are not passed in; kerbs of islands and pedestrian areas are dropped.
+ * Closed kerbs are not passed in; kerbs shorter than 1 m are skipped; kerbs of islands and pedestrian areas are dropped.
  */
-export function sharedKerbStats(kerbs: P2[][], edges: ParallelEdges, carriageway: PolygonDistance, areas: PolygonDistance): SharedKerbStats {
+export function sharedKerbStats(kerbs: P2[][], edges: ParallelEdges, areas: PolygonDistance): SharedKerbStats {
   const d: number[] = [];
   let samples = 0, dropped = 0;
   for (const k of kerbs) {
+    const s = midSamples(k);
+    if (!s.length) continue; // shorter than 1 m
     if (kerbOfArea(k, areas)) { dropped++; continue; }
-    const s = densify(k);
     for (let i = 0; i < s.length; i++) {
       samples++;
-      const a = s[Math.max(0, i - 1)], b = s[Math.min(s.length - 1, i + 1)];
-      const e = edges.distance(s[i], [b[0] - a[0], b[1] - a[1]]);
-      if (Number.isFinite(e)) d.push(carriageway.distance(s[i], 0.001) === 0 ? -e : e);
+      // the kerb's local direction from its neighbouring samples (a one-sample kerb: its own end-to-end direction)
+      const a = s.length > 1 ? s[Math.max(0, i - 1)] : k[0], b = s.length > 1 ? s[Math.min(s.length - 1, i + 1)] : k[k.length - 1];
+      const e = edges.signed(s[i], [b[0] - a[0], b[1] - a[1]]);
+      if (Number.isFinite(e)) d.push(e);
     }
   }
   const sorted = [...d].sort((x, y) => x - y), abs = d.map(Math.abs).sort((x, y) => x - y);
