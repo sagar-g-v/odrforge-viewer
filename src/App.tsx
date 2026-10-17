@@ -46,9 +46,9 @@ function BuildStatus({ p }: { p: Provenance }) {
       </span>
     );
   }
-  const why = p.status === "mismatch" ? `metrics are for another build of this page: ${p.reasons.join("; ")}`
+  const why = p.status === "mismatch" ? (p.pageNewer ? `this page is newer than its build record (a build may still be running): ${p.reasons.join("; ")}` : `metrics are for another build of this page: ${p.reasons.join("; ")}`)
     : p.status === "unverified" ? `metrics not shown: ${p.reason}` : `metrics unreadable: ${p.reason}`;
-  return <span className="warn-text" title={why}>{p.status === "mismatch" ? "metrics are for another build" : "metrics not shown"}</span>;
+  return <span className="warn-text" title={why}>{p.status === "mismatch" ? (p.pageNewer ? "metrics pending (page newer than its record)" : "metrics are for another build") : "metrics not shown"}</span>;
 }
 
 export default function App() {

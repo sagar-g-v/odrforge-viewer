@@ -28,10 +28,17 @@ describe("matchProvenance", () => {
     expect(clean.status === "match" && clean.facts).toMatchObject({ commit: "37e345e", dirty: false });
   });
   it("a snapshot from another folder's run (other bytes, same name) is a mismatch: its numbers are not shown", () => {
-    const other = { ...SNAP, folder: "C:\\mywork\\osm2carla\\build\\tmp\\gate_out", sha256: "b".repeat(64), time: "2026-10-17T04:31:00" };
+    // a run after the page was written (12:00 JST = 03:00 UTC; the page is 02:32 UTC): another build, not a pending one
+    const other = { ...SNAP, folder: "C:\\mywork\\osm2carla\\build\\tmp\\gate_out", sha256: "b".repeat(64), time: "2026-10-17T12:00:00+09:00" };
     const p = matchProvenance(other, PAGE);
-    expect(p).toEqual({ status: "mismatch", reasons: ["the file's content differs (sha256)"], snapshotTime: "2026-10-17T04:31:00" });
+    expect(p).toEqual({ status: "mismatch", reasons: ["the file's content differs (sha256)"], snapshotTime: "2026-10-17T12:00:00+09:00", pageNewer: false });
     expect(JSON.stringify(p)).not.toMatch(/0\.132|c684b7f/); // nothing of the other build leaks out
+  });
+  it("a page written after its record's run is 'pending' (a build still converting), its numbers still hidden", () => {
+    // run 05:13 JST = 20:13 UTC the day before; the page was written 02:32 UTC: the gate converted, its record comes later
+    const p = matchProvenance({ ...SNAP, sha256: "c".repeat(64), time: "2026-10-17T05:13:27+09:00" }, PAGE);
+    expect(p).toMatchObject({ status: "mismatch", pageNewer: true });
+    expect(JSON.stringify(p)).not.toMatch(/0\.132|c684b7f/);
   });
   it("a snapshot of another page is a mismatch, even with the same content", () => {
     const p = matchProvenance({ ...SNAP, file: "stelvio.xodr" }, PAGE);

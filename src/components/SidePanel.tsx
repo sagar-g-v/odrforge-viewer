@@ -115,7 +115,9 @@ function BuildRows({ p, kv }: { p: Provenance; kv: (k: string, v: React.ReactNod
       <div className="sub-title">Build</div>
       <p className={`small ${p.status === "none" ? "muted" : "warn-text"}`}>
         {p.status === "none" ? "No metrics for this build."
-          : p.status === "mismatch" ? `The metrics next to this page are for another build${p.snapshotTime ? ` (run ${shortTime(p.snapshotTime)})` : ""}: ${p.reasons.join("; ")}. Not shown.`
+          : p.status === "mismatch" ? (p.pageNewer
+            ? `This page is newer than its build record (run ${shortTime(p.snapshotTime)}): a build may still be running and write it shortly. Metrics not shown until they match.`
+            : `The metrics next to this page are for another build${p.snapshotTime ? ` (run ${shortTime(p.snapshotTime)})` : ""}: ${p.reasons.join("; ")}. Not shown.`)
           : p.status === "unverified" ? `Metrics not shown: ${p.reason}.` : p.status === "invalid" ? `Metrics unreadable: ${p.reason}.` : ""}
       </p>
     </>

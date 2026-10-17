@@ -34,7 +34,9 @@ export type Provenance =
   | { status: "local" } // opened from disk: no build record
   | { status: "none" } // no metrics for this build
   | { status: "invalid"; reason: string }
-  | { status: "mismatch"; reasons: string[]; snapshotTime: string | null }
+  // pageNewer: the page was written after the run that wrote the record (a build still converting, its record not yet
+  // written): "metrics pending", not "another build"; the numbers stay hidden either way
+  | { status: "mismatch"; reasons: string[]; snapshotTime: string | null; pageNewer: boolean }
   | { status: "unverified"; reason: string }
   | { status: "match"; facts: BuildFacts };
 
@@ -73,7 +75,10 @@ export function matchProvenance(raw: unknown, src: PageSource): Provenance {
   } else if (!reasons.length) {
     return { status: "unverified", reason: "the snapshot has no sha256 (or size and time) to tie it to this file" };
   }
-  if (reasons.length || !by) return { status: "mismatch", reasons, snapshotTime: m.time };
+  if (reasons.length || !by) {
+    const page = epoch(src.lastModified), run = epoch(m.time);
+    return { status: "mismatch", reasons, snapshotTime: m.time, pageNewer: page !== null && run !== null && page > run + MTIME_TOLERANCE_S };
+  }
 
   const x = m.metrics;
   return {
