@@ -69,3 +69,16 @@ describe("object and signal heights (1.8.1 XSD: zOffset is relative to the eleva
     expect(Math.min(...zs)).toBeCloseTo(517.25, 6); // the trunk's base
   });
 });
+
+describe("barrier top-edge line (design §8: guard rails read as a cased line)", () => {
+  // a guard rail from s 5 to 25 at t = -4: rail 0.31 m tall, 0.5 m above the reference line's elevation
+  const xml = XODR.replace("<objects>", '<objects><object id="gr" name="GuardRail" type="barrier" subtype="guardRail" s="5" t="-4" zOffset="0.5" hdg="0"><repeat s="5" length="20" distance="0" tStart="-4" tEnd="-4" heightStart="0.31" heightEnd="0.31" zOffsetStart="0.5" zOffsetEnd="0.5" widthStart="0.1" widthEnd="0.1"/></object>');
+  const od = parseOpenDrive(xml), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
+  it("one line per continuous repeat, along it, at its top edge (elevation + zOffset + height), labelled by subtype", () => {
+    const B = r.features.barrierLines;
+    expect(B.meta).toEqual([{ kind: "object", road: 0, index: 0, label: "guardRail" }]);
+    const pts = Array.from({ length: B.positions.length / 3 }, (_, i) => [...proj.inverse(B.positions[3 * i], B.positions[3 * i + 1]), B.positions[3 * i + 2]]);
+    expect(pts[0][0]).toBeCloseTo(5, 6); expect(pts[pts.length - 1][0]).toBeCloseTo(25, 6);
+    for (const [, y, z] of pts) { expect(y).toBeCloseTo(-4, 6); expect(z).toBeCloseTo(517.25 + 0.5 + 0.31, 9); }
+  });
+});

@@ -17,6 +17,7 @@ export const ASSET = {
   pole: [138, 155, 176, 255] as Rgba, //         sky-tinted steel #8a9bb0 (posts, poles, lamp masts)
   lamp: [242, 181, 68, 255] as Rgba, //          sun-400 #f2b544 (street lamp head)
   barrier: [183, 195, 207, 255] as Rgba, //      galvanised #b7c3cf (guard rails, walls, fences)
+  barrierLine: [214, 222, 230, 255] as Rgba, //  #d6dee6: the barrier's top-edge line (3px), on a 1px dark casing (EDGE.ring)
   object: [214, 180, 122, 240] as Rgba, //       sandstone #d6b47a (any other object, boxes / cylinders / marker posts)
   objectEdge: [214, 180, 122, 255] as Rgba, //   object outlines drawn as lines
   housing: [20, 26, 36, 255] as Rgba, //         night ink #141a24 (signal housing)

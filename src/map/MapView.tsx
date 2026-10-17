@@ -674,6 +674,21 @@ export default function MapView(p: MapViewProps) {
           updateTriggers: { getFillColor: [selF] },
         }));
       }
+      // guard rails, jersey barriers, walls, fences: a 3px light line with a dark casing on their top edge, in both views, so
+      // a 10 cm rail reads at any zoom over light and dark ground (the bodies keep their real size)
+      if (p.layers.objects && F.barrierLines.meta.length) {
+        const BL = F.barrierLines, nb = BL.meta.length;
+        const bData = { length: nb, startIndices: sub(BL.starts, nb), attributes: { getPath: { value: BL.positions, size: 3 } } };
+        out.push(new PathLayer({
+          id: "barrier-casing", data: bData, _pathType: "open", widthUnits: "pixels", getWidth: 5, getColor: EDGE.ring,
+          capRounded: true, jointRounded: true, modelMatrix, parameters: depthBias("barrier-casing"),
+        }));
+        out.push(new PathLayer({
+          id: "barrier-lines", data: bData, _pathType: "open", widthUnits: "pixels", getWidth: 3, capRounded: true, jointRounded: true,
+          getColor: (_: unknown, { index }: { index: number }) => (isSel(BL.meta[index]) ? OVERLAY.selected : ASSET.barrierLine),
+          pickable: true, modelMatrix, parameters: depthBias("barrier-lines"), updateTriggers: { getColor: [selF] },
+        }));
+      }
       if (p.layers.crossPaths && F.crossPaths.meta.length) {
         const X = F.crossPaths, nx = X.meta.length;
         out.push(new PathLayer({

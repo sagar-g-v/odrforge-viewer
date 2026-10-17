@@ -41,6 +41,10 @@ export function hoverText(layer: string, index: number, r: RenderData, extra: { 
       const name = layer === "structures" ? ((m as { tunnel?: boolean }).tunnel ? "tunnel" : "bridge") : KIND[m.kind] ?? m.kind;
       return `${name} · ${road(m.road)}`;
     }
+    case "barrier-lines": {
+      const m = F?.barrierLines.meta[index];
+      return m ? `${m.label} · ${road(m.road)}` : null;
+    }
     case "flags": case "findings": {
       const m = (layer === "flags" ? extra.flags : extra.findings)?.[index];
       return m ? m.tip ?? (m.label ? `flag #${m.label}` : null) : null;

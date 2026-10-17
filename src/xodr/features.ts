@@ -34,6 +34,9 @@ export interface Features {
   labels: { positions: Float64Array; texts: string[] };
   structures: { positions: Float64Array; starts: Uint32Array; meta: (FeatureRef & { tunnel: boolean })[] };
   crossPaths: { positions: Float64Array; starts: Uint32Array; meta: FeatureRef[] };
+  // the top edge of every continuous <repeat> (guard rails, jersey barriers, walls, fences) as a line: a 10 cm rail is hard
+  // to see as a body, so the map also draws this line at a fixed pixel width (design §8); label: the object's subtype / name
+  barrierLines: { positions: Float64Array; starts: Uint32Array; meta: (FeatureRef & { label: string })[] };
 }
 
 // asset and regulatory colours: the design system's scene palette (design/scene.ts, docs/design-system.md §8)
@@ -67,6 +70,7 @@ export class FeatureBuilder {
   private lab = { pos: [] as number[], texts: [] as string[] };
   private str = { pos: [] as number[], starts: [] as number[], meta: [] as (FeatureRef & { tunnel: boolean })[] };
   private cp = { pos: [] as number[], starts: [] as number[], meta: [] as FeatureRef[] };
+  private bl = { pos: [] as number[], starts: [] as number[], meta: [] as (FeatureRef & { label: string })[] };
   private fp: { ring: number[]; color: Rgba; top: number; ref: FeatureRef }[] = [];
 
   private geo: Geo;
@@ -188,6 +192,13 @@ export class FeatureBuilder {
         } else {
           // one continuous object stretched along the road (guard rails, walls, fences): pieces of at most 2 m
           const n = Math.max(1, Math.ceil(r.length / 2));
+          // its top edge as a line, through the same points as the pieces
+          this.bl.starts.push(this.bl.pos.length / 3);
+          for (let k = 0; k <= n; k++) {
+            const f = k / n, q = at(r.s + r.length * f, lerp(r.tStart, r.tEnd, f)), [lon, lat] = this.geo(q.x, q.y);
+            this.bl.pos.push(lon, lat, q.z + lerp(r.zOffsetStart, r.zOffsetEnd, f) + Math.max(0.05, lerp(r.heightStart, r.heightEnd, f)) + this.zOff);
+          }
+          this.bl.meta.push({ ...ref, label: o.subtype && o.subtype !== "-1" ? o.subtype : o.name || o.type });
           for (let k = 0; k < n; k++) {
             const f0 = k / n, f1 = (k + 1) / n, fm = (f0 + f1) / 2;
             const a = at(r.s + r.length * f0, lerp(r.tStart, r.tEnd, f0)), b = at(r.s + r.length * f1, lerp(r.tStart, r.tEnd, f1));
@@ -296,6 +307,7 @@ export class FeatureBuilder {
       labels: { positions: Float64Array.from(this.lab.pos), texts: this.lab.texts },
       structures: { ...bin(this.str.pos, this.str.starts), meta: this.str.meta },
       crossPaths: { ...bin(this.cp.pos, this.cp.starts), meta: this.cp.meta },
+      barrierLines: { ...bin(this.bl.pos, this.bl.starts), meta: this.bl.meta },
     };
   }
 }

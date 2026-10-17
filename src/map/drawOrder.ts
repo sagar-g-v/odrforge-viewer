@@ -9,6 +9,7 @@ export const DRAW_ORDER: Record<string, number> = {
   "lane-borders": 4, "marks": 4, // painted lines on the surface
   "junctions-virtual": 4, // virtual junction hatch (design §3): on its through road's lanes, which show between the stripes
   "refs": 5, "object-lines": 5, "structures": 5, "cross-paths": 5,
+  "barrier-casing": 5, "barrier-lines": 5, // guard rails / barriers: a cased line on their top edge (design §8)
   "footprints": 5, // 2D: flat footprints of the 3D signals and objects, over the road paint
   "tunnel-xray": 6, // tunnel lanes under the ground, drawn through it (depthCompare always)
   "junction-outlines": 6, "junction-grid": 6, "junction-grid-points": 6, "junction-ref-lines": 6, "cmp-lanes": 6, "cmp-refs": 6,

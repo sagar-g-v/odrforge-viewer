@@ -8,7 +8,7 @@ const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 2
 
 type Swatch =
   | { kind: "fill"; color: string; border?: string; hatch?: boolean }
-  | { kind: "line"; color: string; dash?: boolean; double?: boolean; width?: number }
+  | { kind: "line"; color: string; dash?: boolean; double?: boolean; width?: number; casing?: string }
   | { kind: "dot"; color: string; ring?: string }
   | { kind: "light" } | { kind: "arrow" };
 
@@ -24,7 +24,7 @@ function Sw({ s }: { s: Swatch }) {
   if (s.kind === "light")
     return <i className="sw light"><b style={{ background: "#eb3434" }} /><b style={{ background: "#f5aa28" }} /><b style={{ background: "#2ecc62" }} /></i>;
   const w = s.width ?? 3;
-  const line = { borderTop: `${w}px ${s.dash ? "dashed" : "solid"} ${s.color}` };
+  const line = { borderTop: `${w}px ${s.dash ? "dashed" : "solid"} ${s.color}`, ...(s.casing ? { boxShadow: `0 0 0 1px ${s.casing}` } : {}) };
   return <i className="sw line">{s.double ? <><em style={line} /><em style={line} /></> : <em style={line} />}</i>;
 }
 
@@ -66,6 +66,7 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
         ["other object", { kind: "fill", color: css(ASSET.object) }],
         ["bridge", { kind: "fill", color: css(STRUCTURE.bridgeFill), border: css(STRUCTURE.bridgeEdge) }],
         ["tunnel", { kind: "fill", color: css(STRUCTURE.tunnelFill), border: css(STRUCTURE.tunnelEdge) }],
+        ["guard rail / barrier (top edge)", { kind: "line", color: css(ASSET.barrierLine), width: 3, casing: css(EDGE.ring) }],
         ["tunnel road under the ground (3D)", { kind: "line", color: css(STRUCTURE.tunnelEdge), dash: true, width: 2 }],
       ]} />
       <p className="muted small">Signals and objects are symbols (boards, lamps, columns, boxes) at the file's position, height and size;

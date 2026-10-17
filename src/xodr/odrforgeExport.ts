@@ -8,7 +8,7 @@ import type { Features } from "./features";
 const emptyFeatures = (): Features => {
   const none = { positions: new Float64Array(0), starts: Uint32Array.from([0]) };
   return { footprints: { ...none, colors: new Uint8Array(0), top: new Float32Array(0), meta: [] }, columns: [], boxes: { ...none, elevations: new Float32Array(0), colors: new Uint8Array(0), meta: [] },
-    labels: { positions: new Float64Array(0), texts: [] }, structures: { ...none, meta: [] }, crossPaths: { ...none, meta: [] } };
+    labels: { positions: new Float64Array(0), texts: [] }, structures: { ...none, meta: [] }, crossPaths: { ...none, meta: [] }, barrierLines: { ...none, meta: [] } };
 };
 
 const LANE_TYPES = ["driving", "sidewalk", "biking", "parking", "shoulder", "border", "median", "bidirectional", "other", "none"];

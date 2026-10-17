@@ -389,7 +389,7 @@ the Figma page *Map data & Patterns → 3D assets & markers*.
 | Tree / vegetation | **the logo's tree**: a big top lobe (radius .64r, centred .64r below the top) over three smaller side lobes (.53r, .47r out at 120°, .55r lower), so every side shows the logo silhouette. Trunk radius .14r. Each lobe is a stepped low-poly sphere of three columns (caps .75ρ). Defaults: r = 1.5 m crown half-width, h = 6 m. See `TREE` in `scene.ts`. | trefoil: the four lobe discs | trunk `#6b4f33` bark · crown `#588721` meadow-600 at 92% |
 | Pole / post | column r 0.1 m (≤ 0.2), h 6 m; signal posts r 0.04–0.06 to `zOffset` | dot | `#8a9bb0` steel |
 | Street lamp | pole + head column r 0.28, h 0.25 at the top | dot | head `#f2b544` sun-400 |
-| Guard rail / wall / fence | 2 m extruded pieces along the repeat, width ≥ 3 cm | line of boxes | `#b7c3cf` galvanised |
+| Guard rail / wall / fence | 2 m extruded pieces along the repeat, width ≥ 3 cm, plus a 3px `#d6dee6` line on a 5px `#0a1017` casing along its top edge (a 10 cm rail is hard to see as a body) | line of boxes, plus the same cased line | `#b7c3cf` galvanised |
 | Other object | its own cylinder / box / outline prism; a 0.25 m marker post when unsized | footprint or dot | `#d6b47a` sandstone (outline lines too) |
 | Crosswalk | flat area | same | white 60% |
 | Traffic light | housing box 0.28 × w × h (h 1 m) + three lamps r ≤ 0.11 facing the traffic | dot `#2ecc62` | housing `#141a24`; lamps `#eb3434` `#f5aa28` `#2ecc62` |

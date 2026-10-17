@@ -54,6 +54,7 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
       labels: { ...F.labels, positions: d(F.labels.positions) },
       structures: { ...F.structures, positions: d(F.structures.positions) },
       crossPaths: { ...F.crossPaths, positions: d(F.crossPaths.positions) },
+      barrierLines: { ...F.barrierLines, positions: d(F.barrierLines.positions) },
     },
   };
   return { render, probe };
