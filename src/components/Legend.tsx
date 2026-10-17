@@ -66,6 +66,7 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
         ["other object", { kind: "fill", color: css(ASSET.object) }],
         ["bridge", { kind: "fill", color: css(STRUCTURE.bridgeFill), border: css(STRUCTURE.bridgeEdge) }],
         ["tunnel", { kind: "fill", color: css(STRUCTURE.tunnelFill), border: css(STRUCTURE.tunnelEdge) }],
+        ["tunnel road under the ground (3D)", { kind: "line", color: css(STRUCTURE.tunnelEdge), dash: true, width: 2 }],
       ]} />
       <p className="muted small">Signals and objects are symbols (boards, lamps, columns, boxes) at the file's position, height and size;
         where the file gives no size a typical one is drawn (inspector says so). Other tools draw their own models there.</p>

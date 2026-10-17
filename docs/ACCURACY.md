@@ -131,3 +131,8 @@ colour, not the limit.
   or, for a record without a hash, when both the size and the modification time match (to 2 s). A record for any other
   build is reported as such and its numbers are never shown (`data/provenance.ts`, guarded by `tests/provenance.test.ts`).
   The served folder is not visible to the viewer, so the content hash also stands in for the folder check.
+- **Tunnel roads stay visible under the terrain, at their own positions.** With terrain on in 3D, the lanes of a road
+  carrying a `<tunnel>` that lie more than 0.5 m under the drawn ground are drawn again as dashed outlines through the
+  surface (`map/tunnelXray.ts`). This is a rendering choice: the overlay uses the lane's own vertices and the lanes' height
+  transform, and it moves nothing. Clicks and hovers act on the lane. Guarded by `tests/tunnelXray.test.ts`, mutation-checked.
+  Frankfurt, 2026-10-17: 3,929 of the 3,942 lane points more than 2 m under the ground are on tunnel roads.

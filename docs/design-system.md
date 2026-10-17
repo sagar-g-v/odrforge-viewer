@@ -397,6 +397,7 @@ the Figma page *Map data & Patterns → 3D assets & markers*.
 | Stop / waiting line | flat bar 0.3 m across the lanes | same | `#fafafa` |
 | Bridge | the road's cross section as a translucent volume with a wireframe edge | translucent area + edge | fill `#107cea` at 28%, edge 90% |
 | Tunnel | as bridge | as bridge | fill `#5878a6` at 28%, edge 86% |
+| Tunnel road under the ground (3D, terrain on) | its lane outlines where they lie under the drawn ground, dashed 3/2, 2px, drawn over the terrain and the buildings (`map/tunnelXray.ts`; Layers → Tunnel roads through terrain) | none (nothing hides it) | `#5878a6` (the tunnel edge) |
 | OSM 3D buildings (context) | MapLibre extrusion | footprint (review layer) | light `#d5dde6`, dark `#24324a` at 85%; review footprint `#ffb347` 28% + `#ff9f1c` edge |
 
 Road marks keep the OpenDRIVE paint colours: white `#f5f7fa`, yellow `#f5c442`, blue `#4682e6`, green `#3caa5a`, red

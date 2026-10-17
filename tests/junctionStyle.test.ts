@@ -49,7 +49,7 @@ describe("junction style", () => {
   });
   it("the map's junction layers take fill and edge from junctionStyle (not a literal amber)", () => {
     const src = readFileSync("src/map/MapView.tsx", "utf8");
-    const real = src.slice(src.indexOf('id: "junctions"'), src.indexOf('id: "lanes"'));
+    const j0 = src.indexOf('id: "junctions"'), real = src.slice(j0, src.indexOf('id: "lanes"', j0)); // the next layer after it
     expect(real).toMatch(/isVirtual\(J\.meta\[index\]\) \? \[0, 0, 0, 0\] : junctionFill\(/); // virtual: not under the lanes
     expect(real).not.toMatch(/OVERLAY\.junctionFill/);
     const virt = src.slice(src.indexOf('id: "junctions-virtual"'), src.indexOf('id: "junctions-virtual"') + 1000);

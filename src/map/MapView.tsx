@@ -5,6 +5,7 @@ import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer 
 import { diskResolution } from "../xodr/features";
 import { FillStyleExtension, PathStyleExtension } from "@deck.gl/extensions";
 import { hoverText } from "./hoverInfo";
+import { undergroundRuns, XRAY_TOLERANCE, type XrayPath } from "./tunnelXray";
 import { placeTip } from "../components/tooltipPlace";
 import { JUNCTION_PATTERNS, junctionDash, junctionEdge, junctionEdgeWidth, junctionFill, junctionPattern, isVirtual, virtualJunctions } from "./junctionStyle";
 import type { Layer, PickingInfo } from "@deck.gl/core";
@@ -50,6 +51,7 @@ export interface MapLayers {
   lanes: boolean; junctions: boolean; marks: boolean; borders: boolean; refs: boolean; signals: boolean; objects: boolean;
   structures: boolean; crossPaths: boolean; grids: boolean; // grids: junction reference lines + elevation grids
   directions: boolean; // driving-direction arrows on the traffic lanes
+  tunnels: boolean; // 3D with terrain: tunnel roads under the ground drawn through it (map/tunnelXray.ts)
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
@@ -265,6 +267,12 @@ function deckTransformCompat(map: MlMap) {
   });
 }
 
+/** a pick on the tunnel x-ray is a pick of the lane it shows (the inspector, the hover tooltip and flags work on it) */
+function asLanePick<T extends { layer?: { id: string } | null; index: number; object?: unknown }>(info: T): T {
+  const o = info.object as XrayPath | undefined;
+  return info.layer?.id === "tunnel-xray" && o ? { ...info, layer: { ...info.layer, id: "lanes" }, index: o.lane } : info;
+}
+
 const TIP_DELAY = 400; // ms, design §5
 export const SIGN_LABEL_MAX_MPP = 0.6; // m per screen pixel: sign labels from about a 1:2000 view in (design §8 Labels)
 
@@ -333,9 +341,9 @@ export default function MapView(p: MapViewProps) {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
     const ov = new MapboxOverlay({
-      interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey),
-      onHover: (info) => {
-        const rect = host.current?.getBoundingClientRect();
+      interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(asLanePick(info), !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey),
+      onHover: (raw) => {
+        const info = asLanePick(raw), rect = host.current?.getBoundingClientRect();
         setHoverAt(info.index >= 0 && info.layer && rect ? { layer: info.layer.id, index: info.index, x: rect.left + info.x, y: rect.top + info.y } : null);
       },
     });
@@ -485,6 +493,16 @@ export default function MapView(p: MapViewProps) {
     probeRef.current = probe;
     mapRef.current?.triggerRepaint(); // the idle handler measures the lift for the new surface
   }, [probe]);
+  // tunnel roads seen through the terrain (map/tunnelXray.ts): lane vertices of roads with a <tunnel> whose drawn height is
+  // under the drawn ground (terrain heights times the exaggeration); never when the network is laid on the ground
+  const xray = useMemo(() => {
+    const r = p.render;
+    if (!p.layers.tunnels || !p.layers.lanes || !terrainOn || !groundAt || plan.drape || !r) return null;
+    const roads = new Set(r.features.structures.meta.filter((m) => m.tunnel).map((m) => m.road));
+    if (!roads.size) return null;
+    const ex = p.exaggeration;
+    return undergroundRuns(r.lanes, roads, (lon, lat, z) => drawnZ(plan, z, lift) < groundAt(lon, lat) * ex - XRAY_TOLERANCE * ex);
+  }, [p.layers.tunnels, p.layers.lanes, terrainOn, groundAt, plan, p.render, p.exaggeration, lift]);
   // absolute mode over terrain with a file whose heights are far from the ground: say so (the roads are buried or float)
   const absoluteOff = useMemo(() => {
     const r = p.render;
@@ -749,11 +767,19 @@ export default function MapView(p: MapViewProps) {
     ];
     // beforeId is a MapboxOverlay (interleaved) layer prop, not part of the layers' own prop types
     for (let i = 0; i < out.length; i++) out[i] = out[i].clone({ beforeId } as never);
+    // tunnel roads under the drawn ground, dashed through the terrain (and the buildings): drawn after the map like the
+    // markers, at the lanes' own positions and height transform
+    if (xray?.length)
+      out.push(new PathLayer({
+        id: "tunnel-xray", data: xray, getPath: (d: XrayPath) => d.path, widthUnits: "pixels", getWidth: 2, getColor: STRUCTURE.tunnelEdge,
+        pickable: true, modelMatrix, parameters: { ...depthBias("tunnel-xray"), depthCompare: "always" },
+        getDashArray: [3, 2], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+      }));
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, MARKER.findingRadius));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
-      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn]);
+      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, xray]);
 
   useEffect(() => {
     layersRef.current = layers;

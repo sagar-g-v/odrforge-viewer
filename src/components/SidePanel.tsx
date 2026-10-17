@@ -165,6 +165,8 @@ function LayersTab(p: SidePanelProps) {
         <Toggle label="Signals (signs, lights, stop lines)" on={L.signals} set={set("signals")} />
         <Toggle label="Objects (trees, poles, barriers, crosswalks)" on={L.objects} set={set("objects")} />
         <Toggle label="Bridges & tunnels" on={L.structures} set={set("structures")} />
+        <Toggle label="Tunnel roads through terrain (3D)" on={L.tunnels} set={set("tunnels")}
+          hint="With terrain on, a road in a tunnel lies under the ground and the surface hides it: its lanes under the ground are drawn dashed on top, at their own positions (nothing is moved)" />
         <div className="sub-title">Review</div>
         <Toggle label="Flags" on={L.flags} set={set("flags")} />
         <Toggle label="Findings" on={L.findings} set={set("findings")} />
