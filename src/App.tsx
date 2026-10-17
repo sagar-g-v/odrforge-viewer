@@ -200,7 +200,7 @@ export default function App() {
     const src = net?.source;
     if (!net || !net.fromServer || !src) return; // a local file has no build record
     let live = true;
-    fetchPageMetrics(server, net.page)
+    fetchPageMetrics(server, src.file)
       .then((raw) => { if (live) setProv({ net, p: matchProvenance(raw, src) }); })
       .catch((e) => { if (live) setProv({ net, p: { status: "invalid", reason: e instanceof Error ? e.message : String(e) } }); });
     return () => { live = false; };

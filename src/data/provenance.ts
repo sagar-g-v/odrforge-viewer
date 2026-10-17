@@ -1,4 +1,4 @@
-// Build provenance: which converter build produced the open page, from the <page>.metrics.json the OdrForge gate writes
+// Build provenance: which converter build produced the open page, from the <file>.metrics.json (e.g. munich_standard.xodr.metrics.json) the OdrForge gate writes
 // next to it (tools/inspect/gate.py, metrics.py). The snapshot's numbers are shown only when it provably describes the
 // bytes the viewer loaded: its sha256 equals theirs (or, for a snapshot without a hash, the same size and modification
 // time). Anything else is another build's snapshot: it is reported as a mismatch and its numbers are never shown.
@@ -12,7 +12,7 @@ export interface PageSource {
   lastModified: string | null; // HTTP Last-Modified of the fetch
 }
 
-/** <page>.metrics.json (schema 1) */
+/** <file>.metrics.json (schema 1) */
 export interface PageMetrics {
   schema: number; label: string; time: string; commit: string; osm2xodr_built: string | null; folder: string | null;
   file: string; sha256?: string; bytes?: number; mtime?: string;
@@ -49,7 +49,7 @@ function epoch(t: string | null | undefined): number | null {
   return Number.isFinite(ms) ? ms / 1000 : null;
 }
 
-/** ties a parsed <page>.metrics.json to the loaded page; see the file comment for the rule */
+/** ties a parsed <file>.metrics.json to the loaded page; see the file comment for the rule */
 export function matchProvenance(raw: unknown, src: PageSource): Provenance {
   if (raw === null || raw === undefined) return { status: "none" };
   if (typeof raw !== "object") return { status: "invalid", reason: "not a JSON object" };
@@ -93,11 +93,11 @@ export async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
   return Array.from(d, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** <page>.metrics.json from the review server: null when there is none (404), an Error for anything else */
-export async function fetchPageMetrics(server: string, page: string): Promise<unknown | null> {
-  const r = await fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(page)}.metrics.json`, { cache: "no-store" });
+/** <file>.metrics.json from the review server (file = the page's .xodr name): null when there is none (404), an Error for anything else */
+export async function fetchPageMetrics(server: string, file: string): Promise<unknown | null> {
+  const r = await fetch(`${server.replace(/\/$/, "")}/${encodeURIComponent(file)}.metrics.json`, { cache: "no-store" });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(`HTTP ${r.status} for ${page}.metrics.json`);
+  if (!r.ok) throw new Error(`HTTP ${r.status} for ${file}.metrics.json`);
   return r.json();
 }
 
