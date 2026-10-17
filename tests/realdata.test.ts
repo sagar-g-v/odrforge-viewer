@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { heightPlan, hasRealHeights } from "../src/map/heights";
 import { datumMismatch, groundGridFiles, parseOdrz, sampleGrid, type GroundGrid } from "../src/map/odrz";
+import earcut from "earcut";
 import { buildRoadFloor, FLOOR, floorAt, floorRadius } from "../src/map/roadFloor";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
@@ -119,7 +120,7 @@ for (const area of AREAS) {
       expect(n).toBeGreaterThan(0);
       expect(off).toEqual([]);
     });
-    it("the road wins: with the floor, the ground drawn under every lane point (not in a tunnel) is under the lane", () => {
+    it("the road wins: with the floor, the ground drawn under every lane point (not in a tunnel) and junction surface is under it", () => {
       // the floor the viewer builds (map/roadFloor.ts) over the grid it draws: min(grid, floor within the z17 radius) at
       // every lane vertex outside tunnel footprints must be at least FLOOR.epsilon under the vertex. Proven 2026-10-18:
       // 0 above in all four areas (before: every driving lane on the conformed grid, half its points under it). The cost,
@@ -132,7 +133,7 @@ for (const area of AREAS) {
         for (let v = S.starts[k]; v < S.starts[k + 1]; v++) ring.push(toXY(S.positions[3 * v], S.positions[3 * v + 1]));
         tunnels.set(m.road, [...(tunnels.get(m.road) ?? []), ring]);
       });
-      const t0 = performance.now(), f = buildRoadFloor(r.lanes, toXY, tunnels)!, ms = performance.now() - t0;
+      const t0 = performance.now(), f = buildRoadFloor(r.lanes, toXY, { exclude: tunnels, areas: r.junctions })!, ms = performance.now() - t0;
       const tunnelRoads = new Set(S.meta.filter((m) => m.tunnel).map((m) => m.road));
       const L = r.lanes.positions, M = r.lanes.meta, St = r.lanes.starts, R = floorRadius(0.8);
       let n = 0, above = 0, pressed = 0, deepest = 0;
@@ -157,6 +158,30 @@ for (const area of AREAS) {
       if (process.env.ROAD_FLOOR) console.log(`ROAD-FLOOR ${area}: ${n} lane points, ${above} above, ${pressed} pressed, deepest ${deepest.toFixed(2)} m; floor ${f.nx} x ${f.ny} cells in ${ms.toFixed(0)} ms; lane points more than 1 m over the drawn ground (off bridges and tunnels) ${floatBefore} -> ${floatAfter}; grid > 0.3 m over the road: ${[...deep].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v.toFixed(1)}`).join(', ') || 'none'}`);
       expect(n).toBeGreaterThan(1000);
       expect(above).toBe(0);
+      // junction surfaces the file defines (<boundary> §12.10, virtual span §12.5), sampled inside every triangle of the
+      // fill as deck.gl draws it (earcut): proven 2026-10-18, 0 above in all four areas (before: 3.5 % of Munich's
+      // boundary-surface samples, worst 0.35 m; Frankfurt worst 1.95 m). Hulls (the viewer's approximation) are left out
+      const J = r.junctions;
+      let jn = 0, jAbove = 0;
+      J.meta.forEach((m, k) => {
+        if (!m.exact) return;
+        const xyz: number[] = [];
+        for (let v = J.starts[k]; v < J.starts[k + 1]; v++) xyz.push(...toXY(J.positions[3 * v], J.positions[3 * v + 1]), J.positions[3 * v + 2]);
+        const tri = earcut(xyz.filter((_, i) => i % 3 !== 2), null, 2);
+        for (let q = 0; q < tri.length; q += 3) {
+          const [A, B, C] = [tri[q], tri[q + 1], tri[q + 2]].map((i) => xyz.slice(3 * i, 3 * i + 3));
+          for (let a = 0.1; a < 1; a += 0.2) for (let b = 0.1; a + b < 1; b += 0.2) {
+            const w = 1 - a - b, x = a * A[0] + b * B[0] + w * C[0], y = a * A[1] + b * B[1] + w * C[1], z = a * A[2] + b * B[2] + w * C[2];
+            const h = sampleGrid(g, x, y);
+            if (!Number.isFinite(h)) continue;
+            jn++;
+            if (Math.min(h, floorAt(f, x, y, R)) > z - FLOOR.epsilon + 1e-4) jAbove++;
+          }
+        }
+      });
+      if (process.env.ROAD_FLOOR) console.log(`ROAD-FLOOR ${area} junction surfaces: ${jn} points, ${jAbove} above`);
+      expect(jn).toBeGreaterThan(area === "stelvio" ? 1000 : 10000);
+      expect(jAbove).toBe(0);
     });
     it("the file and the grid the viewer draws are heights above the same vertical datum", () => {
       const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!;

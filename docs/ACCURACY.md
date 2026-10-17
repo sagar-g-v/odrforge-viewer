@@ -72,28 +72,37 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
   Terrarium-encoded to 1/256 m (`tests/odrz.test.ts`).
 - **The road wins** (`src/map/roadFloor.ts`). Where the ground and a road compete, the road keeps its heights and the
   drawn ground is pressed under it. The road floor is a cap on a 1 m lattice over the network. Under every lane (all
-  types, junctions included) the cap is the lowest road height over the cell, minus 0.05 m, from a conservative raster:
-  every cell a lane triangle touches, with a lower bound of the triangle's plane over the cell. Away from the lanes the
+  types, junctions included) and every junction surface the file defines, the cap is the lowest surface height over the
+  cell, minus 0.05 m. It comes from a conservative raster: every cell a triangle touches, with a lower bound of the
+  triangle's plane over the cell. Away from the lanes the
   cap rises at 2 m per metre, a 63° cut, so the ground meets its own heights a short way off; it does not change the
   ground there.
   - **The radius.** Each terrain tile pixel takes min(ground, the lowest cap within 1.5 pixels along each axis). MapLibre
     5 draws a mesh with one cell per DEM pixel (a 128-cell mesh on 512 px render tiles, DEM tiles one zoom down), its
     vertices sampled bilinearly from pixel centres. Every pixel a drawn point depends on is therefore within 1.5 pixels
     of it along each axis, so no drawn ground point under a lane can be above the lane, at any zoom.
+  - **Junctions.** A junction surface the file defines is its `<boundary>` (1.8.0 §12.10) or a virtual junction's
+    main-road span (§12.5). It presses the ground as drawn, triangulated with deck.gl's own earcut. A hull (a junction
+    without either, outlined by the viewer from its connecting roads) is an approximation, not a surface the file
+    defines, so only its connecting-road lanes press the ground. In the test areas 1–2 % of hull samples have ground
+    above them (worst 0.6 m, London).
   - **Tunnels are left alone.** A tunnel road's lanes inside its own tunnel footprint do not press the ground; a road
     over the tunnel still does.
   - **Applies** wherever the drawn heights share the ground's datum: base 0, over terrain (absolute mode, real heights,
     or laid on the ground).
   - **Guards.** `tests/roadFloor.test.ts` checks the cap under a lane, the cut, tunnels, overlapping lanes and lanes
-    thinner than a cell. `tests/groundTiles.test.ts` checks that the drawn mesh is under every lane point at z17 and z15,
+    thinner than a cell, and junction surfaces (exact pressed, hulls not). `tests/groundTiles.test.ts` checks that the drawn mesh is under every lane point at z17 and z15,
     with the lane at six offsets within a pixel, and that ground 30 m off is unchanged. `tests/realdata.test.ts` checks
-    that no lane point outside tunnels has ground above it in the four test areas. Mutation-checked: no min with the
-    floor, a centre-only raster, no plane slack, a window one cell short, a radius ignoring the mesh (1.0 pixel) and
-    float32 rounding up each fail a test.
+    that no lane point outside tunnels, and no point of an exact junction surface, has ground above it in the four test
+    areas. Before junction surfaces were added, 3.5 % of Munich's junction-surface samples had ground above them (worst
+    0.35 m); in Frankfurt the worst was 1.95 m. Mutation-checked: no min with the
+    floor, a centre-only raster, no plane slack, a window one cell short, a radius ignoring the mesh (1.0 pixel), float32
+    rounding up and leaving out junction surfaces each fail a test.
   - **The cost**, reported by `ROAD_FLOOR=1 npx vitest run tests/realdata.test.ts`. Where two roads at different heights
     lie within the radius, the higher one floats over pressed ground. Lane points more than 1 m over the drawn ground,
-    off bridges and tunnels, without → with the floor (2026-10-18): Munich 7 → 164, London 32 → 354, Stelvio 658 → 3,628
-    (hairpins stacked on the slope), Frankfurt 87 → 675. The floor takes 0.1–0.7 s to build.
+    off bridges and tunnels, without → with the floor (2026-10-18, converter build 8344403): Munich 7 → 164, London
+    32 → 426, Stelvio 658 → 3,763 (hairpins stacked on the slope), Frankfurt 87 → 943. The floor takes 0.1–0.7 s to
+    build.
   - **Reproducibility.** The floor is a viewer rendering of the file's own roads over the converter's grid. CARLA and
     Blender show the same only when the published grid carries the same cap (asked of the converter on 2026-10-18).
 - **Terrarium is sampled as MapLibre samples it** (`DEMData.sampleBilinear`: cell centres, bilinear across tile edges), so

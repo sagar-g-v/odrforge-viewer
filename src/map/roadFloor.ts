@@ -2,8 +2,9 @@
 // pressed down under it. The road keeps the file's heights; only the drawn ground changes.
 //
 // A "floor" is a cap on the ground height, on a lattice in file coordinates (metres):
-// - under every lane (all lane types, junctions included; not inside a tunnel's footprint) the cap is the lowest road
-//   height over the cell minus EPSILON;
+// - under every lane (all lane types, junctions included; not inside a tunnel's footprint) and every junction surface the
+//   file defines (its <boundary>, 1.8.0 §12.10, or a virtual junction's main-road span, §12.5) the cap is the lowest
+//   surface height over the cell minus FLOOR.epsilon;
 // - away from the lanes it rises at FLOOR.slope (a steep cut), so the ground meets its own heights again a short way off.
 // The tile renderer takes min(ground, cap) at each DEM pixel, with the cap's minimum over a square that covers how
 // MapLibre draws terrain (MapLibre 5+: render tiles of 512 px with a 128-cell mesh over DEM tiles one zoom down, so a mesh
@@ -12,6 +13,8 @@
 // of it along each axis. Every pixel within 1.5 P (each axis) of a lane point is capped under it, so no drawn ground point
 // under a lane can be above the lane.
 // Guarded by tests/roadFloor.test.ts and the real-data check in tests/realdata.test.ts.
+
+import earcut from "earcut";
 
 export type P2 = [number, number];
 export const FLOOR = {
@@ -29,6 +32,8 @@ export interface RoadFloor {
 }
 
 export interface LaneRings { positions: Float64Array; starts: Uint32Array | number[]; meta: { road: number }[] }
+/** closed outlines (lon, lat, z), drawn filled; only the exact ones (the file's, not the viewer's hulls) press the ground */
+export interface AreaRings { positions: Float64Array; starts: Uint32Array | number[]; meta: { exact: boolean }[] }
 
 /** a point inside a polygon (even-odd) */
 function inside(poly: P2[], x: number, y: number): boolean {
@@ -124,9 +129,10 @@ function pyramid(base: Float32Array, nx: number, ny: number): Float32Array[] {
  * The floor under a network's lanes. `lanes`: the lane rings (lon, lat, z; inner border forward, outer border back, as
  * xodr/build.ts writes them), `toXY`: lon / lat to file x / y, `exclude`: per road (index), footprints (file x / y) where
  * its lanes do not press the ground down (its tunnels: they run under the ground on purpose; a road over the tunnel still
- * does). Null when there are no lanes.
+ * does). `areas`: junction surfaces, triangulated as deck.gl draws them (earcut on the outline). Null when there are no lanes.
  */
-export function buildRoadFloor(lanes: LaneRings, toXY: (lon: number, lat: number) => P2, exclude = new Map<number, P2[][]>(), o = FLOOR): RoadFloor | null {
+export function buildRoadFloor(lanes: LaneRings, toXY: (lon: number, lat: number) => P2,
+  { exclude = new Map<number, P2[][]>(), areas }: { exclude?: Map<number, P2[][]>; areas?: AreaRings } = {}, o = FLOOR): RoadFloor | null {
   const L = lanes.positions, nv = L.length / 3;
   if (!nv) return null;
   const xy = new Float64Array(2 * nv);
@@ -154,6 +160,24 @@ export function buildRoadFloor(lanes: LaneRings, toXY: (lon: number, lat: number
       put(0, a); put(1, cc); put(2, d);
       if (!masked()) rasterTriangle(cap, nx, ny, c, t, o.epsilon);
     }
+  }
+  if (areas) {
+    const A = areas.positions;
+    areas.meta.forEach((m, k) => {
+      if (!m.exact) return; // a hull is the viewer's approximation, not a surface the file defines
+      const s = areas.starts[k], n = areas.starts[k + 1] - s, flat = new Float64Array(2 * n);
+      const xyz = new Float64Array(3 * n);
+      for (let v = 0; v < n; v++) {
+        const [x, y] = toXY(A[3 * (s + v)], A[3 * (s + v) + 1]);
+        flat[2 * v] = x; flat[2 * v + 1] = y;
+        xyz[3 * v] = x - ox; xyz[3 * v + 1] = y - oy; xyz[3 * v + 2] = A[3 * (s + v) + 2];
+      }
+      const tri = earcut(flat, null, 2);
+      for (let q = 0; q < tri.length; q += 3) {
+        for (let e = 0; e < 3; e++) for (let d = 0; d < 3; d++) t[3 * e + d] = xyz[3 * tri[q + e] + d];
+        rasterTriangle(cap, nx, ny, c, t, o.epsilon);
+      }
+    });
   }
   cone(cap, nx, ny, c, o.slope);
   return { originX: ox, originY: oy, cell: c, nx, ny, levels: pyramid(cap, nx, ny), box: [ox, oy, ox + nx * c, oy + ny * c] };

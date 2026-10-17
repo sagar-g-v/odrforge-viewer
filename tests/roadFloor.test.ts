@@ -35,12 +35,12 @@ describe("the road floor", () => {
     expect(floorAt(f, 20, 200, 0)).toBe(Infinity); // off the lattice
   });
   it("leaves the ground alone over a tunnel road inside its tunnel's footprint, not under other roads there", () => {
-    const tunnel = new Map([[0, [[[10, -1], [30, -1], [30, 5], [10, 5]] as P2[]]]]), t = buildRoadFloor(lane, id, tunnel)!;
+    const tunnel = new Map([[0, [[[10, -1], [30, -1], [30, 5], [10, 5]] as P2[]]]]), t = buildRoadFloor(lane, id, { exclude: tunnel })!;
     expect(floorAt(t, 20, 1.7, 0)).toBeGreaterThan(100 + 0.1 * 20 + 3); // only the cone from the open parts (>= 4 m away)
     expect(floorAt(t, 5, 1.7, 0)).toBeLessThanOrEqual(100.5 - FLOOR.epsilon + 1e-4);
     // a road over the tunnel (another road index) still presses the ground under it
     const over = ring(0, 40, 3.5, 103, 0), both = { positions: Float64Array.from([...lane.positions, ...over.positions]), starts: [0, lane.starts[1], 2 * lane.starts[1]], meta: [{ road: 0 }, { road: 1 }] };
-    expect(floorAt(buildRoadFloor(both, id, tunnel)!, 20, 1.7, 0)).toBeLessThanOrEqual(103 - FLOOR.epsilon + 1e-4);
+    expect(floorAt(buildRoadFloor(both, id, { exclude: tunnel })!, 20, 1.7, 0)).toBeLessThanOrEqual(103 - FLOOR.epsilon + 1e-4);
   });
   it("takes the lowest of overlapping lanes (a junction)", () => {
     const a = ring(0, 40, 3.5, 100, 0), b = ring(0, 40, 3.5, 99, 0);
@@ -50,6 +50,15 @@ describe("the road floor", () => {
   it("catches a lane thinner than a cell (a curb)", () => {
     const curb = ring(0, 40, 0.15, 100, 0), c = buildRoadFloor(curb, id)!;
     for (let x = 0; x <= 40; x += 0.5) expect(floorAt(c, x, 0.07, 0)).toBeLessThanOrEqual(100 - FLOOR.epsilon + 1e-4);
+  });
+  it("presses the ground under a junction surface the file defines, triangulated as drawn; not under a viewer hull", () => {
+    // a junction area 20 x 20 m beside the lane, sloping from 100 m (west) to 102 m (east), outline only (no lanes inside)
+    const ring = [[50, 0, 100], [70, 0, 102], [70, 20, 102], [50, 20, 100]];
+    const areas = (exact: boolean) => ({ positions: Float64Array.from(ring.flat()), starts: [0, 4], meta: [{ exact }] });
+    const j = buildRoadFloor(lane, id, { areas: areas(true) })!;
+    for (let x = 50; x <= 70; x += 0.9) for (let y = 0; y <= 20; y += 1.3) expect(floorAt(j, x, y, 0)).toBeLessThanOrEqual(100 + 0.1 * (x - 50) - FLOOR.epsilon + 1e-4);
+    expect(floorAt(j, 60, 10, 0)).toBeGreaterThan(101 - FLOOR.epsilon - 0.2); // not much lower than the surface
+    expect(floorAt(buildRoadFloor(lane, id, { areas: areas(false) })!, 60, 10, 0)).toBeGreaterThan(110); // a hull: only the lane's cut, 10+ m off
   });
   it("no lanes, no floor", () => {
     expect(buildRoadFloor({ positions: new Float64Array(0), starts: [0], meta: [] }, id)).toBeNull();

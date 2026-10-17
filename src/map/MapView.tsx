@@ -496,7 +496,7 @@ export default function MapView(p: MapViewProps) {
       for (let v = S.starts[k]; v < S.starts[k + 1]; v++) ring.push(toXY(S.positions[3 * v], S.positions[3 * v + 1]));
       tunnels.set(m.road, [...(tunnels.get(m.road) ?? []), ring]);
     });
-    return buildRoadFloor(r.lanes, toXY, tunnels);
+    return buildRoadFloor(r.lanes, toXY, { exclude: tunnels, areas: r.junctions });
   }, [floorOn, floorRender, p.proj]);
   // terrain source for the current grid and floor: a new one gets a new source (MapLibre caches tiles per url)
   const terrainSrc = useMemo<TerrainSrc>(() => {

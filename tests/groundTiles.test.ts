@@ -47,7 +47,7 @@ describe("terrain tiles from the network's ground grid", () => {
       const pts = [...inner, ...outer.reverse()];
       // a fine lattice (0.25 m): the cap then reaches little beyond floorRadius, so a radius too short shows
       const floor = buildRoadFloor({ positions: Float64Array.from(pts.flat()), starts: [0, pts.length], meta: [{ road: 0 }] },
-        (lon, lat) => proj.inverse(lon, lat) as [number, number], undefined, { ...FLOOR, cell: 0.25 })!;
+        (lon, lat) => proj.inverse(lon, lat) as [number, number], {}, { ...FLOOR, cell: 0.25 })!;
       for (const zoom of [17, 15]) { // z15: 3.3 m pixels, the pixels under the lane reach well beyond it
         const [x, y] = tileOf(10.45, 46.53, zoom), base = new Float32Array(256 * 256).fill(-999);
         const h = groundTileFromBase(zoom, x, y, activeGrid(grid, proj, floor), base);
