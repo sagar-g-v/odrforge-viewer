@@ -5,13 +5,14 @@ import { useMemo } from "react";
 import { PERSPECTIVES, roadsByOsm, SEVERITIES, type ReviewFilter, type ReviewItem, type ReviewLoad, type Severity } from "../review/llmReview";
 import { shortTime } from "../data/provenance";
 import type { Road } from "../xodr/model";
+import { Icon } from "./Icon";
 
 const SEVERITY_TONE: Record<Severity | "legitimate", string> = { critical: "err", major: "err", minor: "warn", info: "info", legitimate: "ok" };
 const RANK: Record<Severity, number> = { critical: 0, major: 1, minor: 2, info: 3 };
 
-export default function ReviewTab({ load, filter, setFilter, shown, selected, onItem, roads }: {
+export default function ReviewTab({ load, filter, setFilter, shown, selected, onItem, onFlag, asFlags, roads }: {
   load: ReviewLoad | null; filter: ReviewFilter; setFilter: (f: ReviewFilter) => void; shown: ReviewItem[];
-  selected: string | null; onItem: (i: ReviewItem) => void; roads: Road[];
+  selected: string | null; onItem: (i: ReviewItem) => void; onFlag: (i: ReviewItem) => void; asFlags: Map<string, number>; roads: Road[];
 }) {
   const all = useMemo(() => (load?.status === "ok" ? load.review.items : []), [load]);
   const nSev = useMemo(() => Object.fromEntries(SEVERITIES.map((s) => [s, all.filter((i) => i.verdict !== "legitimate" && i.severity === s).length])), [all]);
@@ -62,6 +63,7 @@ export default function ReviewTab({ load, filter, setFilter, shown, selected, on
               <div className="item-head">
                 <span className={`chip ${SEVERITY_TONE[tone]}`}>{tone}</span>
                 {i.verdict === "uncertain" && <span className="chip">uncertain</span>}
+                {asFlags.has(i.key) && <span className="chip accent" title="Already in your flags file (appended by llm_review.py --to-flags)">flag #{asFlags.get(i.key)}</span>}
                 <b>#{i.id}</b><span className="muted small grow">{i.kind || i.category}</span>
               </div>
               <div>{i.note}</div>
@@ -77,6 +79,10 @@ export default function ReviewTab({ load, filter, setFilter, shown, selected, on
                   <div className="kv"><span>confidence</span><span>{i.confidence !== null ? `${Math.round(i.confidence * 100)} %` : "–"}</span></div>
                   <div className="kv"><span>perspective</span><span>{i.perspective.join(", ") || "–"}</span></div>
                   <div className="kv"><span>OSM ways</span><span className="mono">{i.osmWays.join(", ") || "–"}</span></div>
+                  {!asFlags.has(i.key) && <button className="btn small" onClick={(e) => { e.stopPropagation(); onFlag(i); }}
+                    title="Draft one of your flags from this item (you edit and save it; the converter works from your flags)">
+                    <Icon name="flag" />Flag this
+                  </button>}
                 </div>
               )}
             </div>

@@ -3,6 +3,7 @@
 // flags, never mixed into them. Whether the review describes the open page is decided here, by the sha256 of the bytes
 // the viewer loaded (the record's own matches_current_output describes the folder when it was written, not this page).
 // Guarded by tests/llmReview.test.ts.
+import type { Flag } from "./flags";
 
 export type Severity = "critical" | "major" | "minor" | "info";
 export type Verdict = "defect" | "uncertain" | "legitimate";
@@ -90,4 +91,35 @@ export function roadsByOsm(osmWays: string[], roads: { id: string; userData: { c
   if (!osmWays.length) return [];
   const want = new Set(osmWays);
   return roads.filter((r) => r.userData.some((u) => u.code === "osmWays" && u.value.split(",").some((w) => want.has(w.trim())))).map((r) => r.id);
+}
+
+/**
+ * Review items already in the flags file (llm_review.py --to-flags appends them as flags from id 1001): the item's key ->
+ * the flag's id. Matched by position (to the millimetre) and the reviewer's note inside the flag's note.
+ */
+export function reviewItemsAsFlags(items: ReviewItem[], flags: Flag[]): Map<string, number> {
+  const at = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
+  const byPos = new Map<string, Flag[]>();
+  for (const f of flags) if (f.source === "llm-review" && !f.deleted) (byPos.get(at(f.x, f.y)) ?? byPos.set(at(f.x, f.y), []).get(at(f.x, f.y))!).push(f);
+  const out = new Map<string, number>();
+  for (const i of items) {
+    const f = byPos.get(at(i.x, i.y))?.find((q) => !i.note || q.note.includes(i.note));
+    if (f) out.set(i.key, f.id);
+  }
+  return out;
+}
+
+/**
+ * A hand-made flag drafted from a review item ("Flag this"): the reviewer's note plus where it came from, at the item's
+ * position (file metres, valid across builds). On another build the road comes from the item's OSM ways and the lane,
+ * junction and s are left out (they belong to the reviewed build). The user edits and saves it like any flag.
+ */
+export function flagFromReview(i: ReviewItem, id: number, sameBuild: boolean, roads: Parameters<typeof roadsByOsm>[1], categories: string[]): Flag {
+  const road = sameBuild ? i.road : roadsByOsm(i.osmWays, roads)[0] ?? null;
+  const tag = `[LLM review #${i.id} · ${i.verdict === "legitimate" ? "legitimate" : i.severity}${i.verdict === "uncertain" ? ", uncertain" : ""} · ${i.kind || i.category}`
+    + `${i.osmWays.length ? ` · OSM ${i.osmWays.join(", ")}` : ""}${sameBuild ? "" : " · reviewed on another build"}]`;
+  return {
+    id, x: i.x, y: i.y, road, lane: sameBuild ? i.lane : null, laneType: null, junction: sameBuild ? i.junction : null, s: sameBuild ? i.s : null,
+    category: categories.includes(i.category) ? i.category : "other", note: `${i.note}\n${tag}`, created: new Date().toISOString(), status: "open",
+  };
 }

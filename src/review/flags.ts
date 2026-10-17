@@ -12,7 +12,12 @@ export interface Flag {
   road: string | null; lane: number | null; laneType: string | null; junction: string | null; s: number | null;
   category: string; note: string; created: string; deleted?: boolean;
   status?: FlagStatus; reply?: string; resolved?: string;
+  source?: string; // "llm-review": appended by OdrForge llm_review.py --to-flags (ids from 1001); absent: made by you
 }
+
+/** a flag the LLM review appended to the flags file (not one you made) */
+export const isReviewFlag = (f: Flag) => f.source === "llm-review";
+export interface FlagSources { mine: boolean; review: boolean }
 
 export const CATEGORIES: [string, string][] = [
   ["geometry", "Wrong geometry / shape"],

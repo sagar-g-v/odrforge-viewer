@@ -1,7 +1,7 @@
 // The LLM review record (<page>.review.json, schema 1): read-only items, tied to the loaded page by sha256, located in a
 // newer build by OSM ways, filtered by severity and perspective, legitimate items hidden by default.
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FILTER, filterReview, readReview, roadsByOsm } from "../src/review/llmReview";
+import { DEFAULT_FILTER, filterReview, flagFromReview, readReview, reviewItemsAsFlags, roadsByOsm } from "../src/review/llmReview";
 
 const flag = (o: Record<string, unknown>) => ({ x: 1, y: 2, road: "635", lane: -1, laneType: null, junction: null, s: 0, category: "connection",
   note: "n", created: "t", source: "llm-review", verdict: "defect", kind: "missing_turn", severity: "major", perspective: ["car"], osm_ways: ["350848866"],
@@ -46,5 +46,31 @@ describe("LLM review record", () => {
     const roads = [{ id: "700", userData: [{ code: "osmWays", value: "1,350848866" }] }, { id: "701", userData: [{ code: "osmWays", value: "35084886" }] }];
     expect(roadsByOsm(["350848866"], roads)).toEqual(["700"]);
     expect(roadsByOsm([], roads)).toEqual([]);
+  });
+  it("'Flag this' drafts one of your flags: the reviewer's note and source, at its position; on another build the road comes from OSM", () => {
+    const r = readReview(RAW, "abc");
+    if (r.status !== "ok") throw new Error();
+    const cats = ["geometry", "lanes", "connection", "junction", "missing", "signal", "elevation", "other"];
+    const same = flagFromReview(r.review.items[0], 19, true, [], cats);
+    expect(same).toMatchObject({ id: 19, x: 1, y: 2, road: "635", lane: -1, category: "connection", status: "open" });
+    expect(same.note).toBe("n\n[LLM review #1 · major · missing_turn · OSM 350848866]");
+    const roads = [{ id: "700", userData: [{ code: "osmWays", value: "350848866" }] }];
+    const older = flagFromReview({ ...r.review.items[1], category: "weird" }, 20, false, roads, cats);
+    expect(older).toMatchObject({ road: "700", lane: null, junction: null, s: null, category: "other" });
+    expect(older.note).toMatch(/uncertain/);
+    expect(older.note).toMatch(/reviewed on another build\]$/);
+  });
+  it("finds review items already appended to the flags file (same position, the reviewer's note inside), not your own flags", () => {
+    const r = readReview(RAW, "abc");
+    if (r.status !== "ok") throw new Error();
+    const base = { road: null, lane: null, laneType: null, junction: null, s: null, category: "x", created: "t" };
+    const flags = [
+      { ...base, id: 1001, x: 1.0004, y: 2, note: "[LLM review defect, major] n (OSM ways 350848866)", source: "llm-review" },
+      { ...base, id: 7, x: 1, y: 2, note: "n", }, // yours, same place: not the review's
+      { ...base, id: 1002, x: 1, y: 2, note: "something else", source: "llm-review" },
+    ];
+    const m = reviewItemsAsFlags(r.review.items, flags);
+    expect(m.get("f1")).toBe(1001);
+    expect([...m.values()]).not.toContain(7);
   });
 });

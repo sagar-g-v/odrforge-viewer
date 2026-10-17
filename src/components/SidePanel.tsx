@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import ReviewTab from "./ReviewTab";
 import type { ReviewFilter, ReviewItem, ReviewLoad } from "../review/llmReview";
+import { isReviewFlag, type FlagSources } from "../review/flags";
 import { CARTO_AVAILABLE, type Basemap, type HeightMode, type MapLayers } from "../map/MapView";
 import { OdrLegend, OsmLegend } from "./Legend";
 import { concreteBasemap } from "../map/basemap";
@@ -26,6 +27,7 @@ export interface SidePanelProps {
   dim: number; setDim: (n: number) => void;
   terrainSource: string | null; // the network's ground grid when the terrain uses it
   flags: Flag[]; flagStoreKind: string; selectedFlag: number | null; onFlag: (f: Flag) => void; onEditFlag: (f: Flag) => void;
+  flagSources: FlagSources; setFlagSources: (s: FlagSources) => void;
   showDeleted: boolean; setShowDeleted: (b: boolean) => void; onExportFlags: () => void;
   findings: Finding[]; ruleOff: Set<string>; toggleRule: (r: string) => void; onFinding: (f: Finding) => void;
   onLoadFindings: (files: FileList) => void;
@@ -36,7 +38,8 @@ export interface SidePanelProps {
 /** the LLM review of the open page (read-only) */
 export interface ReviewProps {
   load: ReviewLoad | null; filter: ReviewFilter; setFilter: (f: ReviewFilter) => void; shown: ReviewItem[]; selected: string | null;
-  onItem: (i: ReviewItem) => void; count: number; // items with a defect / uncertain verdict
+  onItem: (i: ReviewItem) => void; onFlag: (i: ReviewItem) => void; count: number; // items with a defect / uncertain verdict
+  asFlags: Map<string, number>; // review items already in the flags file -> their flag id
   view: "checks" | "review"; setView: (v: "checks" | "review") => void; // the Findings tab: checker results or the LLM review
 }
 
@@ -240,7 +243,9 @@ function LayersTab(p: SidePanelProps) {
 }
 
 function FlagsTab(p: SidePanelProps) {
-  const list = p.flags.filter((f) => p.showDeleted || !f.deleted);
+  const src = p.flagSources;
+  const list = p.flags.filter((f) => (p.showDeleted || !f.deleted) && (isReviewFlag(f) ? src.review : src.mine));
+  const nReview = p.flags.filter((f) => isReviewFlag(f) && !f.deleted).length, nMine = p.flags.filter((f) => !isReviewFlag(f) && !f.deleted).length;
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of p.flags) if (!f.deleted) c[f.status ?? "open"] = (c[f.status ?? "open"] ?? 0) + 1;
@@ -254,6 +259,13 @@ function FlagsTab(p: SidePanelProps) {
           {!p.flags.length && <span className="muted small">No flags yet.</span>}
         </div>
       </section>
+      {nReview > 0 && (
+        <div className="chips" role="group" aria-label="Flag source">
+          <button className={`chip ${src.mine ? "accent" : ""}`} aria-pressed={src.mine} onClick={() => p.setFlagSources({ ...src, mine: !src.mine })}>yours {nMine}</button>
+          <button className={`chip ${src.review ? "accent" : ""}`} aria-pressed={src.review} onClick={() => p.setFlagSources({ ...src, review: !src.review })}
+            title="Flags the LLM review appended to this file (llm_review.py --to-flags, ids from 1001)">LLM review {nReview}</button>
+        </div>
+      )}
       <p className="muted small">
         Saved {p.flagStoreKind === "server" ? "to the review server" : "in this browser"}. Press <kbd>F</kbd> or the Flag button, then click the map.
       </p>
@@ -262,6 +274,7 @@ function FlagsTab(p: SidePanelProps) {
           <div key={f.id} className={`item ${p.selectedFlag === f.id ? "sel" : ""} ${f.deleted ? "deleted" : ""}`} {...rowButton(() => p.onFlag(f))}>
             <div className="item-head">
               <b>#{f.id}</b> <span className={`chip status-${f.status ?? "open"}`}>{f.deleted ? "deleted" : f.status ?? "open"}</span>
+              {isReviewFlag(f) && <span className="chip accent" title="Appended by the LLM review">LLM</span>}
               <span className="muted small">{f.category}</span>
               <span className="grow" />
               <button className="link" onClick={(e) => { e.stopPropagation(); p.onEditFlag(f); }}>Edit</button>

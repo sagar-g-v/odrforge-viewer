@@ -11,9 +11,9 @@ import MapView, { type Basemap, type HeightMode, type MapLayers, type MarkerPoin
 import { storedBasemap } from "./map/basemap";
 import { fetchPageMetrics, matchProvenance, metres, shortTime, type Provenance } from "./data/provenance";
 import { datumMismatch } from "./map/odrz";
-import { DEFAULT_FILTER, fetchReview, filterReview, readReview, type ReviewFilter, type ReviewLoad } from "./review/llmReview";
+import { DEFAULT_FILTER, fetchReview, filterReview, flagFromReview, readReview, reviewItemsAsFlags, type ReviewFilter, type ReviewLoad } from "./review/llmReview";
 import { virtualJunctions } from "./map/junctionStyle";
-import { browserStore, nextFlagId, serverStore, type Flag, type FlagStore } from "./review/flags";
+import { browserStore, CATEGORIES, isReviewFlag, nextFlagId, serverStore, type Flag, type FlagSources, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
 import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
@@ -242,7 +242,10 @@ export default function App() {
   }, [setToast]);
 
   const toLonLat = useCallback((x: number, y: number) => net!.proj.forward(x, y), [net]);
-  const visibleFlags = useMemo(() => flags.filter((f) => showDeleted || !f.deleted), [flags, showDeleted]);
+  // which flags show (list and map): yours, and those the LLM review appended (source "llm-review", ids from 1001)
+  const [flagSources, setFlagSources] = useState<FlagSources>({ mine: true, review: true });
+  const visibleFlags = useMemo(() => flags.filter((f) => (showDeleted || !f.deleted) && (isReviewFlag(f) ? flagSources.review : flagSources.mine)),
+    [flags, showDeleted, flagSources]);
 
   const flagMarkers = useMemo<MarkerPoint[]>(() => {
     if (!net) return [];
@@ -264,16 +267,18 @@ export default function App() {
     });
   }, [findings, ruleOff, net, toLonLat]);
 
+  // review items already among the flags: their flag stands for them on the map (no second marker)
+  const reviewAsFlags = useMemo(() => (reviewNow?.status === "ok" ? reviewItemsAsFlags(reviewNow.review.items, flags) : new Map<string, number>()), [reviewNow, flags]);
   const reviewMarkers = useMemo<MarkerPoint[]>(() => {
     if (!net) return [];
-    return reviewShown.map((i) => {
+    return reviewShown.filter((i) => !reviewAsFlags.has(i.key) || !flagSources.review).map((i) => {
       const [lon, lat] = toLonLat(i.x, i.y), tone = i.verdict === "legitimate" ? "legitimate" : i.severity;
       return {
         id: `review-${i.key}`, lon, lat, color: MARKER.review[tone], radius: MARKER.reviewRadius[tone], selected: i.key === selectedReview,
         tip: `review #${i.id} · ${tone}${i.verdict === "uncertain" ? " (uncertain)" : ""} · ${i.kind || i.category}: ${clip(i.note)}`,
       };
     });
-  }, [reviewShown, net, selectedReview, toLonLat]);
+  }, [reviewShown, net, selectedReview, toLonLat, reviewAsFlags, flagSources.review]);
 
   const where = (f: Flag) =>
     f.road
@@ -481,7 +486,7 @@ export default function App() {
           flags={flags} flagStoreKind={flagStoreKind} selectedFlag={selectedFlag}
           onFlag={(f) => { setSelectedFlag(f.id); const [lon, lat] = toLonLat(f.x, f.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); }}
           onEditFlag={(f) => setDraft({ flag: f, isNew: false, where: where(f) })}
-          showDeleted={showDeleted} setShowDeleted={setShowDeleted}
+          showDeleted={showDeleted} setShowDeleted={setShowDeleted} flagSources={flagSources} setFlagSources={setFlagSources}
           onExportFlags={() => {
             const blob = new Blob([JSON.stringify({ page: net?.page, flags }, null, 1)], { type: "application/json" });
             const a = document.createElement("a");
@@ -497,7 +502,12 @@ export default function App() {
           onLoadFindings={(fl) => loadFindings([...fl])}
           review={{
             load: reviewNow, filter: reviewFilter, setFilter: setReviewFilter, shown: reviewShown, selected: selectedReview, count: reviewCount,
-            view: findingsView, setView: setFindingsView,
+            view: findingsView, setView: setFindingsView, asFlags: reviewAsFlags,
+            onFlag: (i) => {
+              if (!net || reviewNow?.status !== "ok") return;
+              const f = flagFromReview(i, nextFlagId(flags), reviewNow.sameBuild, net.od?.roads ?? [], CATEGORIES.map((c) => c[0]));
+              setDraft({ flag: f, isNew: true, where: where(f) });
+            },
             onItem: (i) => { setSelectedReview(i.key); const [lon, lat] = toLonLat(i.x, i.y); setFlyTo({ lon, lat, zoom: 19.5, key: Date.now() }); },
           }}
           compare={{
