@@ -27,6 +27,9 @@ const store = (k: string, v?: string) => {
   return null;
 };
 
+// the hover tooltip's text for a review marker: the first line, at most 90 characters
+const clip = (t: string) => { const l = t.split("\n")[0]; return l.length > 90 ? l.slice(0, 89) + "…" : l; };
+
 const TOAST_ICON = { ok: "check", info: "info", warn: "alert", err: "alert" } as const;
 
 /** the status bar's build line: commit, dirty, run time and the conformed fit, or why there is none */
@@ -230,6 +233,7 @@ export default function App() {
       const [lon, lat] = toLonLat(f.x, f.y);
       return {
         id: `flag-${f.id}`, lon, lat, label: String(f.id), selected: f.id === selectedFlag,
+        tip: `flag #${f.id} · ${f.deleted ? "deleted" : f.status ?? "open"} · ${f.category}: ${clip(f.note)}`,
         color: f.deleted ? [120, 120, 120, 200] : STATUS_COLOR[f.status ?? "open"] ?? STATUS_COLOR.open,
       };
     });
@@ -239,7 +243,7 @@ export default function App() {
     if (!net) return [];
     return findings.filter((f) => !ruleOff.has(`${f.source} · ${f.rule}`) && Number.isFinite(f.x) && Number.isFinite(f.y)).map((f, i) => {
       const [lon, lat] = toLonLat(f.x, f.y);
-      return { id: `finding-${i}`, lon, lat, color: LEVEL_COLOR[f.level] ?? LEVEL_COLOR.warning };
+      return { id: `finding-${i}`, lon, lat, color: LEVEL_COLOR[f.level] ?? LEVEL_COLOR.warning, tip: `${f.level} · ${f.rule}: ${clip(f.message)}` };
     });
   }, [findings, ruleOff, net, toLonLat]);
 
