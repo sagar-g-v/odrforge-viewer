@@ -4,7 +4,8 @@ import ReviewTab from "./ReviewTab";
 import type { ReviewFilter, ReviewItem, ReviewLoad } from "../review/llmReview";
 import { isReviewFlag, type FlagSources } from "../review/flags";
 import { CARTO_AVAILABLE, type Basemap, type HeightMode, type MapLayers } from "../map/MapView";
-import { OdrLegend, OsmLegend } from "./Legend";
+import { OdrLegend, OsmLegend, OsmRefLegend } from "./Legend";
+import { gapSummary, type OsmOverlay } from "../review/osmOverlay";
 import { concreteBasemap } from "../map/basemap";
 import type { Flag } from "../review/flags";
 import type { Finding } from "../review/findings";
@@ -33,6 +34,41 @@ export interface SidePanelProps {
   onLoadFindings: (files: FileList) => void;
   compare: CompareProps;
   review: ReviewProps;
+  osm: OsmRefProps;
+}
+
+/** the OSM reference overlay (read-only; never a flag or a finding) */
+export interface OsmRefProps { name: string | null; overlay: OsmOverlay | null; onOpen: () => void; onClear: () => void }
+
+/** the OSM reference section of the Layers tab: what is loaded, its toggles, the kerb gap's numbers and its legend */
+function OsmRefSection({ p }: { p: SidePanelProps }) {
+  const L = p.layers, o = p.osm.overlay, g = o?.gaps ? gapSummary(o.gaps) : null;
+  const pc = (a: number, b: number) => `${((100 * a) / Math.max(1, b)).toFixed(1)} %`;
+  return (
+    <Section id="osm-ref" title="OSM reference" hint="An .osm file's kerbs, sidewalks, street-side parking and road areas over the network, to see where the drawn roads miss them. Read-only">
+      {!p.osm.name ? (
+        <>
+          <p className="muted small">Drop an <code>.osm</code> (or use <b>Open file…</b>) to draw its kerbs, sidewalks, street-side parking and road areas over the network.</p>
+          <button className="btn" onClick={p.osm.onOpen}>Open .osm…</button>
+        </>
+      ) : (
+        <>
+          <div className="kv"><span>file</span><span className="mono wrap">{p.osm.name}</span></div>
+          {!p.net ? <p className="muted small">Open a network to place it.</p>
+            : !o ? <p className="warn-text small">This network has no geoReference, so OSM coordinates cannot be placed on it.</p>
+            : <div className="kv"><span>ways</span><span>{`${o.counts.kerb} kerbs · ${o.counts.sidewalk} sidewalks · ${o.counts.parking + o.counts.island + o.counts.area} areas`}</span></div>}
+          <Toggle label="OSM reference" on={L.osm} set={(v) => p.setLayers({ ...L, osm: v })} />
+          <Toggle label="Colour kerbs by gap to the drawn edge" on={L.osmGap} set={(v) => p.setLayers({ ...L, osmGap: v })}
+            hint="The shared kerb measure, per 1 m sample: the signed distance to the nearest roughly parallel (< 25°) carriageway edge of a plain road within 10 m; + outside the drawn edge (road too narrow), − inside" />
+          {g && L.osmGap && (
+            <p className="muted small">{`${g.matched.toLocaleString()} of ${g.samples.toLocaleString()} kerb samples (${pc(g.matched, g.samples)}) have a parallel edge within 10 m: median ${g.medianSigned >= 0 ? "+" : "−"}${Math.abs(g.medianSigned).toFixed(2)} m, ${pc(g.fit, g.matched)} within 0.3 m.`}</p>
+          )}
+          <button className="btn" onClick={p.osm.onClear}>Remove OSM reference</button>
+          <OsmRefLegend gap={L.osmGap && !!o?.gaps} />
+        </>
+      )}
+    </Section>
+  );
 }
 
 /** the LLM review of the open page (read-only) */
@@ -187,6 +223,7 @@ function LayersTab(p: SidePanelProps) {
         <Toggle label="Findings" on={L.findings} set={set("findings")} />
         <Toggle label="LLM review" on={L.review} set={set("review")} hint="The LLM review's items (<page>.review.json), rings by severity; see the Review tab" />
       </Section>
+      <OsmRefSection p={p} />
       <Section id="road-display" title="Road display">
         <Slider label="Road opacity" value={p.roadOpacity} min={0.1} max={1} step={0.05} onChange={p.setRoadOpacity} />
         <div className="sub-title">Heights (3D view)</div>

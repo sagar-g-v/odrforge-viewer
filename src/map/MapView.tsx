@@ -24,7 +24,8 @@ import { GROUND_PROTOCOL, groundMaxZoom, registerGroundProtocol, setGroundGrid }
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
 import { LaneZIndex } from "./markerZ";
-import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
+import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OSM_REF, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
+import { gapColor, gapRadius, withHeights, type OsmKind, type OsmOverlay } from "../review/osmOverlay";
 import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, viewHeights, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
 
@@ -54,6 +55,7 @@ export interface MapLayers {
   tunnels: boolean; // 3D with terrain: tunnel roads under the ground drawn through it (map/tunnelXray.ts)
   review: boolean; // the LLM review's items (<page>.review.json)
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
+  osm: boolean; osmGap: boolean; // the OSM reference overlay (review/osmOverlay.ts) and its kerb-gap dots
 }
 
 export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; tip?: string; radius?: number } // tip: the hover tooltip
@@ -80,6 +82,7 @@ export interface MapViewProps {
   flags: MarkerPoint[];
   findings: MarkerPoint[];
   review: MarkerPoint[]; // LLM review items (read-only), drawn as rings
+  osm: OsmOverlay | null; // the OSM reference (read-only): never picked for a selection or a flag
   flyTo: { lon: number; lat: number; zoom?: number; key: number } | null;
   fitKey: number;
   onPick: (info: PickingInfo, shift: boolean) => void; // shift: Shift held (select the whole road)
@@ -276,6 +279,16 @@ function asLanePick<T extends { layer?: { id: string } | null; index: number; ob
 }
 
 const TIP_DELAY = 400; // ms, design §5
+/**
+ * The OSM reference is only looked at: a click on it goes to what lies under it (a lane, a junction, the ground), so it
+ * never becomes a selection or a flag's place
+ */
+function throughOsm(ov: MapboxOverlay, info: PickingInfo, layers: Layer[]): PickingInfo {
+  if (!info.layer?.id.startsWith("osm-")) return info;
+  const under = ov.pickObject({ x: info.x, y: info.y, radius: 2, layerIds: layers.map((l) => l.id).filter((id) => !id.startsWith("osm-")) });
+  return under ?? { ...info, layer: null, index: -1, object: null };
+}
+
 export const SIGN_LABEL_MAX_MPP = 0.6; // m per screen pixel: sign labels from about a 1:2000 view in (design §8 Labels)
 export const BARRIER_LINE_MAX_MPP = 0.3; // m per screen pixel: the barriers' top-edge line from about zoom 17.5 in (design §8)
 
@@ -345,7 +358,7 @@ export default function MapView(p: MapViewProps) {
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
     const ov = new MapboxOverlay({
-      interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(asLanePick(info), !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey),
+      interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(asLanePick(throughOsm(ov, info, layersRef.current)), !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey),
       onHover: (raw) => {
         const info = asLanePick(raw), rect = host.current?.getBoundingClientRect();
         setHoverAt(info.index >= 0 && info.layer && rect ? { layer: info.layer.id, index: info.index, x: rect.left + info.x, y: rect.top + info.y } : null);
@@ -540,6 +553,14 @@ export default function MapView(p: MapViewProps) {
     const r = draped?.render ?? p.render;
     return r && Number.isFinite(r.bounds[1]) ? new LaneZIndex(r.lanes.positions, (r.bounds[1] + r.bounds[3]) / 2) : null;
   }, [draped, p.render]);
+  // the OSM reference's vertices at the height of the nearest drawn lane (raw file / draped heights, so the same model
+  // matrix applies); away from the lanes, on the drawn ground (draped) or at the road level
+  const osmPositions = useMemo(() => {
+    const o = p.osm, r = draped?.render ?? p.render;
+    if (!o || !r || !p.layers.osm) return null;
+    const zAt = (lon: number, lat: number) => laneZ?.nearestZ(lon, lat, 60) ?? (draped && groundAt ? groundAt(lon, lat) : r.zGround);
+    return { lines: withHeights(o.lines.positions, zAt), areas: withHeights(o.areas.positions, zAt), gaps: o.gaps ? withHeights(o.gaps.positions, zAt) : null };
+  }, [p.osm, p.render, draped, laneZ, groundAt, p.layers.osm]);
   const modelMatrix = useMemo(() => new Matrix4([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, plan.scale, 0, 0, 0,
     -plan.base * plan.scale + (plan.liftFromGround ? lift : 0), 1]), [plan, lift]);
 
@@ -767,6 +788,31 @@ export default function MapView(p: MapViewProps) {
         getDashArray: [4, 3], dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
       }));
     }
+    // the OSM reference over everything it is compared with: areas as outlines, kerbs and sidewalks thin and dashed, and
+    // with the gap colouring a dot per measured 1 m kerb sample; at the drawn lanes' height (osmPositions)
+    const O2 = osmPositions;
+    if (p.layers.osm && p.osm && O2) {
+      const o = p.osm, kindOf = (paths: OsmOverlay["lines"], i: number): OsmKind => o.elements[paths.meta[i]].kind;
+      const na = o.areas.meta.length, nl = o.lines.meta.length;
+      if (na) out.push(new PathLayer({
+        id: "osm-areas", data: { length: na, startIndices: sub(o.areas.starts, na), attributes: { getPath: { value: O2.areas, size: 3 } } },
+        _pathType: "open", widthUnits: "pixels", getWidth: OSM_REF.areaWidth, getColor: (_: unknown, { index }: { index: number }) => OSM_REF[kindOf(o.areas, index)],
+        pickable: true, autoHighlight: true, highlightColor: OVERLAY.hover, modelMatrix, parameters: depthBias("osm-areas"),
+      }));
+      if (nl) out.push(new PathLayer({
+        id: "osm-lines", data: { length: nl, startIndices: sub(o.lines.starts, nl), attributes: { getPath: { value: O2.lines, size: 3 } } },
+        _pathType: "open", widthUnits: "pixels", getWidth: OSM_REF.lineWidth, getColor: (_: unknown, { index }: { index: number }) => OSM_REF[kindOf(o.lines, index)],
+        getDashArray: OSM_REF.dash, dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        pickable: true, autoHighlight: true, highlightColor: OVERLAY.hover, modelMatrix, parameters: depthBias("osm-lines"),
+      }));
+      const G2 = o.gaps;
+      if (p.layers.osmGap && G2 && O2.gaps && G2.meta.length) out.push(new ScatterplotLayer({
+        id: "osm-kerb-gap", data: { length: G2.meta.length, attributes: { getPosition: { value: O2.gaps, size: 3 } } },
+        radiusUnits: "pixels", getRadius: (_: unknown, { index }: { index: number }) => gapRadius(G2.gap[index]),
+        getFillColor: (_: unknown, { index }: { index: number }) => gapColor(G2.gap[index]),
+        pickable: true, modelMatrix, parameters: depthBias("osm-kerb-gap"),
+      }));
+    }
     // review markers on the lane under them, at its drawn height (at z = 0 a flag on a road 500 m above sea level showed
     // far from it in a tilted view); where no lane is near, on the drawn ground
     const markerZ = (d: MarkerPoint) => {
@@ -810,7 +856,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, p.review, modelMatrix,
-      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, barrierLinesOn, xray]);
+      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, barrierLinesOn, xray, p.osm, osmPositions]);
 
   useEffect(() => {
     layersRef.current = layers;
@@ -838,8 +884,8 @@ export default function MapView(p: MapViewProps) {
   // the pointer while it stays on it, gone when it leaves
   const tipText = useMemo(() => {
     const r = draped?.render ?? p.render;
-    return hoverAt && r ? hoverText(hoverAt.layer, hoverAt.index, r, { flags: p.flags, findings: p.findings, review: p.review }) : null;
-  }, [hoverAt?.layer, hoverAt?.index, draped, p.render, p.flags, p.findings, p.review]); // eslint-disable-line react-hooks/exhaustive-deps
+    return hoverAt && r ? hoverText(hoverAt.layer, hoverAt.index, r, { flags: p.flags, findings: p.findings, review: p.review, osm: p.osm }) : null;
+  }, [hoverAt?.layer, hoverAt?.index, draped, p.render, p.flags, p.findings, p.review, p.osm]); // eslint-disable-line react-hooks/exhaustive-deps
   const tipKey = tipText && hoverAt ? `${hoverAt.layer}:${hoverAt.index}` : "";
   const [tipShown, setTipShown] = useState("");
   useEffect(() => {

@@ -2,7 +2,8 @@
 // and what the base map shows (OpenStreetMap Carto's key colours; satellite imagery has no legend).
 import type { ConcreteBasemap as Basemap } from "../map/basemap";
 import { LEGEND, legendColor } from "../map/palette";
-import { ASSET, EDGE, JUNCTION, MARK, MARKER, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
+import { ASSET, EDGE, JUNCTION, MARK, MARKER, OSM_REF, OVERLAY, SIGNAL, STRUCTURE } from "../design/scene";
+import { OSM_KIND_LABEL } from "../review/osmOverlay";
 
 const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
 
@@ -77,6 +78,26 @@ export function OdrLegend({ theme }: { theme: "dark" | "light" }) {
         ["finding: warning", { kind: "dot", color: css(MARKER.finding.warning) }],
         ["selected", { kind: "fill", color: css(OVERLAY.selected) }], ["compare B (outlines)", { kind: "line", color: css(OVERLAY.compare), width: 2 }],
       ]} />
+    </>
+  );
+}
+
+/** the OSM reference overlay (review/osmOverlay.ts): one hue per kind; the kerb-gap dots when they are on */
+export function OsmRefLegend({ gap }: { gap: boolean }) {
+  const line = (c: readonly number[]): Swatch => ({ kind: "line", color: css(c), dash: true, width: 2 });
+  const area = (c: readonly number[]): Swatch => ({ kind: "fill", color: "transparent", border: css(c) });
+  return (
+    <>
+      <Group title="OSM reference" items={[
+        [OSM_KIND_LABEL.kerb, line(OSM_REF.kerb)], [OSM_KIND_LABEL.sidewalk, line(OSM_REF.sidewalk)],
+        [OSM_KIND_LABEL.parking, area(OSM_REF.parking)], [OSM_KIND_LABEL.island, area(OSM_REF.island)], [OSM_KIND_LABEL.area, area(OSM_REF.area)],
+      ]} />
+      {gap && <Group title="Kerb gap to the drawn carriageway edge (1 m samples)" items={[
+        [`fits (within ${OSM_REF.fitM} m)`, { kind: "dot", color: css(OSM_REF.kerb) }],
+        ["kerb outside: road drawn too narrow (+)", { kind: "dot", color: css(OSM_REF.gapOutside) }],
+        ["kerb inside: road drawn too wide (−)", { kind: "dot", color: css(OSM_REF.gapInside) }],
+      ]} />}
+      {gap && <p className="muted small">{`Larger dots miss the edge by more than ${OSM_REF.farM} m. No dot: no roughly parallel road edge within 10 m, or a kerb the measure leaves out (hover it to see why).`}</p>}
     </>
   );
 }

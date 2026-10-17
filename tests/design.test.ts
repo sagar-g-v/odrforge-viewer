@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { LEGEND, legendColor, SELECTED } from "../src/map/palette";
-import { JUNCTION, MARK, MARKER, OVERLAY, SIGNAL } from "../src/design/scene";
+import { JUNCTION, MARK, MARKER, OSM_REF, OVERLAY, SIGNAL } from "../src/design/scene";
 
 type RGB = [number, number, number];
 type RGBA = [number, number, number, number];
@@ -124,6 +124,8 @@ const OVERLAYS: Record<string, RGB> = {
   elevation: rgb(OVERLAY.elevation), compare: rgb(OVERLAY.compare),
   flagOpen: rgb(MARKER.flag.open), flagFixed: rgb(MARKER.flag.fixed), flagQuestion: rgb(MARKER.flag.question), flagWontfix: rgb(MARKER.flag.wontfix),
   findingError: rgb(MARKER.finding.error), findingWarning: rgb(MARKER.finding.warning), findingInfo: rgb(MARKER.finding.info),
+  osmKerb: rgb(OSM_REF.kerb), osmSidewalk: rgb(OSM_REF.sidewalk), osmParking: rgb(OSM_REF.parking), osmIsland: rgb(OSM_REF.island), osmArea: rgb(OSM_REF.area),
+  osmGapOutside: rgb(OSM_REF.gapOutside), osmGapInside: rgb(OSM_REF.gapInside),
 };
 // documented shares: amber = junction areas and open flags; the "attention" family (open flag, warning finding);
 // question flags and info findings are the same "info" meaning
@@ -169,6 +171,20 @@ describe("design contract §3/§8: one meaning per overlay hue (scene.ts, palett
     expect(JUNCTION.kind("virtual")).toBe("virtual");
     for (const t of ["default", "direct", "crossing", ""]) expect(JUNCTION.kind(t), t).toBe("real");
     expect(JUNCTION.hatch.line).toBeGreaterThan(0);
+  });
+  // the OSM reference (src/review/osmOverlay.ts): each hue means one OSM kind and nothing else, and reads on both maps
+  const OSM_UNIQUE_MIN = 25; // measured 26.1 (parking / light bus lane); within the set 28.1 (kerb / road area)
+  const OSM_KEYS = Object.keys(OVERLAYS).filter((k) => k.startsWith("osm"));
+  for (const key of OSM_KEYS) {
+    it(`${key} is used for nothing else (ΔE ≥ ${OSM_UNIQUE_MIN} from every lane, overlay, marker, signal and mark colour)`, () => {
+      const bad = Object.entries(everythingElse(key)).map(([k, v]) => [k, deltaE(OVERLAYS[key], v)] as const).filter(([, d]) => d < OSM_UNIQUE_MIN);
+      expect(bad.map(([k, d]) => `${k}: ${d.toFixed(1)}`)).toEqual([]);
+    });
+  }
+  it("OSM reference hues read on the light and the dark map (≥ 3:1 on the OSM raster's ground and the dark map's)", () => {
+    const light: RGB = [242, 239, 233], dark: RGB = [22, 26, 34]; // OSM Carto land #f2efe9; #161a22, near-black as the dark vector map
+    const bad = OSM_KEYS.flatMap((k) => [["light", light], ["dark", dark]].map(([n, g]) => [`${k} on ${n}`, contrast(OVERLAYS[k], g as RGB)] as const)).filter(([, r]) => r < 3);
+    expect(bad.map(([k, r]) => `${k}: ${r.toFixed(2)}`)).toEqual([]);
   });
   it("2D sign and object dots never look like a finding (ΔE ≥ 20 from every finding colour)", () => {
     const bad: string[] = [];

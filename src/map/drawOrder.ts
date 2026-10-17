@@ -13,6 +13,7 @@ export const DRAW_ORDER: Record<string, number> = {
   "footprints": 5, // 2D: flat footprints of the 3D signals and objects, over the road paint
   "tunnel-xray": 6, // tunnel lanes under the ground, drawn through it (depthCompare always)
   "junction-outlines": 6, "junction-grid": 6, "junction-grid-points": 6, "junction-ref-lines": 6, "cmp-lanes": 6, "cmp-refs": 6,
+  "osm-areas": 7, "osm-lines": 7, "osm-kerb-gap": 7, // the OSM reference (review/osmOverlay.ts): over everything it is compared with
 };
 
 /** deck.gl parameters for a layer's place in DRAW_ORDER (negative polygon offset pulls it towards the camera) */

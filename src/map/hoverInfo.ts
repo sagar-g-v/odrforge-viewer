@@ -2,6 +2,7 @@
 // hover tooltip always name the lane type"; §8 markers: findings carry no label, "the list and the tooltip name it").
 // Pure: a layer id and an index into that layer's data, against the render buffers. Guarded by tests/hoverInfo.test.ts.
 import { JUNCTION } from "../design/scene";
+import { osmHoverText, type OsmOverlay } from "../review/osmOverlay";
 import type { RenderData } from "../xodr/build";
 import { virtualJunctions } from "./junctionStyle";
 
@@ -9,8 +10,10 @@ export interface HoverMarker { label?: string; tip?: string; }
 
 const KIND: Record<string, string> = { signal: "signal", object: "object", structure: "structure", crossPath: "cross path" };
 
-export function hoverText(layer: string, index: number, r: RenderData, extra: { flags?: HoverMarker[]; findings?: HoverMarker[]; review?: HoverMarker[] } = {}): string | null {
+export function hoverText(layer: string, index: number, r: RenderData, extra: { flags?: HoverMarker[]; findings?: HoverMarker[]; review?: HoverMarker[]; osm?: OsmOverlay | null } = {}): string | null {
   if (index < 0) return null;
+  // the OSM reference overlay: the OSM way (id and tags) or a kerb sample's gap, never a road of the network
+  if (layer.startsWith("osm-")) return extra.osm ? osmHoverText(extra.osm, layer, index) : null;
   const road = (i: number) => {
     const rd = r.roads?.[i];
     return rd ? `road ${rd.id}${rd.name ? ` · ${rd.name}` : ""}` : `road #${i}`;

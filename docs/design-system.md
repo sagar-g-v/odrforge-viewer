@@ -216,6 +216,9 @@ are deliberately close (a junction lane is a driving lane), and the junction-are
 | junction reference line (dashed) | `#ff4d00` vermilion (was `#eb4034`: ΔE 16.1 from error findings) | ✔ | ✔ | ✔ |
 | elevation grid | `#50dcc8` | ✔ | ✔ | ✔ |
 | **compare B outlines** | `#ff40c8` magenta | ✔ | ✔ | ✔ |
+| **OSM reference** (an .osm over the network, read-only): kerb / sidewalk (dashed, 1.5px) | `#e600ff` / `#918408` | ✔ | ✔ | ✔ |
+| OSM reference outlines: street-side parking / island or pedestrian area / other area:highway | `#995426` / `#d65c99` / `#8c1aff` | ✔ | ✔ | ✔ |
+| OSM kerb-gap dots (1 m samples): fits ≤ 0.3 m / kerb outside the drawn edge (+) / inside (−) | kerb `#e600ff` / `#ff0d7a` / `#08969d`; larger beyond 1 m | ✔ | ✔ | ✔ |
 | building footprint / outline | `#ffb347` α .28 / `#ff9f1c` | ✔ | ✔ | ✔ |
 | flag open / fixed / question / won't fix | `#f2b544` / `#7cc95a` / `#5cb6f2` / `#8c929e` | ✔ | ✔ | ✔ |
 | finding error / warning / info | `#ff6a5c` / `#ffaa3c` / `#5cb6f2` | ✔ | ✔ | ✔ |
@@ -440,8 +443,10 @@ drops single characters, so a "30" read as "3".
 7. 3D assets
 8. reference lines, cross paths, elevation grid
 9. compare B
-10. labels
-11. review markers (flags above findings, always on top: `depthCompare: always`)
+10. OSM reference (areas, kerb and sidewalk lines, kerb-gap dots): over everything it is compared with; a click on it goes
+    to what lies under it, so it never becomes a selection, a flag or a finding
+11. labels
+12. review markers (flags above findings, always on top: `depthCompare: always`)
 
 ## 9. Enforced by tests
 
@@ -463,6 +468,8 @@ test in the same commit.
 | Cross-path cyan against the same | ΔE ≥ 25 | vs elevation teal 25.1 |
 | Road reference-line chartreuse against the same | ΔE ≥ 40 | vs light median lane 44.2 |
 | Virtual-junction iris against the same | ΔE ≥ 24 | vs violet road paint 24.7 |
+| Each OSM reference hue (5 kinds, 2 gap sides) against the same and each other | ΔE ≥ 25 | parking vs light bus lane 26.1; kerb vs road area 28.1 |
+| OSM reference hues on the light map (`#f2efe9`) and a near-black ground (`#161a22`) | ≥ 3:1 | road area on dark 3.08 |
 | Real vs virtual junction, in every vision mode | ΔE ≥ 40 | normal 148, deuteranopia 143, protanopia 139, tritanopia 62 |
 | Selection against every lane colour and overlay; `palette.ts` and `scene.ts` agree | ΔE ≥ 25 | 25.6 |
 | 2D sign and object dots against every finding colour | ΔE ≥ 20 | n/a |

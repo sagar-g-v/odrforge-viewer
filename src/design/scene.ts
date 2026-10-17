@@ -75,6 +75,25 @@ export const OVERLAY = {
 };
 
 /**
+ * The OSM reference overlay (review/osmOverlay.ts): the source .osm's edge geometry over the network, read-only. One hue per
+ * kind, used for nothing else (ΔE ≥ 25 from every lane, overlay, marker, signal and mark colour; tests/design.test.ts), each
+ * at least 3:1 on the light and the dark map. Lines (kerbs, sidewalks) are thin and dashed, areas are outlines; with the
+ * kerb-gap colouring, each 1 m kerb sample is a dot: the kerb hue where it fits the drawn carriageway edge (|gap| ≤ fitM),
+ * gapOutside where the kerb lies outside it (+, the road is drawn too narrow), gapInside where inside it (-, too wide).
+ */
+export const OSM_REF = {
+  kerb: [230, 0, 255, 255] as Rgba, //         #e600ff  barrier=kerb lines
+  sidewalk: [145, 132, 8, 255] as Rgba, //     #918408  footway=sidewalk ways
+  parking: [153, 84, 38, 255] as Rgba, //      #995426  parking=street_side|lane|layby areas
+  island: [214, 92, 153, 255] as Rgba, //      #d65c99  traffic islands and pedestrian areas (the kerb measure drops their kerbs)
+  area: [140, 26, 255, 255] as Rgba, //        #8c1aff  other area:highway polygons (the carriageway's mapped surface)
+  gapOutside: [255, 13, 122, 255] as Rgba, //  #ff0d7a  kerb outside the drawn edge: road too narrow
+  gapInside: [8, 150, 157, 255] as Rgba, //    #08969d  kerb inside the drawn edge: road too wide
+  fitM: 0.3, farM: 1, // m: |gap| within fitM fits (the measure's within-0.3 m share); beyond farM the dot grows
+  lineWidth: 1.5, areaWidth: 1.5, dash: [4, 3] as [number, number], // px
+};
+
+/**
  * How a junction area is drawn. Hue says what it is: amber = a real junction (default, direct, crossing), iris = virtual.
  * Fill form says it too: real = solid tint, virtual = 45° hatch (so it reads on any lane or ground and in every vision mode).
  * Line style says where the outline comes from: solid = the file's <boundary>, dashed = the approximate hull.

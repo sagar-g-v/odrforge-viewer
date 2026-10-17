@@ -44,7 +44,8 @@ describe("tunnel x-ray", () => {
     const layer = src.slice(src.indexOf('id: "tunnel-xray"'), src.indexOf('id: "tunnel-xray"') + 500);
     expect(layer).toMatch(/modelMatrix/);
     expect(layer).toMatch(/depthCompare: "always"/);
-    expect(src).toMatch(/onClick: \(info, event\) => propsRef\.current\.onPick\(asLanePick\(info\)/);
+    // a click on the OSM reference goes to what lies under it first (throughOsm), then x-ray picks become their lane
+    expect(src).toMatch(/onClick: \(info, event\) => propsRef\.current\.onPick\(asLanePick\(throughOsm\(ov, info, layersRef\.current\)\)/);
     expect(DRAW_ORDER["tunnel-xray"]).toBeDefined();
   });
 });

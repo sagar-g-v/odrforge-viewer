@@ -15,6 +15,7 @@ import { DEFAULT_FILTER, fetchReview, filterReview, flagFromReview, readReview, 
 import { virtualJunctions } from "./map/junctionStyle";
 import { browserStore, CATEGORIES, isReviewFlag, nextFlagId, serverStore, type Flag, type FlagSources, type FlagStore } from "./review/flags";
 import { parseFindings, type Finding } from "./review/findings";
+import { buildOsmOverlay, OSM_KINDS, osmElements, type OsmElement } from "./review/osmOverlay";
 import { probe } from "./xodr/query";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
 import { fetchGrid, groundGridFiles, type GroundGrid } from "./map/odrz";
@@ -59,6 +60,7 @@ export default function App() {
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
     lanes: true, junctions: true, marks: true, borders: true, refs: true, signals: true, objects: true, structures: true, crossPaths: true, grids: false, directions: true, tunnels: true, review: true, buildings: true, terrain: false, flags: true, findings: true,
+    osm: true, osmGap: false,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -241,6 +243,20 @@ export default function App() {
     } catch (e) { setToast(`Could not save flags: ${e instanceof Error ? e.message : e}`, "err"); }
   }, [setToast]);
 
+  // the OSM reference (an .osm dropped or opened): read-only, drawn over whichever network is open, through its projector
+  const [osmRef, setOsmRef] = useState<{ name: string; elements: OsmElement[] } | null>(null);
+  const osmOverlay = useMemo(() => (osmRef && net ? buildOsmOverlay(osmRef.elements, net.proj, net.od ?? null) : null), [osmRef, net]);
+  const loadOsm = useCallback(async (f: File) => {
+    try {
+      const elements = osmElements(await f.text());
+      if (!elements.length) { setToast(`${f.name}: no kerb, sidewalk, street-side parking or area:highway ways`, "warn"); return; }
+      setOsmRef({ name: f.name, elements });
+      setLayers((l) => ({ ...l, osm: true }));
+      const n = Object.fromEntries(OSM_KINDS.map((k) => [k, elements.filter((e) => e.kind === k).length]));
+      setToast(`OSM reference ${f.name}: ${n.kerb} kerbs, ${n.sidewalk} sidewalks, ${n.parking + n.island + n.area} areas`, "ok");
+    } catch (e) { setToast(`${f.name}: ${e instanceof Error ? e.message : e}`, "err"); }
+  }, [setToast]);
+
   const toLonLat = useCallback((x: number, y: number) => net!.proj.forward(x, y), [net]);
   // which flags show (list and map): yours, and those the LLM review appended (source "llm-review", ids from 1001)
   const [flagSources, setFlagSources] = useState<FlagSources>({ mine: true, review: true });
@@ -414,9 +430,10 @@ export default function App() {
       e.preventDefault();
       depth = 0; setDragging(false);
       const fs = [...(e.dataTransfer?.files ?? [])];
-      const network = fs.find((f) => /\.(xodr|html)$/i.test(f.name));
-      const rest = fs.filter((f) => f !== network);
+      const network = fs.find((f) => /\.(xodr|html)$/i.test(f.name)), osm = fs.find((f) => /\.osm$/i.test(f.name));
+      const rest = fs.filter((f) => f !== network && f !== osm);
       if (network) openLocal(network);
+      if (osm) loadOsm(osm);
       if (rest.length) loadFindings(rest);
     };
     window.addEventListener("dragenter", enter);
@@ -427,7 +444,7 @@ export default function App() {
       window.removeEventListener("dragenter", enter); window.removeEventListener("dragleave", leave);
       window.removeEventListener("dragover", over); window.removeEventListener("drop", drop);
     };
-  }, [openLocal, loadFindings]);
+  }, [openLocal, loadFindings, loadOsm]);
 
   const cursorXY = cursor && net ? net.proj.inverse(cursor[0], cursor[1]) : null;
 
@@ -447,7 +464,11 @@ export default function App() {
             {files.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
           <button className="btn" onClick={() => fileInput.current?.click()}>Open file…</button>
-          <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json" onChange={(e) => { if (e.target.files?.[0]) openLocal(e.target.files[0]); e.target.value = ""; }} />
+          <input ref={fileInput} type="file" hidden accept=".xodr,.html,.json,.osm" onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) { if (/\.osm$/i.test(f.name)) loadOsm(f); else openLocal(f); }
+            e.target.value = "";
+          }} />
         </div>
         <div className="search-box">
           <Icon name="search" />
@@ -492,6 +513,7 @@ export default function App() {
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob); a.download = `${net?.page ?? "flags"}.flags.json`; a.click();
           }}
+          osm={{ name: osmRef?.name ?? null, overlay: osmOverlay, onOpen: () => fileInput.current?.click(), onClear: () => setOsmRef(null) }}
           findings={findings} ruleOff={ruleOff}
           toggleRule={(r) => setRuleOff((s) => { const n = new Set(s); if (n.has(r)) n.delete(r); else n.add(r); return n; })}
           onFinding={(f) => {
@@ -522,7 +544,7 @@ export default function App() {
       <main className="stage">
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers} osm={osmOverlay}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         {!net && !loading && (
@@ -547,7 +569,7 @@ export default function App() {
         </div>
         {toast && <div className={`toast ${toast.tone}`} role="status"><Icon name={TOAST_ICON[toast.tone]} />{toast.text}</div>}
         {dragging && (
-          <div className="dropzone"><div><Icon name="upload" size={32} /><span>Drop a .xodr, an OdrForge page, or checker results</span></div></div>
+          <div className="dropzone"><div><Icon name="upload" size={32} /><span>Drop a .xodr, an OdrForge page, checker results, or an .osm as reference</span></div></div>
         )}
         {net && selF && (
           <FeatureInspector net={net} sel={selF} onClose={() => setSelF(null)} onGoRoad={goRoad} />

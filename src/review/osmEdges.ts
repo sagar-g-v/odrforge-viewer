@@ -16,20 +16,39 @@ export const STEP_M = 1; // m between samples along an OSM line
 
 export interface OsmEdgeLines { kerbs: P2[][]; sidewalks: P2[][] } // lon / lat polylines
 
-/** barrier=kerb lines and footway=sidewalk ways of an .osm file, as lon / lat polylines */
-export function osmEdgeLines(osmText: string): OsmEdgeLines {
+/** one OSM way: its id, tags and node refs, and the lon / lat of the nodes the file has (a node it lacks is left out) */
+export interface OsmWay { id: string; tags: Map<string, string>; refs: string[]; line: P2[]; closed: boolean }
+
+/** every way of an .osm file; closed: at least 4 refs, the first equal to the last */
+export function osmWays(osmText: string): OsmWay[] {
   const osm = parseXml(osmText);
   const root = kids(osm, "osm")[0] ?? osm;
   const nodes = new Map<string, P2>();
   for (const n of kids(root, "node")) nodes.set(n.attrs.id ?? "", [Number(n.attrs.lon), Number(n.attrs.lat)]);
+  return kids(root, "way").map((w) => {
+    const refs = kids(w, "nd").map((nd) => nd.attrs.ref ?? "");
+    return {
+      id: w.attrs.id ?? "", tags: new Map(kids(w, "tag").map((t) => [t.attrs.k ?? "", t.attrs.v ?? ""])), refs,
+      line: refs.map((r) => nodes.get(r)).filter((p): p is P2 => !!p), closed: refs.length >= 4 && refs[0] === refs[refs.length - 1],
+    };
+  });
+}
+
+// what each OSM edge is, by its tags (the definitions the measures below and the OSM reference overlay share)
+type Tags = Map<string, string>;
+export const isKerb = (t: Tags) => t.get("barrier") === "kerb";
+export const isSidewalk = (t: Tags) => t.get("footway") === "sidewalk";
+export const isTrafficIsland = (t: Tags) => t.get("area:highway") === "traffic_island" || t.get("footway") === "traffic_island";
+export const isPedestrianArea = (t: Tags) => t.get("area:highway") === "pedestrian" || (t.get("highway") === "pedestrian" && t.get("area") === "yes");
+export const isStreetParking = (t: Tags) => ["street_side", "lane", "layby"].includes(t.get("parking") ?? "");
+
+/** barrier=kerb lines and footway=sidewalk ways of an .osm file, as lon / lat polylines */
+export function osmEdgeLines(osmText: string): OsmEdgeLines {
   const out: OsmEdgeLines = { kerbs: [], sidewalks: [] };
-  for (const w of kids(root, "way")) {
-    const tags = new Map(kids(w, "tag").map((t) => [t.attrs.k ?? "", t.attrs.v ?? ""]));
-    const kerb = tags.get("barrier") === "kerb", sidewalk = tags.get("footway") === "sidewalk";
-    if (!kerb && !sidewalk) continue;
-    const line = kids(w, "nd").map((nd) => nodes.get(nd.attrs.ref ?? "")).filter((p): p is P2 => !!p);
-    if (line.length < 2) continue;
-    (kerb ? out.kerbs : out.sidewalks).push(line);
+  for (const w of osmWays(osmText)) {
+    const kerb = isKerb(w.tags), sidewalk = isSidewalk(w.tags);
+    if ((!kerb && !sidewalk) || w.line.length < 2) continue;
+    (kerb ? out.kerbs : out.sidewalks).push(w.line);
   }
   return out;
 }
@@ -175,22 +194,15 @@ export interface OsmKerbData {
   parking: P2[][]; // closed parking=street_side|lane|layby ways
 }
 
-/** everything the shared kerb and parking measures need from an .osm (lon / lat) */
+/** everything the shared kerb and parking measures need from an .osm (lon / lat); ways missing a node are left out */
 export function osmKerbData(osmText: string): OsmKerbData {
-  const osm = parseXml(osmText);
-  const root = kids(osm, "osm")[0] ?? osm;
-  const nodes = new Map<string, P2>();
-  for (const n of kids(root, "node")) nodes.set(n.attrs.id ?? "", [Number(n.attrs.lon), Number(n.attrs.lat)]);
   const out: OsmKerbData = { kerbs: [], islands: [], pedestrian: [], parking: [] };
-  for (const w of kids(root, "way")) {
-    const t = new Map(kids(w, "tag").map((x) => [x.attrs.k ?? "", x.attrs.v ?? ""]));
-    const refs = kids(w, "nd").map((nd) => nd.attrs.ref ?? ""), closed = refs.length >= 4 && refs[0] === refs[refs.length - 1];
-    const line = refs.map((r) => nodes.get(r)).filter((p): p is P2 => !!p);
+  for (const { tags: t, refs, line, closed } of osmWays(osmText)) {
     if (line.length !== refs.length || line.length < 2) continue;
-    if (t.get("barrier") === "kerb" && !closed) out.kerbs.push(line);
-    if (closed && (t.get("area:highway") === "traffic_island" || t.get("footway") === "traffic_island")) out.islands.push(line);
-    if (closed && (t.get("area:highway") === "pedestrian" || (t.get("highway") === "pedestrian" && t.get("area") === "yes"))) out.pedestrian.push(line);
-    if (closed && ["street_side", "lane", "layby"].includes(t.get("parking") ?? "")) out.parking.push(line);
+    if (isKerb(t) && !closed) out.kerbs.push(line);
+    if (closed && isTrafficIsland(t)) out.islands.push(line);
+    if (closed && isPedestrianArea(t)) out.pedestrian.push(line);
+    if (closed && isStreetParking(t)) out.parking.push(line);
   }
   return out;
 }
@@ -259,6 +271,15 @@ export function kerbOfArea(kerb: P2[], areas: PolygonDistance): boolean {
   return s.filter((p) => areas.distance(p, 0.5) <= 0.5).length * 2 >= s.length;
 }
 
+/** the signed gap (ParallelEdges.signed) at each of a kerb's samples `s` (its midSamples); NaN where no edge is parallel */
+export function sampleGaps(kerb: P2[], s: P2[], edges: ParallelEdges): number[] {
+  return s.map((p, i) => {
+    // the kerb's local direction from its neighbouring samples (a one-sample kerb: its own end-to-end direction)
+    const a = s.length > 1 ? s[Math.max(0, i - 1)] : kerb[0], b = s.length > 1 ? s[Math.min(s.length - 1, i + 1)] : kerb[kerb.length - 1];
+    return edges.signed(p, [b[0] - a[0], b[1] - a[1]]);
+  });
+}
+
 export interface SharedKerbStats { kerbs: number; dropped: number; samples: number; matched: number; medianSigned: number; p95abs: number; within05: number; within03: number }
 
 /**
@@ -273,13 +294,7 @@ export function sharedKerbStats(kerbs: P2[][], edges: ParallelEdges, areas: Poly
     const s = midSamples(k);
     if (!s.length) continue; // shorter than 1 m
     if (kerbOfArea(k, areas)) { dropped++; continue; }
-    for (let i = 0; i < s.length; i++) {
-      samples++;
-      // the kerb's local direction from its neighbouring samples (a one-sample kerb: its own end-to-end direction)
-      const a = s.length > 1 ? s[Math.max(0, i - 1)] : k[0], b = s.length > 1 ? s[Math.min(s.length - 1, i + 1)] : k[k.length - 1];
-      const e = edges.signed(s[i], [b[0] - a[0], b[1] - a[1]]);
-      if (Number.isFinite(e)) d.push(e);
-    }
+    for (const e of sampleGaps(k, s, edges)) { samples++; if (Number.isFinite(e)) d.push(e); }
   }
   const sorted = [...d].sort((x, y) => x - y), abs = d.map(Math.abs).sort((x, y) => x - y);
   return {
