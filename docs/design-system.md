@@ -322,7 +322,7 @@ Every interactive component has these states:
 | **Loading pill** | Top centre, radius full, surface, elevation 2, 14px spinner (2px line-2 ring with an accent arc, 0.8s linear) + message. |
 | **Empty / error states** | Centred on the map. A 40px logo mark in accent, 22/600 title, muted 13 body (max 520), inline code. Error variant: the server is unreachable, so the body says what to run and includes a "Retry" secondary button. |
 | **Map controls** | MapLibre group restyled: surface, 1px line, radius md, elevation 1, 32px buttons with Lucide plus, minus and compass icons (the icons replace the CSS-inverted sprites). Scale bar: surface at 80%, muted text, 1px muted border. Attribution and imagery credit: surface at 82%, 11px muted, radius sm. |
-| **Tooltip** | `--text` bg with `--surface` text (inverted), 12px, radius sm, padding 4/8, 6px offset, 400ms delay, no arrow. Shortcuts are shown as kbd. |
+| **Tooltip** | `--text` bg with `--surface` text (inverted), 12px, radius sm, padding 4/8, 6px offset, 400ms delay, no arrow. Shortcuts are shown as kbd. On the map it names what is under the pointer (`map/hoverInfo.ts`): lane type, lane and road; junction kind; feature and road; a flag or finding. It follows the pointer and clears when the map moves. |
 | **File drop overlay** | Full stage: `--backdrop` + 2px blur, a centred card with a 2px dashed accent border, radius lg, upload icon 32px, "Drop a .xodr, an OdrForge page, or checker results". It appears on `dragenter` with files. |
 | **Kbd / code** | Mono 11, 1px line-2 border with a 2px bottom border, radius xs, surface-2. Code: mono 12 on surface-3. |
 | **Status bar** | 28px, surface, 1px top line, muted 12, values in text 600, coordinates mono. Warnings use `--warn` text. |
@@ -422,6 +422,10 @@ finding errors. Object dots move from violet to sandstone, so they match the 3D 
 Sign text and flag numbers are billboards: Inter 600 12px (flags 700 11px) in `#0f2236` on a white pill at 92%, with
 padding 4/2, radius 4, max 16px on screen, placed 0.25 m above a sign board. Use a pill on every ground. Never draw
 outlined or bare text on the map.
+
+Sign labels appear from 0.6 m per screen pixel in (about a 1:2000 view, zoom ~17; `SIGN_LABEL_MAX_MPP` in
+`MapView.tsx`). Further out they piled up over the roads by the hundred. A collision filter is not used: on text it
+drops single characters, so a "30" read as "3".
 
 ### Drawing order (bottom to top)
 

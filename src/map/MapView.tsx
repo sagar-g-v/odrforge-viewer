@@ -4,6 +4,8 @@ import { MapboxOverlay } from "@deck.gl/mapbox";
 import { ColumnLayer, PathLayer, ScatterplotLayer, SolidPolygonLayer, TextLayer } from "@deck.gl/layers";
 import { diskResolution } from "../xodr/features";
 import { FillStyleExtension, PathStyleExtension } from "@deck.gl/extensions";
+import { hoverText } from "./hoverInfo";
+import { placeTip } from "../components/tooltipPlace";
 import { JUNCTION_PATTERNS, junctionDash, junctionEdge, junctionEdgeWidth, junctionFill, junctionPattern, isVirtual, virtualJunctions } from "./junctionStyle";
 import type { Layer, PickingInfo } from "@deck.gl/core";
 import * as maplibregl from "maplibre-gl";
@@ -51,7 +53,7 @@ export interface MapLayers {
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
 }
 
-export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; }
+export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; tip?: string; } // tip: the hover tooltip
 
 export interface MapViewProps {
   render: RenderData | null;
@@ -263,6 +265,20 @@ function deckTransformCompat(map: MlMap) {
   });
 }
 
+const TIP_DELAY = 400; // ms, design §5
+export const SIGN_LABEL_MAX_MPP = 0.6; // m per screen pixel: sign labels from about a 1:2000 view in (design §8 Labels)
+
+/** the map's tooltip: the design's .tooltip, 6px below the pointer, kept in the viewport */
+function MapTip({ x, y, text }: { x: number; y: number; text: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const t = ref.current?.getBoundingClientRect();
+    if (t) setPos(placeTip({ left: x, top: y, width: 0, height: 12 }, t, { width: window.innerWidth, height: window.innerHeight }));
+  }, [x, y, text]);
+  return <div ref={ref} className="tooltip" role="tooltip" style={pos ?? { left: 0, top: 0, visibility: "hidden" }}>{text}</div>;
+}
+
 export default function MapView(p: MapViewProps) {
   const host = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
@@ -272,6 +288,7 @@ export default function MapView(p: MapViewProps) {
   const [beforeId, setBeforeId] = useState<string | undefined>(undefined);
   // the view (file-coordinate box, metres per screen pixel) the imagery tiles are chosen for; updated when the camera rests
   const [view, setView] = useState<{ box: [number, number, number, number]; mpp: number } | null>(null);
+  const signLabelsOn = !view || view.mpp <= SIGN_LABEL_MAX_MPP;
   // terrain: the DEM under the network (the same tiles MapLibre's terrain draws) and the lift that keeps the draped
   // roads above the surface as drawn (re-measured whenever the map comes to rest)
   const [dem, setDem] = useState<{ render: RenderData; dem: Dem } | null>(null);
@@ -282,6 +299,7 @@ export default function MapView(p: MapViewProps) {
   // the style can take layers and sources: from its style.load until the next setStyle (map.isStyleLoaded() also waits
   // for every tile, so changes made while tiles stream in would be dropped)
   const styleReady = useRef(false);
+  const [hoverAt, setHoverAt] = useState<{ layer: string; index: number; x: number; y: number } | null>(null); // the hover tooltip's target (client px)
   // 2D is a plan view: drawn flat, no terrain (map/heights.ts viewHeights); 3D uses the chosen mode and terrain
   const vh = viewHeights(p.mode, p.heightMode, p.layers.terrain), terrainOn = vh.terrain;
   const shownStyle = useRef(styleKey(p.basemap, p.theme)); // the style the map has (or is loading)
@@ -314,7 +332,13 @@ export default function MapView(p: MapViewProps) {
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
     map.addControl(new maplibregl.AttributionControl({ compact: false }), "bottom-left");
-    const ov = new MapboxOverlay({ interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey) });
+    const ov = new MapboxOverlay({
+      interleaved: true, layers: [], onClick: (info, event) => propsRef.current.onPick(info, !!(event?.srcEvent as MouseEvent | undefined)?.shiftKey),
+      onHover: (info) => {
+        const rect = host.current?.getBoundingClientRect();
+        setHoverAt(info.index >= 0 && info.layer && rect ? { layer: info.layer.id, index: info.index, x: rect.left + info.x, y: rect.top + info.y } : null);
+      },
+    });
     if (import.meta.env.DEV) (window as unknown as { odrvDeck?: MapboxOverlay }).odrvDeck = ov; // dev: inspect the deck layers
     map.addControl(ov);
     map.on("mousemove", (e: MapMouseEvent) => propsRef.current.onCursor([e.lngLat.lng, e.lngLat.lat]));
@@ -330,6 +354,7 @@ export default function MapView(p: MapViewProps) {
       setView({ box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)], mpp });
     };
     map.on("moveend", updateView);
+    map.on("movestart", () => setHoverAt(null)); // the thing under the pointer changes as the map moves
     map.on("load", updateView);
     map.on("style.load", () => {
       styleReady.current = true;
@@ -676,7 +701,9 @@ export default function MapView(p: MapViewProps) {
           updateTriggers: { getFillColor: [selF, p.layers.signals, p.layers.objects], getElevation: [p.layers.signals, p.layers.objects] },
         }));
       }
-      if (p.layers.signals && F.labels.texts.length) {
+      // sign value labels once they can be read apart (design §8 Labels): zoomed out, a city drew hundreds of pills piled
+      // over the roads (a collision filter dropped single characters of a label instead)
+      if (p.layers.signals && F.labels.texts.length && signLabelsOn) {
         const Lb = F.labels;
         out.push(new TextLayer({
           id: "sign-labels", data: { length: Lb.texts.length, attributes: { getPosition: { value: Lb.positions, size: 3 } } },
@@ -726,7 +753,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
   }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, modelMatrix,
-      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt]);
+      beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn]);
 
   useEffect(() => {
     layersRef.current = layers;
@@ -750,10 +777,24 @@ export default function MapView(p: MapViewProps) {
     if (map && p.proj) map.fire("moveend");
   }, [p.proj]);
 
+  // the hover tooltip (design §5 Tooltip, §6: names the lane type, the finding): shown after 400 ms on one thing, follows
+  // the pointer while it stays on it, gone when it leaves
+  const tipText = useMemo(() => {
+    const r = draped?.render ?? p.render;
+    return hoverAt && r ? hoverText(hoverAt.layer, hoverAt.index, r, { flags: p.flags, findings: p.findings }) : null;
+  }, [hoverAt?.layer, hoverAt?.index, draped, p.render, p.flags, p.findings]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tipKey = tipText && hoverAt ? `${hoverAt.layer}:${hoverAt.index}` : "";
+  const [tipShown, setTipShown] = useState("");
+  useEffect(() => {
+    if (!tipKey) return;
+    const t = window.setTimeout(() => setTipShown(tipKey), TIP_DELAY);
+    return () => window.clearTimeout(t);
+  }, [tipKey]);
   const credit = p.basemap === "satellite" && p.imagery?.satellite ? p.imagery.satellite.attribution ?? p.imagery.satellite.name : null;
   return (
     <>
       <div ref={host} className="map" />
+      {tipKey && tipShown === tipKey && hoverAt && <MapTip x={hoverAt.x} y={hoverAt.y} text={tipText!} />}
       {noGroundForAbsolute && (
         <div className="map-note">
           {`Terrain is off, so there is no ground for heights above sea level: drawn from the road level (${p.render!.zGround.toFixed(0)} m), height differences kept. Turn Terrain on to see them at their real height.`}

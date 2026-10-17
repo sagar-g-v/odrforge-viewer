@@ -34,6 +34,7 @@ export interface RenderData {
   zRange: [number, number];
   zGround: number; // median lane height: the level the surrounding ground is drawn at in relative mode
   stats: { roads: number; junctions: number; lanes: number; lengthKm: number; vertices: number };
+  roads?: { id: string; name: string }[]; // by road index (refs / lane meta .road): the map tooltip names roads
 }
 
 class Buf {
@@ -391,5 +392,6 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     bounds: [minLon, minLat, maxLon, maxLat],
     zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],
     stats: { roads: od.roads.length, junctions: od.junctions.length, lanes: nLanes, lengthKm: len / 1000, vertices: L.positions.length / 3 },
+    roads: od.roads.map((rd) => ({ id: rd.id, name: rd.name })),
   };
 }
