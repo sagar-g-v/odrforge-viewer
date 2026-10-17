@@ -125,8 +125,8 @@ colour, not the limit.
 - **The file and its ground grid share one vertical datum.** The file's header `verticalDatum` must equal the datum label
   of the grid the viewer draws; otherwise the viewer says so over the map in 3D with terrain (`map/odrz.ts datumMismatch`).
   Guarded by `tests/odrz.test.ts` and, on the converter's test areas, `tests/realdata.test.ts`.
-- **Build provenance is shown only for the exact bytes it describes.** The gate writes `<page>.metrics.json` next to each
-  page: commit, run and build time, sha256, size and modification time of the `.xodr`, and its metrics. The viewer hashes
+- **Build provenance is shown only for the exact bytes it describes.** The gate writes `<file>.metrics.json` (e.g. `munich_standard.xodr.metrics.json`)
+  next to each page: commit, run and build time, sha256, size and modification time of the `.xodr`, and its metrics. The viewer hashes
   the bytes it fetched. It shows the build line (status bar) and the build rows (File section) only when the sha256 matches,
   or, for a record without a hash, when both the size and the modification time match (to 2 s). A record for any other
   build is reported as such and its numbers are never shown (`data/provenance.ts`, guarded by `tests/provenance.test.ts`).
@@ -140,3 +140,7 @@ colour, not the limit.
   (1.8.1 XSD: "z-offset of object's origin relative to the elevation of the road reference line"; the same for signals and
   `<repeat>` zOffsetStart / End). The banked road surface at t is not used: it put them up to 0.3 m off on a 5 % bank
   6 m out. Guarded by `tests/exact.test.ts` (mutation-checked).
+- **Driving lanes sit on the road-conformed grid; curbs and sidewalks stand their curb height above it.** The conformed
+  grid holds the road surface without lane heights. Measured 2026-10-17: driving-lane median +0.002 m (Stelvio) and 0.000
+  (Munich, London); curb and walking lanes +0.150. Stelvio's overall median of +0.133 is its lane mix (56 % curb and
+  walking). `tests/realdata.test.ts` checks the driving lanes at |median| <= 0.05 m.

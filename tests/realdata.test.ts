@@ -12,7 +12,7 @@ import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 const AREAS = ["munich", "london", "stelvio"]; // built with absolute heights and road-conformed grids
-const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1 }; // m
+const LIMIT = { conformedP95: 0.3, conformedMedian: 0.2, frameMedian: 0.1, drivingMedian: 0.05 }; // m (driving: measured <= 0.002)
 
 const grid = (file: string): GroundGrid => { const b = readFileSync(`${DIR}/${file}`); return parseOdrz(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const stats = (d: number[]) => { const a = d.map(Math.abs).sort((x, y) => x - y), s = [...d].sort((x, y) => x - y); return { n: d.length, median: s[s.length >> 1], p95abs: a[Math.floor(0.95 * (a.length - 1))] }; };
@@ -42,6 +42,19 @@ for (const area of AREAS) {
       expect(s.n).toBeGreaterThan(0.95 * (L.length / 3));
       expect(s.p95abs).toBeLessThanOrEqual(LIMIT.conformedP95);
       expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.conformedMedian);
+    });
+    it("driving lanes sit on that grid (it holds the road surface; curbs and sidewalks stand their curb height above it)", () => {
+      // proven 2026-10-17: driving-lane median +0.002 (Stelvio), 0.000 (Munich, London); curb / walking +0.150. The overall
+      // median mixes the two (Stelvio +0.133 with 56 % curb and walking lanes), so the road fit is checked on driving lanes
+      const { proj, r } = data(), file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!, g = grid(file);
+      const L = r.lanes.positions, M = r.lanes.meta, S = r.lanes.starts, d: number[] = [];
+      for (let k = 0; k < M.length; k++) {
+        if (M[k].type !== "driving") continue;
+        for (let v = S[k]; v < S[k + 1]; v++) { const [x, y] = proj.inverse(L[3 * v], L[3 * v + 1]); const h = sampleGrid(g, x, y); if (Number.isFinite(h)) d.push(L[3 * v + 2] - h); }
+      }
+      const s = stats(d);
+      expect(s.n).toBeGreaterThan(1000);
+      expect(Math.abs(s.median)).toBeLessThanOrEqual(LIMIT.drivingMedian);
     });
     it("the file and the grid the viewer draws are heights above the same vertical datum", () => {
       const file = groundGridFiles(`${area}_standard`).find((f) => existsSync(`${DIR}/${f}`))!;
