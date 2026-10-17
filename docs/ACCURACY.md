@@ -160,3 +160,12 @@ colour, not the limit.
   here. Measured 2026-10-17: none in Munich and Frankfurt. London road 250 (61 %) and Stelvio road 31 (54 %) are its known
   open cases, listed in `KNOWN_CLIFFS`, and the test fails if that list changes. Fit and driving-lane checks leave bridges
   and tunnels out (the Frankfurt car park P15 depth is still provisional).
+- **OSM edges against the drawn network: baseline for the OSM-geometry mode (2026-10-18, build bfd950e).** This is an
+  independent measurement: `barrier=kerb` lines and `footway=sidewalk` ways are read from the .osm, sampled every 1 m, and
+  compared with the lanes the viewer draws. No converter code is used. Run it with
+  `OSM_EDGES=1 npx vitest run tests/osmEdges.test.ts --silent=false`.
+  - London kerb lines (93 % near the network) against the carriageway edge: median +1.16 m (the drawn road is narrower than
+    the kerbs), |p95| 6.0 m, 18.5 % within 0.5 m, and the road overruns the kerb by more than 0.5 m on 19 %. Some kerb
+    lines bound islands or pedestrian areas, not the carriageway.
+  - Sidewalk ways with a drawn sidewalk lane within 10 m: London 13 %, Munich 23 %, Tokyo 83 %, Frankfurt 76 % (83 samples).
+  - There are no limits yet. They follow once the converter's results are proven.
