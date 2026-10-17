@@ -144,3 +144,7 @@ colour, not the limit.
   grid holds the road surface without lane heights. Measured 2026-10-17: driving-lane median +0.002 m (Stelvio) and 0.000
   (Munich, London); curb and walking lanes +0.150. Stelvio's overall median of +0.133 is its lane mix (56 % curb and
   walking). `tests/realdata.test.ts` checks the driving lanes at |median| <= 0.05 m.
+- **Point objects stand on the ground.** With terrain, the converter seats trees and street lamps on its conformed ground
+  (zOffset = ground - elevation(s); OdrForge 02a8d5c). Measured 2026-10-17: |base - ground| at most 0.0001 m in Munich (679
+  objects), London (598), Frankfurt (276) and Stelvio (2). Before the fix, Munich had 141 more than 0.3 m off, the worst 8.2 m
+  under the ground. `tests/realdata.test.ts` checks every point object off bridges at 0.3 m (mutation-checked).
