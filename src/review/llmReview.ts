@@ -94,7 +94,7 @@ export function roadsByOsm(osmWays: string[], roads: { id: string; userData: { c
 }
 
 /**
- * Review items already in the flags file (llm_review.py --to-flags appends them as flags from id 1001): the item's key ->
+ * Review items already in the flags file (llm_review.py merge --as-flags appends them as flags from id 1001): the item's key ->
  * the flag's id. Matched by position (to the millimetre) and the reviewer's note inside the flag's note.
  */
 export function reviewItemsAsFlags(items: ReviewItem[], flags: Flag[]): Map<string, number> {

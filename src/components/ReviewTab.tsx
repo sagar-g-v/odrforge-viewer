@@ -63,7 +63,7 @@ export default function ReviewTab({ load, filter, setFilter, shown, selected, on
               <div className="item-head">
                 <span className={`chip ${SEVERITY_TONE[tone]}`}>{tone}</span>
                 {i.verdict === "uncertain" && <span className="chip">uncertain</span>}
-                {asFlags.has(i.key) && <span className="chip accent" title="Already in your flags file (appended by llm_review.py --to-flags)">flag #{asFlags.get(i.key)}</span>}
+                {asFlags.has(i.key) && <span className="chip accent" title="Already in your flags file (appended by llm_review.py merge --as-flags)">flag #{asFlags.get(i.key)}</span>}
                 <b>#{i.id}</b><span className="muted small grow">{i.kind || i.category}</span>
               </div>
               <div>{i.note}</div>

@@ -263,7 +263,7 @@ function FlagsTab(p: SidePanelProps) {
         <div className="chips" role="group" aria-label="Flag source">
           <button className={`chip ${src.mine ? "accent" : ""}`} aria-pressed={src.mine} onClick={() => p.setFlagSources({ ...src, mine: !src.mine })}>yours {nMine}</button>
           <button className={`chip ${src.review ? "accent" : ""}`} aria-pressed={src.review} onClick={() => p.setFlagSources({ ...src, review: !src.review })}
-            title="Flags the LLM review appended to this file (llm_review.py --to-flags, ids from 1001)">LLM review {nReview}</button>
+            title="Flags the LLM review appended to this file (llm_review.py merge --as-flags, ids from 1001)">LLM review {nReview}</button>
         </div>
       )}
       <p className="muted small">
