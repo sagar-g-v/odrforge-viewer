@@ -201,19 +201,18 @@ colour, not the limit.
   open cases, listed in `KNOWN_CLIFFS`, and the test fails if that list changes. Fit and driving-lane checks leave bridges
   and tunnels out (the Frankfurt car park P15 depth is still provisional).
 - **Junction outlines** (`tests/junctionBoundary.test.ts`). The user asked on 2026-10-18 for a `<boundary>` (1.8.0
-  §12.10) on every junction. On the 07:12 outputs the boundaries the converter writes enclose their connecting-road lanes
-  (worst 0.10 m outside, Frankfurt; limit 0.15 m). The junctions still without one are counted exactly, and the test fails
-  when a count changes; the counts are lowered as the converter fixes them, down to 0.
-
-  | Area | Hulls (viewer's outline) | No outline (direct junctions) |
-  |---|---|---|
-  | Munich | 65 | 2 |
-  | London | 57 | 1 |
-  | Stelvio | 5 | 0 |
-  | Frankfurt | 58 | 31 |
-
-  Direct junctions have no connecting roads, so they have no hull either. Mutation-checked: a 0.05 m limit fails in all
-  four areas.
+  §12.10) on every junction. Only common junctions can carry one: the 1.8.1 XSD has `boundary` in `t_junction_common`
+  (OpenDRIVE_Junction.xsd:253) and not in `t_junction_direct` or `t_junction_virtual`. §12.10 says junction boundaries
+  "define the outermost edge of the full area for common junctions".
+  - **Virtual junctions** are outlined by their main-road span (§12.5).
+  - **Direct junctions** are lane-level gores with no connecting roads and no area. They have no outline and are left
+    out: Munich 195 and 268, London 246, and 31 in Frankfurt.
+  - **What the test checks.** On the 07:12 outputs the boundaries the converter writes enclose their connecting-road
+    lanes (worst 0.10 m outside, Frankfurt; limit 0.15 m). The test fails if a junction other than a direct one has no
+    outline, or if a virtual junction falls back to a hull. The common junctions still drawn from the viewer's hull are
+    counted exactly (Munich 65, London 57, Stelvio 5, Frankfurt 58). The test fails when a count changes, and the counts
+    are lowered as the converter adds boundaries, down to 0.
+  - Mutation-checked: a 0.05 m limit fails in all four areas.
 - **OSM edges against the drawn network: baseline for the OSM-geometry mode (2026-10-18, build bfd950e).** This is an
   independent measurement: `barrier=kerb` lines and `footway=sidewalk` ways are read from the .osm, sampled every 1 m, and
   compared with the lanes the viewer draws. No converter code is used. Run it with
