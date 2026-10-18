@@ -11,13 +11,38 @@ import { describe, expect, it } from "vitest";
 import earcut from "earcut";
 import { PolygonDistance, type P2 } from "../src/review/osmEdges";
 import { junctionGridZ } from "../src/xodr/elevationGrid";
+import { boundaryRing } from "../src/xodr/junctions";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
-// measured 2026-10-18 on the 07:12 outputs (8344403 + 92f58db)
-const KNOWN_HULLS: Record<string, number> = { munich: 65, london: 57, stelvio: 5, frankfurt_kreuz: 58 };
+// measured 2026-10-18: 65 / 57 / 5 / 58 on the 07:12 outputs; after the contour fallback (OdrForge c0f186f, 19:55 outputs)
+const KNOWN_HULLS: Record<string, number> = { munich: 36, london: 44, stelvio: 3, frankfurt_kreuz: 36 };
+// boundaries whose outline crosses itself (beyond 1 mm of a vertex), exactly; each loop is a sliver under LOOP_MAX m²
+// (contour traces where two connecting roads' edges swap). Measured 2026-10-18 on the 19:55 outputs
+const KNOWN_SELF_CROSSING: Record<string, string[]> = { munich: ["235", "247", "280", "325"], london: ["86"], stelvio: [], frankfurt_kreuz: ["99"] };
+const LOOP_MAX = 0.01;
+
+/** proper crossings of a closed outline's edges (beyond 1 mm of their ends), with the smaller loop each one cuts off */
+function selfCrossings(ring: number[][]): number[] {
+  let p = ring.filter((q, i) => i === 0 || Math.hypot(q[0] - ring[i - 1][0], q[1] - ring[i - 1][1]) > 1e-3);
+  if (p.length > 1 && Math.hypot(p[0][0] - p[p.length - 1][0], p[0][1] - p[p.length - 1][1]) < 1e-3) p = p.slice(0, -1);
+  const area2 = (q: number[][]) => { let a = 0; for (let m = 0; m < q.length; m++) { const v = q[m], w = q[(m + 1) % q.length]; a += v[0] * w[1] - w[0] * v[1]; } return Math.abs(a) / 2; };
+  const whole = area2(p), loops: number[] = [];
+  for (let i = 0; i < p.length; i++) for (let k = i + 2; k < p.length; k++) {
+    if (i === 0 && k === p.length - 1) continue;
+    const [ax, ay] = p[i], [bx, by] = p[(i + 1) % p.length], [cx, cy] = p[k], [dx, dy] = p[(k + 1) % p.length];
+    const den = (bx - ax) * (dy - cy) - (by - ay) * (dx - cx);
+    if (Math.abs(den) < 1e-12) continue;
+    const t = ((cx - ax) * (dy - cy) - (cy - ay) * (dx - cx)) / den, u = ((cx - ax) * (by - ay) - (cy - ay) * (bx - ax)) / den;
+    const la = Math.hypot(bx - ax, by - ay), lc = Math.hypot(dx - cx, dy - cy), e = 1e-3;
+    if (!(t * la > e && (1 - t) * la > e && u * lc > e && (1 - u) * lc > e)) continue;
+    const cut = area2([...p.slice(i + 1, k + 1), [ax + t * (bx - ax), ay + t * (by - ay)]]);
+    loops.push(Math.min(cut, Math.abs(whole - cut)));
+  }
+  return loops;
+}
 // lane vertices outside their junction's boundary: proven <= 0.10 m (Frankfurt; curves sampled apart), limit with margin
 const ENCLOSE_LIMIT = 0.15;
 // the elevation grid (1.8.0 §12.11) against what it overwrites: connecting-road driving lanes lie on it (proven 2026-10-18:
@@ -58,6 +83,19 @@ for (const area of ["munich", "london", "stelvio", "frankfurt_kreuz"]) {
       expect(unoutlined.filter((j) => kind(j.type) !== "direct").map((j) => j.id)).toEqual([]);
       expect(J.meta.filter((m) => m.outline === "hull" && kind(m.type) !== "common").map((m) => m.id)).toEqual([]); // virtual: span
       expect(hulls).toBe(KNOWN_HULLS[area]);
+    });
+    it("no boundary crosses itself, beyond known slivers", () => {
+      const od = parseOpenDrive(readFileSync(xodr, "utf8")), byId = new Map(od.roads.map((r) => [r.id, r]));
+      const crossing: string[] = [];
+      let worst = 0;
+      for (const j of od.junctions) {
+        const ring = j.boundary.length ? boundaryRing(j, byId) : null;
+        if (!ring) continue;
+        const loops = selfCrossings(ring);
+        if (loops.length) { crossing.push(j.id); worst = Math.max(worst, ...loops); }
+      }
+      expect(crossing.sort((a, b) => Number(a) - Number(b))).toEqual(KNOWN_SELF_CROSSING[area]);
+      expect(worst).toBeLessThan(LOOP_MAX);
     });
     it("inside a boundary the elevation grid holds: it covers the outline, the connecting lanes lie on it, the fill is it", () => {
       const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);

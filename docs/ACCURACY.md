@@ -251,8 +251,21 @@ colour, not the limit.
   - **What the test checks.** On the 07:12 outputs the boundaries the converter writes enclose their connecting-road
     lanes (worst 0.10 m outside, Frankfurt; limit 0.15 m). The test fails if a junction other than a direct one has no
     outline, or if a virtual junction falls back to a hull. The common junctions still drawn from the viewer's hull are
-    counted exactly (Munich 65, London 57, Stelvio 5, Frankfurt 58). The test fails when a count changes, and the counts
-    are lowered as the converter adds boundaries, down to 0.
+    counted exactly, and the test fails when a count changes; the counts are lowered as the converter adds boundaries,
+    down to 0.
+
+    | Area | Hulls on the 07:12 outputs | Hulls after the contour fallback (OdrForge c0f186f, 19:55) |
+    |---|---|---|
+    | Munich | 65 | 36 |
+    | London | 57 | 44 |
+    | Stelvio | 5 | 3 |
+    | Frankfurt | 58 | 36 |
+
+    The new boundaries enclose their lanes as tightly as the old ones (worst 0.10 m), and every one lies inside its
+    elevation grid.
+  - **Self-crossing.** No boundary may cross itself beyond 1 mm of a vertex, except a list kept exactly. Six of the
+    contour-traced boundaries do, each a sliver under 0.01 m² where two connecting roads' edges swap: Munich 235, 247,
+    280 and 325, London 86, and Frankfurt 99. Mutation-checked: a 1 m end tolerance fails.
   - Mutation-checked: a 0.05 m limit fails in all four areas.
 - **OSM edges against the drawn network: baseline for the OSM-geometry mode (2026-10-18, build bfd950e).** This is an
   independent measurement: `barrier=kerb` lines and `footway=sidewalk` ways are read from the .osm, sampled every 1 m, and
