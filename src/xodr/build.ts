@@ -322,7 +322,12 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     let ring = j.boundary.length ? boundaryRing(j, byId) : null, outline: JunctionMeta["outline"] = "boundary";
     if (!ring || ring.length < 3) { ring = j.type.toLowerCase() === "virtual" ? virtualSpanRing(j, byId) : null; outline = "span"; }
     if (!ring || ring.length < 3) { ring = hull(junctionPts.get(j.id) ?? []); outline = "hull"; }
-    if (!ring || ring.length < 3) continue;
+    // consecutive points closer than 1 mm (segment joins; a closing point equal to the first) dropped: kept, they become
+    // near-duplicates in lon / lat, where earcut (the fill's triangulation, deck.gl's too) made triangles outside the
+    // outline (Munich junctions 12, 121, 311: up to 1.3 m outside)
+    ring = ring.filter((p, i) => i === 0 || Math.hypot(p[0] - ring![i - 1][0], p[1] - ring![i - 1][1]) >= 1e-3);
+    while (ring.length > 3 && Math.hypot(ring[0][0] - ring[ring.length - 1][0], ring[0][1] - ring[ring.length - 1][1]) < 1e-3) ring.pop();
+    if (ring.length < 3) continue;
     const gz = outline === "boundary" ? junctionGridZ(j) : null;
     if (gz) ring = ring.map(([x, y, z]) => { const h = gz(x, y); return [x, y, Number.isFinite(h) ? h : z] as [number, number, number]; });
     juncs.begin();

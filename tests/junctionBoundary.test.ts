@@ -92,6 +92,26 @@ for (const area of ["munich", "london", "stelvio", "frankfurt_kreuz"]) {
       }
       expect(crossing).toEqual([]);
     });
+    it("every junction fill is triangulated inside its outline (the triangles' area is the outline's)", () => {
+      // proven 2026-10-19 once the outline's duplicate points are dropped (build.ts): before, earcut put triangles up to
+      // 1.3 m outside Munich junctions 12, 121 and 311 (junction 12: 689.9 m² of triangles in a 672.9 m² outline)
+      const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
+      const J = r.junctions, off: string[] = [];
+      J.meta.forEach((m, k) => {
+        const xy: number[] = [];
+        for (let v = J.starts[k]; v < J.starts[k + 1]; v++) xy.push(...(proj.inverse(J.positions[3 * v], J.positions[3 * v + 1]) as P2));
+        const tri = earcut(xy, null, 2), n = xy.length / 2;
+        let polygon = 0, triangles = 0;
+        for (let i = 0; i < n; i++) { const a = 2 * i, b = 2 * ((i + 1) % n); polygon += xy[a] * xy[b + 1] - xy[b] * xy[a + 1]; }
+        for (let q = 0; q < tri.length; q += 3) {
+          const [a, b, c] = [2 * tri[q], 2 * tri[q + 1], 2 * tri[q + 2]];
+          triangles += Math.abs((xy[b] - xy[a]) * (xy[c + 1] - xy[a + 1]) - (xy[c] - xy[a]) * (xy[b + 1] - xy[a + 1])) / 2;
+        }
+        polygon = Math.abs(polygon) / 2;
+        if (Math.abs(triangles - polygon) > 0.001 * polygon + 0.01) off.push(`${m.id}: ${triangles.toFixed(2)} / ${polygon.toFixed(2)} m²`);
+      });
+      expect(off).toEqual([]);
+    });
     it("inside a boundary the elevation grid holds: it covers the outline, the connecting lanes lie on it, the fill is it", () => {
       const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
       const toXY = (lon: number, lat: number) => proj.inverse(lon, lat) as P2, byId = new Map(od.junctions.map((j) => [j.id, j]));

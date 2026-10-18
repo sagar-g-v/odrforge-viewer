@@ -117,10 +117,13 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
     cap into the conformed grid (OdrForge 085a330, published 18:13), so CARLA and Blender get the same pressed ground.
     Checked on the grid alone, without the viewer's floor (`tests/realdata.test.ts`):
     - **Lanes:** 0 lane points outside tunnels above road − 0.05 m by more than 1 cm, in all four areas.
-    - **Junction surfaces** (exact ones, not underground) are at most 0.13 m above the viewer's surface − 0.05 m
-      (London; Munich 0.10, Frankfurt 0.04; limit 0.15 m). The viewer fills a boundary from the junction's elevation
-      grid (§12.11; see "Junction elevation grids" in §5). The converter still fills it from its outline at road-surface
-      heights, triangulated its own way. It is switching to the grid, which should bring this to about 0 by definition.
+    - **Junction surfaces** (exact ones, not underground): both sides fill a boundary from the junction's elevation
+      grid (§12.11; the converter since OdrForge 36bca11, see "Junction elevation grids" in §5). The grid alone is now
+      0.00 m above the viewer's surface − 0.05 m in all four areas (limit 0.02 m). Before, it was up to 0.13 m above
+      (London), from the converter's old outline fill. The last Munich points (0.10 m) were the viewer's fault: its
+      outline kept duplicate points at segment joins, and earcut then placed fill triangles up to 1.3 m outside the
+      outline (junctions 12, 121 and 311). The duplicates are dropped now. `tests/junctionBoundary.test.ts` checks that
+      every junction's triangles cover exactly its outline's area.
 - **Terrarium is sampled as MapLibre samples it** (`DEMData.sampleBilinear`: cell centres, bilinear across tile edges), so
   the drape agrees with the drawn surface. Measured in the browser: |difference| < 1e-9 m at review zoom
   (`tests/terrain.test.ts` guards the convention).

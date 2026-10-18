@@ -199,9 +199,9 @@ for (const area of AREAS) {
       // boundary-surface samples, worst 0.35 m; Frankfurt worst 1.95 m). Hulls (the viewer's approximation) and junctions
       // with a tunnel road (underground: Frankfurt's car park, up to 34 m under the ground) are left out, as the converter
       // leaves them out. The published grid alone: the viewer fills a boundary from the junction's elevation grid (§12.11);
-      // the converter (until it fills from the grid too) from its outline at road-surface heights: proven 2026-10-18
-      // at most 0.13 m above the viewer's surface - 0.05 m (London; Munich 0.10, Frankfurt 0.04), limit JUNCTION_GRID_SLACK
-      const J = r.junctions, JUNCTION_GRID_SLACK = 0.15;
+      // the converter from the grid too since OdrForge 36bca11: proven 2026-10-19 0.00 m in all four areas (before: up to
+      // 0.13 m, London; the last Munich points were the viewer's fill spilling outside its outline, fixed). Limit 0.02 m
+      const J = r.junctions, JUNCTION_GRID_SLACK = 0.02;
       let jn = 0, jAbove = 0, jGridAbove = 0, jGridWorst = 0;
       J.meta.forEach((m, k) => {
         if (!m.exact || m.tunnel) return;
