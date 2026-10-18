@@ -259,13 +259,14 @@ colour, not the limit.
     | Munich | 65 | 36 |
     | London | 57 | 44 |
     | Stelvio | 5 | 3 |
-    | Frankfurt | 58 | 36 |
+    | Frankfurt | 58 | 36 (37 after the sliver fix, c587e37: one outline that still looped is withheld) |
 
     The new boundaries enclose their lanes as tightly as the old ones (worst 0.10 m), and every one lies inside its
     elevation grid.
-  - **Self-crossing.** No boundary may cross itself beyond 1 mm of a vertex, except a list kept exactly. Six of the
-    contour-traced boundaries do, each a sliver under 0.01 m² where two connecting roads' edges swap: Munich 235, 247,
-    280 and 325, London 86, and Frankfurt 99. Mutation-checked: a 1 m end tolerance fails.
+  - **Self-crossing.** No boundary may cross itself beyond 1 mm of a vertex. On c0f186f six contour-traced boundaries
+    did, each a sliver under 0.01 m² where two connecting roads' edges cross twice: Munich 235, 247, 280 and 325,
+    London 86, and Frankfurt 99. The converter fixed them (c587e37: the hand-over moved to the first crossing, on the
+    edge curves), so the check is now strict: none, in all four areas. Mutation-checked: a 1 m end tolerance fails.
   - Mutation-checked: a 0.05 m limit fails in all four areas.
 - **OSM edges against the drawn network: baseline for the OSM-geometry mode (2026-10-18, build bfd950e).** This is an
   independent measurement: `barrier=kerb` lines and `footway=sidewalk` ways are read from the .osm, sampled every 1 m, and

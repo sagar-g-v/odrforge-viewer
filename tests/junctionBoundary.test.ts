@@ -17,12 +17,9 @@ import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
-// measured 2026-10-18: 65 / 57 / 5 / 58 on the 07:12 outputs; after the contour fallback (OdrForge c0f186f, 19:55 outputs)
-const KNOWN_HULLS: Record<string, number> = { munich: 36, london: 44, stelvio: 3, frankfurt_kreuz: 36 };
-// boundaries whose outline crosses itself (beyond 1 mm of a vertex), exactly; each loop is a sliver under LOOP_MAX m²
-// (contour traces where two connecting roads' edges swap). Measured 2026-10-18 on the 19:55 outputs
-const KNOWN_SELF_CROSSING: Record<string, string[]> = { munich: ["235", "247", "280", "325"], london: ["86"], stelvio: [], frankfurt_kreuz: ["99"] };
-const LOOP_MAX = 0.01;
+// measured 2026-10-18: 65 / 57 / 5 / 58 on the 07:12 outputs; 36 / 44 / 3 / 36 after the contour fallback (OdrForge
+// c0f186f); Frankfurt 37 after the sliver fix (c587e37, 23:20 outputs: a traced outline that still looped is withheld)
+const KNOWN_HULLS: Record<string, number> = { munich: 36, london: 44, stelvio: 3, frankfurt_kreuz: 37 };
 
 /** proper crossings of a closed outline's edges (beyond 1 mm of their ends), with the smaller loop each one cuts off */
 function selfCrossings(ring: number[][]): number[] {
@@ -84,18 +81,16 @@ for (const area of ["munich", "london", "stelvio", "frankfurt_kreuz"]) {
       expect(J.meta.filter((m) => m.outline === "hull" && kind(m.type) !== "common").map((m) => m.id)).toEqual([]); // virtual: span
       expect(hulls).toBe(KNOWN_HULLS[area]);
     });
-    it("no boundary crosses itself, beyond known slivers", () => {
+    // proven 2026-10-19 (OdrForge c587e37): none, in all four areas (c0f186f had six sliver loops under 0.01 m²)
+    it("no boundary crosses itself (beyond 1 mm of a vertex)", () => {
       const od = parseOpenDrive(readFileSync(xodr, "utf8")), byId = new Map(od.roads.map((r) => [r.id, r]));
       const crossing: string[] = [];
-      let worst = 0;
       for (const j of od.junctions) {
         const ring = j.boundary.length ? boundaryRing(j, byId) : null;
-        if (!ring) continue;
-        const loops = selfCrossings(ring);
-        if (loops.length) { crossing.push(j.id); worst = Math.max(worst, ...loops); }
+        const loops = ring ? selfCrossings(ring) : [];
+        if (loops.length) crossing.push(`${j.id} (${loops.map((a) => a.toFixed(4)).join(", ")} m²)`);
       }
-      expect(crossing.sort((a, b) => Number(a) - Number(b))).toEqual(KNOWN_SELF_CROSSING[area]);
-      expect(worst).toBeLessThan(LOOP_MAX);
+      expect(crossing).toEqual([]);
     });
     it("inside a boundary the elevation grid holds: it covers the outline, the connecting lanes lie on it, the fill is it", () => {
       const od = parseOpenDrive(readFileSync(xodr, "utf8")), proj = makeProjector(od.header.geoReference), r = buildRender(od, proj.forward);
