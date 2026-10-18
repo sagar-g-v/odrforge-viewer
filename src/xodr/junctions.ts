@@ -62,7 +62,8 @@ export function boundaryRing(j: OpenDrive["junctions"][number], byId: Map<string
       }
       parts.push([at(road, s, lo), at(road, s, hi)]);
     } else {
-      const sOf = (v: string) => (v === "start" ? 0 : v === "end" ? road.length : Number(v));
+      // t_grEqZeroOrContactPoint: a number or start / end; "begin" read as start (the spec's own §12.10 example uses it)
+      const sOf = (v: string) => (v === "start" || v === "begin" ? 0 : v === "end" ? road.length : Number(v));
       const s0 = sOf(sg.sStart), s1 = sOf(sg.sEnd);
       const lo = Math.min(s0, s1), hi = Math.max(s0, s1);
       const S = [lo, ...sampleS(road).filter((s) => s > lo + 1e-6 && s < hi - 1e-6), hi];

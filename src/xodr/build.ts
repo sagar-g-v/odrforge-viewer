@@ -5,6 +5,7 @@ import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetA
 import type { Geom, OpenDrive, OutlineCorner, Road, RoadMark } from "./model";
 import { FeatureBuilder, signalKind, type Features, type Rgba } from "./features";
 import { MARK } from "../design/scene";
+import { junctionGridZ } from "./elevationGrid";
 import { boundaryRing, hull, virtualSpanRing, type JunctionMeta } from "./junctions";
 
 export type Project = (x: number, y: number) => [number, number];
@@ -312,7 +313,9 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   features.addCrossPaths(od, new Map(od.roads.map((r, i) => [r.id, i])));
 
   // junction areas: the <boundary> outline (1.8.0 §12.10) where the file has one, a virtual junction's main-road span
-  // (§12.5) next, else the hull of its connecting roads
+  // (§12.5) next, else the hull of its connecting roads. Inside a boundary the heights are the junction's elevation grid
+  // (§12.11: it overwrites the roads' elevations there): the outline takes the grid's z (the fill between is planar per
+  // triangle, exact on a planar grid - tests/realdata.test.ts checks the fill against the grid)
   const juncs = new Buf(), juncMeta: JunctionMeta[] = [];
   const byId = new Map(od.roads.map((r) => [r.id, r]));
   for (const j of od.junctions) {
@@ -320,6 +323,8 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     if (!ring || ring.length < 3) { ring = j.type.toLowerCase() === "virtual" ? virtualSpanRing(j, byId) : null; outline = "span"; }
     if (!ring || ring.length < 3) { ring = hull(junctionPts.get(j.id) ?? []); outline = "hull"; }
     if (!ring || ring.length < 3) continue;
+    const gz = outline === "boundary" ? junctionGridZ(j) : null;
+    if (gz) ring = ring.map(([x, y, z]) => { const h = gz(x, y); return [x, y, Number.isFinite(h) ? h : z] as [number, number, number]; });
     juncs.begin();
     const tunnel = j.connections.some((c) => [c.incomingRoad, c.connectingRoad].some((id) => byId.get(id)?.structures.some((st) => st.kind === "tunnel")));
     juncMeta.push({ id: j.id, exact: outline !== "hull", outline, connections: j.connections.length, type: j.type, tunnel });

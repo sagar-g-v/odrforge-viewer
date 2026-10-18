@@ -118,8 +118,9 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
     Checked on the grid alone, without the viewer's floor (`tests/realdata.test.ts`):
     - **Lanes:** 0 lane points outside tunnels above road − 0.05 m by more than 1 cm, in all four areas.
     - **Junction surfaces** (exact ones, not underground) are at most 0.13 m above the viewer's surface − 0.05 m
-      (London; Munich 0.10, Frankfurt 0.04; limit 0.15 m). OpenDRIVE gives no height inside a boundary unless the
-      junction has an elevationGrid (§12.9), so the converter's fill differs a little from the viewer's earcut fill.
+      (London; Munich 0.10, Frankfurt 0.04; limit 0.15 m). The viewer fills a boundary from the junction's elevation
+      grid (§12.11; see "Junction elevation grids" in §5). The converter still fills it from its outline at road-surface
+      heights, triangulated its own way. It is switching to the grid, which should bring this to about 0 by definition.
 - **Terrarium is sampled as MapLibre samples it** (`DEMData.sampleBilinear`: cell centres, bilinear across tile edges), so
   the drape agrees with the drawn surface. Measured in the browser: |difference| < 1e-9 m at review zoom
   (`tests/terrain.test.ts` guards the convention).
@@ -225,6 +226,21 @@ colour, not the limit.
   here. Measured 2026-10-17: none in Munich and Frankfurt. London road 250 (61 %) and Stelvio road 31 (54 %) are its known
   open cases, listed in `KNOWN_CLIFFS`, and the test fails if that list changes. Fit and driving-lane checks leave bridges
   and tunnels out (the Frankfurt car park P15 depth is still provisional).
+- **Junction elevation grids** (1.8.0 §12.11; `src/xodr/elevationGrid.ts`, `tests/elevationGrid.test.ts`,
+  `tests/junctionBoundary.test.ts`). The grid "provides and overwrites elevation definitions for every point inside the
+  junction boundary", so the viewer draws a boundary's fill at the grid's heights.
+  - **Evaluation** is bicubic (§12.11.1). Corner tangents come from the cubic through the points along each edge, or
+    from a straight line (c = d = 0) where those points are missing; the mixed tangent applies the same rule along s to
+    the t-tangents. It is exact at the grid points, on planes, and on polynomials up to bicubic. Mutation-checked:
+    straight-line tangents only, and s and t tangents swapped, each fail.
+  - **The frame:** (x, y) is read in the junction reference line's frame (§12.9; s along the line, t to its left), and
+    the line continues straight before its start and past its end.
+  - **The converter's grids**, measured 2026-10-18 on the 18:13 outputs: every junction with a boundary has a grid (5 m
+    spacing), and every grid is a plane. Every outline point lies inside its grid. The connecting roads' driving lanes
+    lie on it: worst 0.0025 m (Stelvio), limit 0.01 m. The drawn fill equals the grid (0.0000 m; limit 0.01 m: a
+    non-planar grid would need the fill tessellated).
+  - **Boundary lane segments** accept `sStart` / `sEnd` = "begin" as "start". The schema type
+    (t_grEqZeroOrContactPoint) allows a number or start / end, but the spec's own §12.10 example uses "begin".
 - **Junction outlines** (`tests/junctionBoundary.test.ts`). The user asked on 2026-10-18 for a `<boundary>` (1.8.0
   §12.10) on every junction. Only common junctions can carry one: the 1.8.1 XSD has `boundary` in `t_junction_common`
   (OpenDRIVE_Junction.xsd:253) and not in `t_junction_direct` or `t_junction_virtual`. §12.10 says junction boundaries

@@ -128,6 +128,30 @@ describe("lane borders against OdrForge's reference sampler (tools/inspect/odrge
     // the last joint, at s = 0: lanes 1 and -1 crossed (t 3 .. -3)
     expect(ring.slice(-2).some((p) => near(p, 0, 3)) && ring.slice(-2).some((p) => near(p, 0, -3))).toBe(true);
   });
+  it("a junction with an elevation grid draws its boundary at the grid's heights (1.8.0 §12.11 overwrites the roads')", () => {
+    // the road is flat at z 0; the junction's grid is a plane rising 0.1 m per metre along x from 5 m
+    const lane = (id: number) => `<lane id="${id}" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane>`;
+    const row = (k: number) => `<elevation center="${5 + k}" left="${5 + k} ${5 + k}" right="${5 + k} ${5 + k}"/>`;
+    const xml = `<OpenDRIVE><header revMajor="1" revMinor="8"/>
+      <road id="1" length="20" junction="-1"><planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><left>${lane(1)}</left><center><lane id="0" type="none" level="false"/></center><right>${lane(-1)}</right></laneSection></lanes></road>
+      <junction id="9" type="default">
+        <planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <boundary>
+          <segment type="joint" roadId="1" contactPoint="end"/>
+          <segment type="lane" roadId="1" boundaryLane="-1" sStart="end" sEnd="begin"/>
+          <segment type="joint" roadId="1" contactPoint="start"/>
+          <segment type="lane" roadId="1" boundaryLane="1" sStart="begin" sEnd="end"/>
+        </boundary>
+        <elevationGrid gridSpacing="10" sStart="0">${row(0)}${row(1)}${row(2)}</elevationGrid>
+      </junction></OpenDRIVE>`;
+    const d = parseOpenDrive(xml), r = buildRender(d, (x, y) => [x, y]);
+    const J = r.junctions, P = J.positions;
+    expect(J.meta[0]).toMatchObject({ id: "9", outline: "boundary" });
+    let n = 0;
+    for (let v = J.starts[0]; v < J.starts[1]; v++, n++) expect(P[3 * v + 2]).toBeCloseTo(5 + 0.1 * P[3 * v], 6); // not the road's 0
+    expect(n).toBeGreaterThan(3);
+  });
   it("builds render buffers for every road with a geoReference", () => {
     const proj = makeProjector(od.header.geoReference);
     expect(proj.georeferenced).toBe(true);
