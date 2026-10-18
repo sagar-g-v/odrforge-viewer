@@ -10,7 +10,9 @@ import type { OpenDrive, Road } from "./model";
  * (mainRoad, sStart..sEnd, §12.5), full width; "hull" = approximate (convex hull of the connecting-road lanes).
  * exact = the file defines the outline (boundary or span): drawn solid, a hull dashed.
  */
-export interface JunctionMeta { id: string; exact: boolean; outline: "boundary" | "span" | "hull"; connections: number; type: string; }
+// tunnel: an incoming or connecting road of the junction carries a <tunnel> (an underground junction: its area does not
+// press the ground, map/roadFloor.ts)
+export interface JunctionMeta { id: string; exact: boolean; outline: "boundary" | "span" | "hull"; connections: number; type: string; tunnel: boolean; }
 
 type P3 = [number, number, number]; // file x, y, z
 
@@ -20,6 +22,14 @@ function borderT(road: Road, s: number, lane: number): number | null {
   const sec = road.sections[sectionIndex(road, s)];
   const b = sec ? laneBorders(road, sec, s).get(lane) : undefined;
   return b ? b.outer : null;
+}
+
+/** inner and outer border t of lane `lane` at s (lane 0: the lane offset line, both) */
+function laneSpanT(road: Road, s: number, lane: number): [number, number] | null {
+  if (lane === 0) { const t = laneOffsetAt(road, s); return [t, t]; }
+  const sec = road.sections[sectionIndex(road, s)];
+  const b = sec ? laneBorders(road, sec, s).get(lane) : undefined;
+  return b ? [b.inner, b.outer] : null;
 }
 
 /** outermost border t on both sides at s: the full cross section a joint spans */
@@ -44,9 +54,11 @@ export function boundaryRing(j: OpenDrive["junctions"][number], byId: Map<string
     if (sg.type === "joint") {
       const s = sg.contactPoint === "start" ? 0 : road.length;
       let [lo, hi] = crossSection(road, s);
+      // jointLaneStart / jointLaneEnd: "ID of the lane crossed by the segment" (1.8.0 Table 78), both crossed whole: the
+      // joint spans both lanes and every lane between them (-1 .. -3 starts at lane -1's inner border, not its outer)
       if (sg.jointLaneStart !== null && sg.jointLaneEnd !== null) {
-        const a = borderT(road, s, sg.jointLaneStart), b = borderT(road, s, sg.jointLaneEnd);
-        if (a !== null && b !== null) { lo = Math.min(a, b); hi = Math.max(a, b); }
+        const a = laneSpanT(road, s, sg.jointLaneStart), b = laneSpanT(road, s, sg.jointLaneEnd);
+        if (a && b) { lo = Math.min(...a, ...b); hi = Math.max(...a, ...b); }
       }
       parts.push([at(road, s, lo), at(road, s, hi)]);
     } else {

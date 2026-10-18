@@ -108,6 +108,26 @@ describe("lane borders against OdrForge's reference sampler (tools/inspect/odrge
     expect(r.junctions.meta.filter((m) => m.exact).length).toBe(25);
     expect(r.junctions.meta.length).toBe(od.junctions.length); // the others as approximate hulls
   });
+  it("a boundary joint crosses jointLaneStart and jointLaneEnd whole (1.8.0 Table 78); lane segments take numeric s", () => {
+    // a straight 20 m road along x: left lane 1, right lanes -1 .. -3, each 3 m wide
+    const lane = (id: number) => `<lane id="${id}" type="driving" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane>`;
+    const xml = `<OpenDRIVE><header revMajor="1" revMinor="8"/>
+      <road id="1" length="20" junction="-1"><planView><geometry s="0" x="0" y="0" hdg="0" length="20"><line/></geometry></planView>
+        <lanes><laneSection s="0"><left>${lane(1)}</left><center><lane id="0" type="none" level="false"/></center><right>${lane(-1)}${lane(-2)}${lane(-3)}</right></laneSection></lanes></road>
+      <junction id="9" type="default"><boundary>
+        <segment type="joint" roadId="1" contactPoint="end" jointLaneStart="-1" jointLaneEnd="-3"/>
+        <segment type="lane" roadId="1" boundaryLane="-3" sStart="15.0" sEnd="5.0"/>
+        <segment type="joint" roadId="1" contactPoint="start" jointLaneStart="1" jointLaneEnd="-1"/>
+      </boundary></junction></OpenDRIVE>`;
+    const d = parseOpenDrive(xml), ring = boundaryRing(d.junctions[0], new Map(d.roads.map((r) => [r.id, r])))!;
+    const near = (p: number[], x: number, y: number) => Math.hypot(p[0] - x, p[1] - y) < 1e-6;
+    // the first joint, at s = 20: from lane -1's inner border (t 0) to lane -3's outer border (t -9), lane -1 included
+    expect(ring.slice(0, 2).some((p) => near(p, 20, 0)) && ring.slice(0, 2).some((p) => near(p, 20, -9))).toBe(true);
+    // the lane segment along lane -3's outer border from s 15 back to s 5
+    expect(ring.some((p) => near(p, 15, -9)) && ring.some((p) => near(p, 5, -9))).toBe(true);
+    // the last joint, at s = 0: lanes 1 and -1 crossed (t 3 .. -3)
+    expect(ring.slice(-2).some((p) => near(p, 0, 3)) && ring.slice(-2).some((p) => near(p, 0, -3))).toBe(true);
+  });
   it("builds render buffers for every road with a geoReference", () => {
     const proj = makeProjector(od.header.geoReference);
     expect(proj.georeferenced).toBe(true);

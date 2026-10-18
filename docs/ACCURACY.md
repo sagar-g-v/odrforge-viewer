@@ -87,11 +87,13 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
     defines, so only its connecting-road lanes press the ground. In the test areas 1–2 % of hull samples have ground
     above them (worst 0.6 m, London).
   - **Tunnels are left alone.** A tunnel road's lanes inside its own tunnel footprint do not press the ground; a road
-    over the tunnel still does.
+    over the tunnel still does. Nor does the surface of a junction with a tunnel road (an underground junction, as the
+    converter treats it). Before this, the viewer dug pits up to 34 m deep down to Frankfurt's car-park junctions.
   - **Applies** wherever the drawn heights share the ground's datum: base 0, over terrain (absolute mode, real heights,
     or laid on the ground).
   - **Guards.** `tests/roadFloor.test.ts` checks the cap under a lane, the cut, tunnels, overlapping lanes and lanes
-    thinner than a cell, and junction surfaces (exact pressed, hulls not). `tests/groundTiles.test.ts` checks that the drawn mesh is under every lane point at z17 and z15,
+    thinner than a cell, and junction surfaces (exact pressed; hulls and tunnel junctions not). `tests/groundTiles.test.ts`
+    checks that the drawn mesh is under every lane point at z17 and z15,
     with the lane at six offsets within a pixel, and that ground 30 m off is unchanged. `tests/realdata.test.ts` checks
     that no lane point outside tunnels, and no point of an exact junction surface, has ground above it in the four test
     areas. Before junction surfaces were added, 3.5 % of Munich's junction-surface samples had ground above them (worst
@@ -100,11 +102,24 @@ A mutation check proved the guard: swapping one layer's place fails two of its t
     rounding up and leaving out junction surfaces each fail a test.
   - **The cost**, reported by `ROAD_FLOOR=1 npx vitest run tests/realdata.test.ts`. Where two roads at different heights
     lie within the radius, the higher one floats over pressed ground. Lane points more than 1 m over the drawn ground,
-    off bridges and tunnels, without → with the floor (2026-10-18, converter build 8344403): Munich 7 → 164, London
-    32 → 426, Stelvio 658 → 3,763 (hairpins stacked on the slope), Frankfurt 87 → 943. The floor takes 0.1–0.7 s to
-    build.
-  - **Reproducibility.** The floor is a viewer rendering of the file's own roads over the converter's grid. CARLA and
-    Blender show the same only when the published grid carries the same cap (asked of the converter on 2026-10-18).
+    off bridges and tunnels, before → with the viewer's floor:
+
+    | Area | Unpressed grid (build 8344403) | Pressed grid alone (OdrForge 085a330) | With the viewer's floor |
+    |---|---|---|---|
+    | Munich | 7 | 42 | 164 |
+    | London | 32 | 89 | 426 |
+    | Stelvio | 658 | 1,925 | 3,775 (hairpins stacked on the slope) |
+    | Frankfurt | 87 | 192 | 943 |
+
+    The viewer's floor presses more than the grid because it covers MapLibre's coarser drawing (1.5 DEM pixels). The
+    floor takes 0.1–0.7 s to build.
+  - **Reproducibility.** The user approved the floor in the published grid (2026-10-18). The converter bakes the same
+    cap into the conformed grid (OdrForge 085a330, published 18:13), so CARLA and Blender get the same pressed ground.
+    Checked on the grid alone, without the viewer's floor (`tests/realdata.test.ts`):
+    - **Lanes:** 0 lane points outside tunnels above road − 0.05 m by more than 1 cm, in all four areas.
+    - **Junction surfaces** (exact ones, not underground) are at most 0.13 m above the viewer's surface − 0.05 m
+      (London; Munich 0.10, Frankfurt 0.04; limit 0.15 m). OpenDRIVE gives no height inside a boundary unless the
+      junction has an elevationGrid (§12.9), so the converter's fill differs a little from the viewer's earcut fill.
 - **Terrarium is sampled as MapLibre samples it** (`DEMData.sampleBilinear`: cell centres, bilinear across tile edges), so
   the drape agrees with the drawn surface. Measured in the browser: |difference| < 1e-9 m at review zoom
   (`tests/terrain.test.ts` guards the convention).
@@ -184,14 +199,24 @@ colour, not the limit.
   grid holds the road surface without lane heights. Measured 2026-10-17: driving-lane median +0.002 m (Stelvio) and 0.000
   (Munich, London); curb and walking lanes +0.150. Stelvio's overall median of +0.133 is its lane mix (56 % curb and
   walking). `tests/realdata.test.ts` checks the driving lanes at |median| <= 0.05 m.
+  - **Since the road floor is in the grid** (OdrForge 085a330), the grid is road − 0.05 m under every lane. Both fit
+    checks measure against road − 0.05 m, as the converter's terrain contract does, with the limits unchanged:
+    - Driving-lane median: +0.000 m (Munich, London, Frankfurt), +0.003 m (Stelvio).
+    - Off bridges and tunnels |p95|: 0.152 (Munich), 0.152 (London), 0.193 (Stelvio), 0.151 m (Frankfurt). These are the
+      values proven before the floor, so the fit is unchanged.
+  - **Held down by a lower road.** Lane points with another lane surface more than 0.5 m lower within 3 m are left out of
+    the fit and counted, because there the lower road wins and the ground is pressed under the higher one. Measured:
+    Stelvio 7.0 % (its hairpins), Munich 0.6 %, London 0.9 %, Frankfurt 1.1 %; limit 8 %. With them included,
+    Stelvio's p95 is 0.394 m.
 - **Point objects stand on the ground.** With terrain, the converter seats trees and street lamps on its conformed ground
   (zOffset = ground - elevation(s); OdrForge 02a8d5c). Measured 2026-10-17: |base - ground| at most 0.0001 m in Munich (679
   objects), London (598), Frankfurt (276) and Stelvio (2). Before the fix, Munich had 141 more than 0.3 m off, the worst 8.2 m
   under the ground. `tests/realdata.test.ts` checks every point object off bridges at 0.3 m (mutation-checked).
 - **No lane is buried off bridges and tunnels.** No lane point on a road without a bridge or tunnel lies more than 2 m under
   the road-conformed ground. Proven 2026-10-17 after OdrForge 145cd82 + ef47f9b (underpasses, tunnel ends, car-park junction
-  roads): none in Munich, London and Frankfurt. Stelvio road 22 is the one known open case (hairpin work). It is listed in
-  `KNOWN_BURIED`, and the test fails if that list changes either way. `tests/realdata.test.ts`, mutation-checked.
+  roads): none in Munich, London and Frankfurt. Stelvio road 22 was the one known open case (hairpin work); the road
+  floor in the grid fixed it (OdrForge 085a330), and `KNOWN_BURIED` is now empty. The test fails if that list changes
+  either way. `tests/realdata.test.ts`, mutation-checked.
 - **Frankfurt joins the real-data checks; the lane fit is measured off bridges and tunnels.** Bridges and tunnels lie off the
   ground on purpose. Counting them made Frankfurt's |p95| 5.9 m; off them it is 0.151 m (Munich 0.151, London 0.150,
   Stelvio 0.192). From OdrForge 6537d93 (deck grid filtered) Frankfurt passes every check: the fit, driving lanes,

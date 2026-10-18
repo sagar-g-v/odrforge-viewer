@@ -51,14 +51,15 @@ describe("the road floor", () => {
     const curb = ring(0, 40, 0.15, 100, 0), c = buildRoadFloor(curb, id)!;
     for (let x = 0; x <= 40; x += 0.5) expect(floorAt(c, x, 0.07, 0)).toBeLessThanOrEqual(100 - FLOOR.epsilon + 1e-4);
   });
-  it("presses the ground under a junction surface the file defines, triangulated as drawn; not under a viewer hull", () => {
+  it("presses the ground under a junction surface the file defines, triangulated as drawn; not under a hull or a tunnel junction", () => {
     // a junction area 20 x 20 m beside the lane, sloping from 100 m (west) to 102 m (east), outline only (no lanes inside)
     const ring = [[50, 0, 100], [70, 0, 102], [70, 20, 102], [50, 20, 100]];
-    const areas = (exact: boolean) => ({ positions: Float64Array.from(ring.flat()), starts: [0, 4], meta: [{ exact }] });
+    const areas = (exact: boolean, tunnel = false) => ({ positions: Float64Array.from(ring.flat()), starts: [0, 4], meta: [{ exact, tunnel }] });
     const j = buildRoadFloor(lane, id, { areas: areas(true) })!;
     for (let x = 50; x <= 70; x += 0.9) for (let y = 0; y <= 20; y += 1.3) expect(floorAt(j, x, y, 0)).toBeLessThanOrEqual(100 + 0.1 * (x - 50) - FLOOR.epsilon + 1e-4);
     expect(floorAt(j, 60, 10, 0)).toBeGreaterThan(101 - FLOOR.epsilon - 0.2); // not much lower than the surface
     expect(floorAt(buildRoadFloor(lane, id, { areas: areas(false) })!, 60, 10, 0)).toBeGreaterThan(110); // a hull: only the lane's cut, 10+ m off
+    expect(floorAt(buildRoadFloor(lane, id, { areas: areas(true, true) })!, 60, 10, 0)).toBeGreaterThan(110); // a tunnel junction: under the ground
   });
   it("no lanes, no floor", () => {
     expect(buildRoadFloor({ positions: new Float64Array(0), starts: [0], meta: [] }, id)).toBeNull();

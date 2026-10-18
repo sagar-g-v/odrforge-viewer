@@ -321,7 +321,8 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     if (!ring || ring.length < 3) { ring = hull(junctionPts.get(j.id) ?? []); outline = "hull"; }
     if (!ring || ring.length < 3) continue;
     juncs.begin();
-    juncMeta.push({ id: j.id, exact: outline !== "hull", outline, connections: j.connections.length, type: j.type });
+    const tunnel = j.connections.some((c) => [c.incomingRoad, c.connectingRoad].some((id) => byId.get(id)?.structures.some((st) => st.kind === "tunnel")));
+    juncMeta.push({ id: j.id, exact: outline !== "hull", outline, connections: j.connections.length, type: j.type, tunnel });
     for (const [x, y, z] of ring) at(x, y, z, juncs); // drawn under the lanes by depth bias (MapView)
   }
 

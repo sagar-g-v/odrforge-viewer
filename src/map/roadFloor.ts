@@ -32,8 +32,11 @@ export interface RoadFloor {
 }
 
 export interface LaneRings { positions: Float64Array; starts: Uint32Array | number[]; meta: { road: number }[] }
-/** closed outlines (lon, lat, z), drawn filled; only the exact ones (the file's, not the viewer's hulls) press the ground */
-export interface AreaRings { positions: Float64Array; starts: Uint32Array | number[]; meta: { exact: boolean }[] }
+/**
+ * closed outlines (lon, lat, z), drawn filled; only the exact ones (the file's, not the viewer's hulls) press the ground,
+ * and not those of a junction with a tunnel road (an underground junction)
+ */
+export interface AreaRings { positions: Float64Array; starts: Uint32Array | number[]; meta: { exact: boolean; tunnel: boolean }[] }
 
 /** a point inside a polygon (even-odd) */
 function inside(poly: P2[], x: number, y: number): boolean {
@@ -164,7 +167,7 @@ export function buildRoadFloor(lanes: LaneRings, toXY: (lon: number, lat: number
   if (areas) {
     const A = areas.positions;
     areas.meta.forEach((m, k) => {
-      if (!m.exact) return; // a hull is the viewer's approximation, not a surface the file defines
+      if (!m.exact || m.tunnel) return; // a hull is the viewer's approximation; a tunnel junction lies under the ground
       const s = areas.starts[k], n = areas.starts[k + 1] - s, flat = new Float64Array(2 * n);
       const xyz = new Float64Array(3 * n);
       for (let v = 0; v < n; v++) {

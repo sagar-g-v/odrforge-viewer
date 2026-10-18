@@ -108,7 +108,7 @@ export function buildFromExport(data: Record<string, unknown>, proj: Projector):
     if (ring.length < 3) continue;
     jStarts.push(jPos.length / 3);
     for (const [lon, lat, z] of ring) jPos.push(lon, lat, z - 0.03);
-    jMeta.push({ id, exact: false, outline: "hull", connections: 0, type: "" });
+    jMeta.push({ id, exact: false, outline: "hull", connections: 0, type: "", tunnel: false });
   }
   const bin = (pos: number[], starts: number[]) => ({ positions: Float64Array.from(pos), starts: Uint32Array.from([...starts, pos.length / 3]) });
   const roads = d.roads.map((r) => ({ id: r[0], name: r[1], junction: r[2], length: r[3] }));
