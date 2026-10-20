@@ -18,8 +18,10 @@ import { parseOpenDrive } from "../src/xodr/parse";
 
 const DIR = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 // measured 2026-10-18: 65 / 57 / 5 / 58 on the 07:12 outputs; 36 / 44 / 3 / 36 after the contour fallback (OdrForge
-// c0f186f); Frankfurt 37 after the sliver fix (c587e37, 23:20 outputs: a traced outline that still looped is withheld)
-const KNOWN_HULLS: Record<string, number> = { munich: 36, london: 44, stelvio: 3, frankfurt_kreuz: 37 };
+// c0f186f); Frankfurt 37 after the sliver fix (c587e37, 23:20 outputs: a traced outline that still looped is withheld);
+// London 46 with P2's kerb-anchored edges (2fa2fda, 20:29): junctions 11 and 281 lost their boundary, a regression the
+// converter reported and the user accepted with P2 (it is to be won back with P2's junction-corner step)
+const KNOWN_HULLS: Record<string, number> = { munich: 36, london: 46, stelvio: 3, frankfurt_kreuz: 37 };
 
 /** proper crossings of a closed outline's edges (beyond 1 mm of their ends), with the smaller loop each one cuts off */
 function selfCrossings(ring: number[][]): number[] {

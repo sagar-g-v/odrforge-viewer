@@ -2,7 +2,7 @@
 // areas (kerb lines vs drawn curb lanes, sidewalk ways vs drawn sidewalk lanes). The report prints with OSM_EDGES=1:
 //   OSM_EDGES=1 npx vitest run tests/osmEdges.test.ts --silent=false
 // Limits only for proven results (docs/ACCURACY.md): street-side parking coverage, proven 2026-10-18 on the converter's
-// parking build (8344403 + 92f58db). The kerb numbers are still the baseline for the OSM-geometry mode's kerb work.
+// parking build (8344403 + 92f58db), and the kerb gap, proven 2026-10-20 on its kerb-anchored edges (P2, 2fa2fda).
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { coveredShare, densify, edgeStats, headerClip, insideClip, kerbGapEdges, kerbOfArea, midSamples, sampleGaps, osmEdgeLines, osmKerbData, ParallelEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
@@ -106,6 +106,12 @@ const OUT = process.env.ODRF_TESTAREAS ?? "C:/mywork/osm2carla/build/testareas";
 const WALK = new Set(["sidewalk", "walking"]);
 // street-side parking areas at least 80 % under drawn parking lanes, and the mean share, proven 2026-10-18 (converter
 // 8344403 + 92f58db, measured here and by its parking_coverage.py alike): never lowered; raised when the converter improves
+// the shared kerb gap (kerbGapEdges, chord parallel test), proven 2026-10-20 on London (OdrForge 2fa2fda, 20:29 outputs):
+// median 0.00 m, 56.7 % within 0.3 m, 63.9 % within 0.5 m, |p95| 3.20 m, 90.1 % matched (the converter's kerb_gap.py: 0.00,
+// 56.7 %, 63.9 %, 3.22 m). Never loosened; raised as P2 goes on (its target: >= 80 % within 0.3 m, |median| <= 0.1 m)
+const KERB_LIMIT: Record<string, { within03: number; within05: number; median: number; p95: number; matched: number }> = {
+  london: { within03: 0.56, within05: 0.63, median: 0.05, p95: 3.3, matched: 0.89 },
+};
 const PARKING_MIN: Record<string, { covered: number; of: number; meanShare: number }> = {
   munich: { covered: 20, of: 30, meanShare: 0.70 }, london: { covered: 12, of: 17, meanShare: 0.82 },
   frankfurt_kreuz: { covered: 11, of: 12, meanShare: 0.89 }, stelvio: { covered: 1, of: 8, meanShare: 0.54 },
@@ -168,6 +174,14 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
         expect(mean).toBeGreaterThanOrEqual(min.meanShare);
       }
       expect(kerb.dropped).toBeLessThanOrEqual(kerb.kerbs);
+      const kl = KERB_LIMIT[area];
+      if (kl) {
+        expect(kerb.matched / kerb.samples).toBeGreaterThanOrEqual(kl.matched);
+        expect(kerb.within03 / kerb.matched).toBeGreaterThanOrEqual(kl.within03);
+        expect(kerb.within05 / kerb.matched).toBeGreaterThanOrEqual(kl.within05);
+        expect(Math.abs(kerb.medianSigned)).toBeLessThanOrEqual(kl.median);
+        expect(kerb.p95abs).toBeLessThanOrEqual(kl.p95);
+      }
     });
   });
 }

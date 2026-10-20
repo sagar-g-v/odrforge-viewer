@@ -260,7 +260,7 @@ colour, not the limit.
     | Area | Hulls on the 07:12 outputs | Hulls after the contour fallback (OdrForge c0f186f, 19:55) |
     |---|---|---|
     | Munich | 65 | 36 |
-    | London | 57 | 44 |
+    | London | 57 | 44 (46 with P2, 2fa2fda: junctions 11 and 281 lost their boundary) |
     | Stelvio | 5 | 3 |
     | Frankfurt | 58 | 36 (37 after the sliver fix, c587e37: one outline that still looped is withheld) |
 
@@ -324,4 +324,12 @@ colour, not the limit.
         more. 10 are matched by one tool only (was 264). The rest is the two tools' edge sampling on curves. The
         summary agrees: viewer 16,076 matched (89.9 %), median +0.76 m, |p95| 3.90 m, 15.0 % within 0.3 m, 25.2 % within
         0.5 m; converter 90.0 %, +0.76 m, 3.91 m, 15.0 %, 25.2 %.
-  - The kerb measures have no limits yet. They follow once the converter's P2 kerb work is proven.
+  - **Kerb-gap limits** (proven 2026-10-20 on London, OdrForge 2fa2fda, P2's kerb-anchored edges; `KERB_LIMIT` in
+    `tests/osmEdges.test.ts`). The viewer measures median 0.00 m, 56.7 % within 0.3 m, 63.9 % within 0.5 m, |p95|
+    3.20 m, with 90.1 % of samples matched. The converter's kerb_gap.py gives 0.00 m, 56.7 %, 63.9 % and 3.22 m. Before
+    P2: +0.76 m, 15.0 %, 25.2 % and 3.90 m.
+    - **Limits:** ≥ 56 % within 0.3 m, ≥ 63 % within 0.5 m, |median| ≤ 0.05 m, |p95| ≤ 3.3 m, ≥ 89 % matched. They
+      are never loosened, and they are raised as P2 goes on. P2's target is ≥ 80 % within 0.3 m and |median| ≤ 0.1 m.
+      The remaining misses are mostly junction-corner kerbs (~13.5 %) and kerbs near road ends (~8 %), which is P2's
+      next step.
+    - **Accepted regression:** London junctions 11 and 281 lost their boundary (hulls 44 → 46).
