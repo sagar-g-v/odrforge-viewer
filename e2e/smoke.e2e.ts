@@ -20,13 +20,15 @@ test("open a file, switch 2D / 3D, select a lane and see it in the inspector", a
   await page.getByRole("button", { name: "2D", exact: true }).click();
   await expect(page.getByRole("button", { name: "2D", exact: true })).toHaveClass(/on/);
 
-  // the map fits the road; just right of the reference line (the map's centre) lies lane -1
+  // the map fits the road; just right of the reference line (the map's centre) lies lane -1. The camera may still be
+  // moving after the 3D / 2D switch (slow CI runners), so the click is repeated until the inspector opens
   const map = page.locator(".stage canvas").first();
   const box = (await map.boundingBox())!;
-  await page.waitForTimeout(1500); // the map comes to rest after fitting
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 12);
   const inspector = page.locator("aside.inspector");
-  await expect(inspector).toContainText("Road 1 · Smoke Street");
+  await expect(async () => {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2 + 12);
+    await expect(inspector).toContainText("Road 1 · Smoke Street", { timeout: 1000 });
+  }).toPass({ timeout: 20_000 });
   await expect(inspector).toContainText(/Lane -[12]/);
   expect(errors).toEqual([]);
 });
