@@ -9,7 +9,7 @@ import type { Projector } from "../xodr/geo";
 import type { OpenDrive } from "../xodr/model";
 import {
   densify, isKerb, isPedestrianArea, isSidewalk, isStreetParking, isTrafficIsland, kerbOfArea, midSamples, osmWays, ParallelEdges,
-  plainRoadEdges, PolygonDistance, sampleGaps, type P2,
+  kerbGapEdges, PolygonDistance, sampleGaps, type P2,
 } from "./osmEdges";
 
 export type OsmKind = "kerb" | "sidewalk" | "parking" | "island" | "area";
@@ -91,7 +91,7 @@ export function buildOsmOverlay(elements: OsmElement[], proj: Projector, od: Ope
   if (od) {
     // the shared kerb measure (osmEdges.ts sharedKerbStats), sample by sample: open complete kerbs, 1 m mid-samples,
     // the signed distance to the nearest roughly parallel plain-road carriageway edge, island / pedestrian kerbs dropped
-    const edges = new ParallelEdges(plainRoadEdges(od));
+    const edges = new ParallelEdges(kerbGapEdges(od));
     const areas = new PolygonDistance(elements.flatMap((e, i) => (e.kind === "island" ? [xy[i]] : [])));
     const pos: number[] = [], gap: number[] = [], meta: number[] = [];
     let samples = 0;

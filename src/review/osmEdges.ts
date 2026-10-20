@@ -158,6 +158,42 @@ export function carriagewayEdges(od: OpenDrive): SidedEdge[] {
   return out;
 }
 
+/**
+ * the carriageway edges of the junctions' connecting roads, only on the sides that have carriageway lanes: a connecting
+ * road usually has lanes on one side, and the lane-0 fallback of plain roads would put an edge through the junction
+ */
+export function connectingRoadEdges(od: OpenDrive): SidedEdge[] {
+  const out: SidedEdge[] = [];
+  for (const road of od.roads) {
+    if (road.junction === "-1") continue;
+    const left: P2[] = [], right: P2[] = [];
+    for (const s of sampleS(road)) {
+      const sec = road.sections[sectionIndex(road, s)];
+      if (!sec) continue;
+      const b = laneBorders(road, sec, s), p = evalRoad(road, s);
+      const outer = (lanes: typeof sec.left) => {
+        let t: number | null = null;
+        for (const l of lanes) if (!OFF_CARRIAGEWAY.has(l.type)) t = b.get(l.id)?.outer ?? t;
+        return t;
+      };
+      const tl = outer(sec.left), tr = outer(sec.right);
+      if (tl !== null) left.push([p.x - tl * Math.sin(p.hdg), p.y + tl * Math.cos(p.hdg)]);
+      if (tr !== null) right.push([p.x - tr * Math.sin(p.hdg), p.y + tr * Math.cos(p.hdg)]);
+    }
+    if (left.length > 1) out.push({ line: left, side: 1 });
+    if (right.length > 1) out.push({ line: right, side: -1 });
+  }
+  return out;
+}
+
+/**
+ * The edges the shared kerb gap is measured against (agreed with the converter 2026-10-20): every plain road's
+ * carriageway edge, and the junction connecting roads' carriageway edges on the sides with carriageway lanes. Kerbs at
+ * junction corners bound the junction's carriageway: with plain roads only, 14 % of London's samples matched an arm's
+ * end point, which no edge position can reach
+ */
+export const kerbGapEdges = (od: OpenDrive): SidedEdge[] => [...plainRoadEdges(od), ...connectingRoadEdges(od)];
+
 /** the share of a polygon's area (file metres) inside any of `cover`'s polygons, on a grid of `step` metres */
 export function coveredShare(poly: P2[], cover: PolygonDistance, step = 0.25): number {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;

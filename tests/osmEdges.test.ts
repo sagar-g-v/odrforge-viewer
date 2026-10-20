@@ -5,7 +5,7 @@
 // parking build (8344403 + 92f58db). The kerb numbers are still the baseline for the OSM-geometry mode's kerb work.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coveredShare, densify, edgeStats, headerClip, insideClip, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
+import { coveredShare, densify, edgeStats, headerClip, insideClip, kerbGapEdges, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -42,6 +42,17 @@ describe("OSM edge geometry", () => {
     expect(sharedKerbStats([[[2, 3.5], [2.6, 3.5]]], edges, none)).toMatchObject({ samples: 0, dropped: 0 }); // shorter than 1 m
     const island = new PolygonDistance([[[1, 3.2], [5, 3.2], [5, 4], [1, 4]]]);
     expect(sharedKerbStats([[[2, 3.5], [4, 3.5]]], edges, island)).toMatchObject({ dropped: 1, samples: 0 });
+  });
+  it("kerb gap edges: plain roads with their lane-0 fallback, connecting roads only on their lane sides", () => {
+    const lane = (id: number, type = "driving") => `<lane id="${id}" type="${type}" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane>`;
+    const road = (id: string, junction: string, y: number) => `<road id="${id}" length="10" junction="${junction}"><planView><geometry s="0" x="0" y="${y}" hdg="0" length="10"><line/></geometry></planView>
+      <lanes><laneSection s="0"><center><lane id="0" type="none" level="false"/></center><right>${lane(-1)}${lane(-2, "sidewalk")}</right></laneSection></lanes></road>`;
+    const od = parseOpenDrive(`<OpenDRIVE><header revMajor="1" revMinor="8"/>${road("1", "-1", 0)}${road("2", "5", 50)}<junction id="5"/></OpenDRIVE>`);
+    const edges = kerbGapEdges(od);
+    // road 1 (plain): its right carriageway edge at y -3 and, on the empty left side, the lane-0 line (y 0)
+    expect(edges.filter((e) => e.line[0][1] < 10).map((e) => [e.side, e.line[0][1]])).toEqual([[1, 0], [-1, -3]]);
+    // road 2 (connecting, in junction 5): only its right carriageway edge (y 47), no lane-0 edge through the junction
+    expect(edges.filter((e) => e.line[0][1] > 10).map((e) => [e.side, e.line[0][1]])).toEqual([[-1, 47]]);
   });
   it("reads the clip box an output records in its header", () => {
     expect(headerClip([{ code: "clip", value: "48.132,11.560,48.145,11.585" }])).toEqual([48.132, 11.56, 48.145, 11.585]);
@@ -106,7 +117,7 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
       const text = readFileSync(osmFile, "utf8"), e = osmEdgeLines(text), K = osmKerbData(text);
       const anyLane = new PolygonDistance(polys(new Set(r.lanes.meta.map((m) => m.type))));
       const areas = new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY));
-      const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(plainRoadEdges(od)), areas);
+      const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(kerbGapEdges(od)), areas);
       // street-side parking: OSM areas wholly inside the clip (the file's own record first, gate.py's box otherwise)
       const clip = headerClip(od.header.userData) ?? CLIP[area], inClip = K.parking.map((l) => insideClip(l, clip));
       const lotIds = K.parkingIds.filter((_, i) => inClip[i]), parkCover = new PolygonDistance(polys(new Set(["parking"])));
@@ -115,7 +126,7 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
       const walk = edgeStats(e.sidewalks.map(toXY), new PolygonDistance(polys(WALK)), anyLane);
       if (process.env.OSM_EDGES) {
         const pc = (a: number, b: number) => `${(100 * a / Math.max(1, b)).toFixed(1)} %`;
-        const k = kerb.kerbs ? `kerbs (shared measure): ${kerb.kerbs} open kerb ways, ${kerb.dropped} of islands / pedestrian areas dropped; ${kerb.samples} samples, ${pc(kerb.matched, kerb.samples)} with a parallel plain-road edge within 10 m: median ${kerb.medianSigned.toFixed(2)} m (+ road too narrow), |p95| ${kerb.p95abs.toFixed(2)} m, ${pc(kerb.within03, kerb.matched)} within 0.3 m, ${pc(kerb.within05, kerb.matched)} within 0.5 m` : "kerbs: none in OSM";
+        const k = kerb.kerbs ? `kerbs (shared measure): ${kerb.kerbs} open kerb ways, ${kerb.dropped} of islands / pedestrian areas dropped; ${kerb.samples} samples, ${pc(kerb.matched, kerb.samples)} with a parallel carriageway edge (plain or connecting road) within 10 m: median ${kerb.medianSigned.toFixed(2)} m (+ road too narrow), |p95| ${kerb.p95abs.toFixed(2)} m, ${pc(kerb.within03, kerb.matched)} within 0.3 m, ${pc(kerb.within05, kerb.matched)} within 0.5 m` : "kerbs: none in OSM";
         const w = walk.samples ? `sidewalk ways: ${walk.samples} samples, ${pc(walk.nearNetwork, walk.samples)} near the network; vs drawn sidewalk lanes ${pc(walk.matched, walk.nearNetwork)} matched, inside ${pc(walk.inside, walk.matched)}, median ${walk.median.toFixed(2)} m, p95 ${walk.p95.toFixed(2)} m` : "sidewalk ways: none in OSM";
         const uncovered = lotIds.map((id, i) => [id, shares[i]] as const).filter(([, v]) => v < 0.8).map(([id, v]) => `${id} ${v.toFixed(2)}`).join(", ");
         const pk = shares.length ? `street-side parking (street_side|lane|layby, wholly inside the clip): ${covered}/${shares.length} at least 80 % under drawn parking lanes, mean share ${mean.toFixed(2)}${uncovered ? `; under 80 %: ${uncovered}` : ""}` : "street-side parking: none inside the clip";

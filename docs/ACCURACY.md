@@ -302,4 +302,12 @@ colour, not the limit.
       77 % sign agreement with "inside a drawn carriageway lane", against 97.5 % with it. Kerbs bounding islands or
       pedestrian areas are dropped. London (01:42): 17,876 samples, median +0.88 m, |p95| 6.0 m, 12.8 % within 0.3 m,
       21.8 % within 0.5 m. Overall, 66 % of samples lie > 0.3 m outside the drawn road and 21 % overrun it.
+    - **Kerbs at junction corners** (agreed 2026-10-20, `kerbGapEdges`). The edge set also holds the junction connecting
+      roads' carriageway edges, but only on the sides that have carriageway lanes. Most connecting roads have lanes on
+      one side, and the lane-0 fallback would put an edge through the junction.
+      - **Why:** with plain roads only, about 14 % of London's matched samples sat inside a junction and matched an arm's
+        end point, which no edge position can reach. That capped the reachable share within 0.3 m near 86 %.
+      - **The rejected alternative,** leaving those samples out, would hide exactly the corner geometry.
+      - **On the 19:55 London output:** 16,334 of 17,876 samples matched (15,647 with plain roads only), median +0.76 m,
+        |p95| 4.0 m, 14.9 % within 0.3 m, 25.0 % within 0.5 m. The OSM overlay's kerb-gap dots use the same edges.
   - The kerb measures have no limits yet. They follow once the converter's P2 kerb work is proven.
