@@ -51,9 +51,17 @@ export function useNetwork() {
     setLoading(`Building ${name}…`);
     setError(null);
     const w = worker.current!;
+    // the worker itself failed (out of memory, a crash outside the try): never leave the spinner running
+    const onFail = (e: Event) => {
+      done();
+      if (id !== seq.current) return;
+      setLoading(null);
+      setError(`Could not read ${name}: the loader stopped (${e instanceof ErrorEvent && e.message ? e.message : "the file may be too large for this browser"})`);
+    };
+    const done = () => { w.removeEventListener("message", onMsg); w.removeEventListener("error", onFail); w.removeEventListener("messageerror", onFail); };
     const onMsg = (e: MessageEvent) => {
       if (e.data.id !== id) return;
-      w.removeEventListener("message", onMsg);
+      done();
       if (id !== seq.current) return; // a newer file was opened (or B removed) meanwhile
       setLoading(null);
       if (e.data.error) { setError(e.data.error); return; }
@@ -66,6 +74,8 @@ export function useNetwork() {
       });
     };
     w.addEventListener("message", onMsg);
+    w.addEventListener("error", onFail);
+    w.addEventListener("messageerror", onFail);
     w.postMessage({ id, name, text });
   }, []);
 

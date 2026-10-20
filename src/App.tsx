@@ -1,3 +1,5 @@
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { IssuesBanner } from "./components/IssuesBanner";
 import type { PickingInfo } from "@deck.gl/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FlagDialog, { type FlagDraft } from "./components/FlagDialog";
@@ -75,6 +77,8 @@ export default function App() {
   const [files, setFiles] = useState<string[]>([]);
   const [serverState, setServerState] = useState<"idle" | "ok" | "error">("idle");
   const { network: net, loading, error, openServerFile, openLocalFile, clearError } = useNetwork();
+  // the reading problems of the network whose banner was dismissed (a newly opened network shows its own)
+  const [issuesDismissed, setIssuesDismissed] = useState<object | null>(null);
   // B: another build of the same area, compared with the network under review (xodr/compare.ts)
   const cmp = useNetwork();
   const [cmpOverlay, setCmpOverlay] = useState(true);
@@ -542,11 +546,13 @@ export default function App() {
       )}
 
       <main className="stage">
+        <ErrorBoundary label="the map" resetKey={net?.render} onOpenAnother={() => fileInput.current?.click()}>
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
           exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers} osm={osmOverlay}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
+        </ErrorBoundary>
         {!net && !loading && (
           <div className="empty">
             <Logo />
@@ -564,6 +570,8 @@ export default function App() {
           {loading && <div className="loading"><span className="spinner" />{loading}</div>}
           {groundLoading && <div className="loading"><span className="spinner" />{groundLoading}</div>}
           {error && <div className="banner error" role="alert"><Icon name="alert" />{error}<button className="link" onClick={clearError}>Dismiss</button></div>}
+          {net?.render.issues?.length && issuesDismissed !== net.render
+            ? <IssuesBanner name={net.name} issues={net.render.issues} onDismiss={() => setIssuesDismissed(net.render)} /> : null}
           {datumNote && layers.terrain && mode === "3d" && <div className="banner info" role="status"><Icon name="alert" />{datumNote}</div>}
           {flagMode && <div className="banner info"><Icon name="flag" />Click where something is wrong. <kbd>Esc</kbd> to stop</div>}
         </div>

@@ -1,6 +1,6 @@
 // Parses a network off the main thread and returns render buffers (typed arrays transferred, not copied).
 import { buildRender } from "../xodr/build";
-import { makeProjector } from "../xodr/geo";
+import { geoReferenceIssue, makeProjector } from "../xodr/geo";
 import { buildFromExport, extractExport } from "../xodr/odrforgeExport";
 import { parseOpenDrive } from "../xodr/parse";
 
@@ -14,7 +14,8 @@ self.onmessage = (e: MessageEvent<LoadRequest>) => {
     if (isXodr) {
       const od = parseOpenDrive(text);
       const proj = makeProjector(od.header.geoReference);
-      const render = buildRender(od, proj.forward);
+      const render = buildRender(od, proj.forward), geoIssue = geoReferenceIssue(od.header.geoReference, proj);
+      if (geoIssue) render.issues = [...(render.issues ?? []), geoIssue];
       post(id, { kind: "xodr", od, render, georeferenced: proj.georeferenced, ms: performance.now() - t0 }, render);
     } else {
       const data = extractExport(text);

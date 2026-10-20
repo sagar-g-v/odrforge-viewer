@@ -10,6 +10,13 @@ export interface Projector {
 
 const R = 6378137;
 
+/** the problem to report when a file's geoReference is given but cannot be used (drawn on the local plane); else null */
+export function geoReferenceIssue(geoReference: string, proj: Projector): string | null {
+  const g = geoReference.trim();
+  if (!g || proj.georeferenced) return null;
+  return `geoReference not usable ("${g.length > 60 ? g.slice(0, 60) + "…" : g}"): drawn on a local plane at 0° N 0° E, not at its real location`;
+}
+
 export function makeProjector(geoReference: string): Projector {
   const def = geoReference.trim();
   if (def.startsWith("+proj") || def.startsWith("EPSG:")) {

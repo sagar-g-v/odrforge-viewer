@@ -129,4 +129,5 @@ export interface Header {
 /** <junctionGroup> (1.8.0 §12.13): junctions treated as one, e.g. a roundabout */
 export interface JunctionGroup { id: string; name: string; type: string; junctions: string[]; }
 
-export interface OpenDrive { header: Header; roads: Road[]; junctions: Junction[]; controllers: Controller[]; junctionGroups: JunctionGroup[]; }
+// issues: what reading the file could not take as written (parse.ts); absent when there is none
+export interface OpenDrive { header: Header; roads: Road[]; junctions: Junction[]; controllers: Controller[]; junctionGroups: JunctionGroup[]; issues?: string[]; }

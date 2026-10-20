@@ -36,6 +36,7 @@ export interface RenderData {
   zGround: number; // median lane height: the level the surrounding ground is drawn at in relative mode
   stats: { roads: number; junctions: number; lanes: number; lengthKm: number; vertices: number };
   roads?: { id: string; name: string }[]; // by road index (refs / lane meta .road): the map tooltip names roads
+  issues?: string[]; // what could not be read or drawn as written (parse.ts, buildRender): shown to the user
 }
 
 class Buf {
@@ -65,7 +66,19 @@ export function laneDirection(rule: "RHT" | "LHT", laneId: number, direction: st
 const MAX_STEP = 2.0; // m
 
 /** sample positions along a road: element / record / section boundaries and curvature-adaptive steps */
+/** a road longer than this is not drawn (it would take billions of samples); see drawable() */
+export const MAX_ROAD_LENGTH = 1_000_000; // m
+
+/** why a road cannot be drawn, or null when it can */
+export function undrawable(road: Road): string | null {
+  if (!road.geoms.length) return "no <planView> geometry";
+  if (!(road.length > 0) || road.length > MAX_ROAD_LENGTH) return `length ${road.length} m (drawn: more than 0, at most ${MAX_ROAD_LENGTH / 1000} km)`;
+  const g = road.geoms.find((q) => !(q.length >= 0) || q.length > MAX_ROAD_LENGTH || !Number.isFinite(q.s));
+  return g ? `a <geometry> of length ${g.length} m at s ${g.s}` : null;
+}
+
 export function sampleS(road: Road): number[] {
+  if (undrawable(road)) return [0];
   const S: number[] = [0, road.length];
   for (const g of road.geoms) {
     S.push(g.s);
@@ -168,8 +181,10 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     b.push(lon, lat, z + off.z);
   };
 
+  const issues = [...(od.issues ?? [])];
   od.roads.forEach((road, ri) => {
-    if (!road.geoms.length) return;
+    const why = undrawable(road);
+    if (why) { issues.push(`road ${road.id} not drawn: ${why}`); return; }
     len += road.length;
     const S = sampleS(road);
     const poses = S.map((s) => evalRoad(road, s));
@@ -404,5 +419,6 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     zRange: [Number.isFinite(zMin) ? zMin : 0, Number.isFinite(zMax) ? zMax : 0],
     stats: { roads: od.roads.length, junctions: od.junctions.length, lanes: nLanes, lengthKm: len / 1000, vertices: L.positions.length / 3 },
     roads: od.roads.map((rd) => ({ id: rd.id, name: rd.name })),
+    issues: Number.isFinite(minLon) ? issues : [...issues, "nothing to draw: no road has drawable geometry"],
   };
 }

@@ -1,7 +1,7 @@
 // .xodr text -> OpenDrive model. Element and attribute names follow the ASAM OpenDRIVE 1.8.1 XSD; 1.4 files read
 // the same (their extra / missing attributes default as below).
 import type { Controller, Geom, Junction, Lane, LaneSection, Link, OpenDrive, OutlineCorner, Poly3, Road, RoadObject, Signal } from "./model";
-import { kid, kids, num, parseXml, type XmlNode } from "./xml";
+import { collectNumberIssues, kid, kids, num, parseXml, type XmlNode } from "./xml";
 
 const poly = (n: XmlNode, sAttr = "s"): Poly3 => ({ s: num(n, sAttr), a: num(n, "a"), b: num(n, "b"), c: num(n, "c"), d: num(n, "d") });
 const byS = <T extends { s: number }>(xs: T[]): T[] => xs.sort((p, q) => p.s - q.s);
@@ -180,7 +180,17 @@ function junction(n: XmlNode): Junction {
   };
 }
 
+/**
+ * Read an OpenDRIVE file. Throws on a file that is not OpenDRIVE or not well-formed XML (xml.ts). Attribute values that
+ * are not numbers are read as their default and listed in `issues`, so nothing is dropped silently
+ */
 export function parseOpenDrive(text: string): OpenDrive {
+  const [od, numbers] = collectNumberIssues(() => readOpenDrive(text));
+  const issues = [...numbers].map(([k, n]) => `not a number, read as its default: ${k}${n > 1 ? ` (${n} times)` : ""}`);
+  return issues.length ? { ...od, issues } : od;
+}
+
+function readOpenDrive(text: string): OpenDrive {
   const doc = parseXml(text);
   const od = kid(doc, "OpenDRIVE");
   if (!od) throw new Error("not an OpenDRIVE file: no <OpenDRIVE> root element");
