@@ -185,6 +185,7 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   od.roads.forEach((road, ri) => {
     const why = undrawable(road);
     if (why) { issues.push(`road ${road.id} not drawn: ${why}`); return; }
+    if (road.temporaryLayer) issues.push(`road ${road.id}: its temporary lane layer (OpenDRIVE 1.9 §11.2, e.g. roadworks) is not drawn; the permanent layer is`);
     len += road.length;
     const S = sampleS(road);
     const poses = S.map((s) => evalRoad(road, s));

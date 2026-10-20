@@ -77,6 +77,7 @@ export interface ObjectRepeat {
 export interface Structure { kind: "bridge" | "tunnel"; id: string; name: string; s: number; length: number; type: string; }
 
 export interface Road {
+  temporaryLayer?: boolean; // the road has a temporary lane layer (1.9.0 §11.2, roadworks): not drawn, reported
   id: string; name: string; length: number; junction: string; rule: "RHT" | "LHT";
   pred: Link | null; succ: Link | null;
   types: { s: number; type: string; speed: number | null; unit: string }[];

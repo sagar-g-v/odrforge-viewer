@@ -119,10 +119,13 @@ function object(n: XmlNode): RoadObject {
 
 function road(n: XmlNode): Road {
   const l = kid(n, "link");
-  const lanes = kid(n, "lanes");
+  // lane layers (1.9.0 §11.2): exactly one permanent layer, at most one temporary one (roadworks). The permanent one is
+  // drawn, by its @layer (absent before 1.9: the only <lanes>), whatever the order; a temporary one is reported, not drawn
+  const layers = kids(n, "lanes"), lanes = layers.find((x) => (x.attrs.layer ?? "permanent") === "permanent") ?? layers[0];
   const rule = (n.attrs.rule ?? "RHT").toUpperCase() === "LHT" ? "LHT" : "RHT";
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", length: num(n, "length"), junction: n.attrs.junction ?? "-1", rule,
+    temporaryLayer: layers.some((x) => x.attrs.layer === "temporary"),
     pred: link(kid(l, "predecessor")), succ: link(kid(l, "successor")),
     types: kids(n, "type").map((t) => {
       const sp = kid(t, "speed");

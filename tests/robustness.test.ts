@@ -63,6 +63,17 @@ describe("readable files with problems: listed, the rest drawn", () => {
     expect(r.issues).toEqual([expect.stringMatching(/^road 2 not drawn/)]);
     expect([...r.lanes.positions].every(Number.isFinite)).toBe(true);
   });
+  it("lane layers (1.9.0 §11.2): the permanent layer is drawn whatever the order; a temporary layer is reported", () => {
+    const layer = (name: string, w: number) => `<lanes layer="${name}"><laneSection s="0"><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="${w}" b="0" c="0" d="0"/></lane></right></laneSection></lanes>`;
+    const xml = (inner: string) => `<OpenDRIVE><header revMajor="1" revMinor="9"/><road id="1" length="10" junction="-1"><planView><geometry s="0" x="0" y="0" hdg="0" length="10"><line/></geometry></planView>${inner}</road></OpenDRIVE>`;
+    for (const order of [[layer("temporary", 2), layer("permanent", 3)], [layer("permanent", 3), layer("temporary", 2)]]) {
+      const { od, r } = read(xml(order.join("")));
+      expect(od.roads[0].sections[0].right[0].widths[0].a).toBe(3); // the permanent lane (3 m), not the temporary one
+      expect(r.issues).toEqual([expect.stringMatching(/^road 1: its temporary lane layer \(OpenDRIVE 1\.9 §11\.2/)]);
+    }
+    // before 1.9: one <lanes> without @layer, no issue
+    expect(read(road('length="10"')).r.issues).toEqual([]);
+  });
   it("a well-formed file has no issues (the fixture)", () => {
     expect(read(stelvio).r.issues).toEqual([]);
   });
