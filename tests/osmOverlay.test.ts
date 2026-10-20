@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { OSM_REF } from "../src/design/scene";
 import { hoverText } from "../src/map/hoverInfo";
-import { osmKerbData, ParallelEdges, plainRoadEdges, PolygonDistance, sharedKerbStats, type P2 } from "../src/review/osmEdges";
+import { kerbGapEdges, osmKerbData, ParallelEdges, PolygonDistance, sharedKerbStats, type P2 } from "../src/review/osmEdges";
 import { buildOsmOverlay, gapColor, gapRadius, gapSummary, osmElements, osmHoverText, PATH_STEP_M, withHeights } from "../src/review/osmOverlay";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
@@ -131,7 +131,7 @@ describe.skipIf(!existsSync(OSM_FILE) || !existsSync(XODR_FILE))("OSM reference 
     const text = readFileSync(OSM_FILE, "utf8"), rod = parseOpenDrive(readFileSync(XODR_FILE, "utf8")), rp = makeProjector(rod.header.geoReference);
     const o = buildOsmOverlay(osmElements(text), rp, rod)!, K = osmKerbData(text);
     const toXY = (line: P2[]) => line.map(([lon, lat]) => rp.inverse(lon, lat) as P2);
-    const ref = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(plainRoadEdges(rod)), new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY)));
+    const ref = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(kerbGapEdges(rod)), new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY)));
     const g = gapSummary(o.gaps!);
     expect(g.samples).toBe(ref.samples);
     expect(g.matched).toBe(ref.matched);
