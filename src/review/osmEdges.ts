@@ -245,7 +245,29 @@ export function osmKerbData(osmText: string): OsmKerbData {
   return out;
 }
 
-export interface Seg { a: P2; b: P2; out: P2 } // out: the unit normal pointing away from the road
+/** a polyline with its cumulative lengths, for points and chord directions by arc length */
+interface Measured { line: P2[]; cum: number[] }
+const measured = (line: P2[]): Measured => {
+  const cum = [0];
+  for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + Math.hypot(line[i][0] - line[i - 1][0], line[i][1] - line[i - 1][1]));
+  return { line, cum };
+};
+function pointAt({ line, cum }: Measured, s: number): P2 {
+  const L = cum[cum.length - 1], t = Math.max(0, Math.min(L, s));
+  let i = 1;
+  while (i < cum.length - 1 && cum[i] < t) i++;
+  const l = cum[i] - cum[i - 1], f = l > 0 ? (t - cum[i - 1]) / l : 0;
+  return [line[i - 1][0] + (line[i][0] - line[i - 1][0]) * f, line[i - 1][1] + (line[i][1] - line[i - 1][1]) * f];
+}
+/**
+ * The heading of a polyline at arc length s, agreed with the converter (2026-10-20): the chord from s - 0.5 to s + 0.5 m,
+ * clamped to the polyline's ends. Independent of how the polyline is sampled: a short odd segment at a lane-width change
+ * or a road end no longer decides whether a kerb is "parallel"
+ */
+export function chordDir(m: { line: P2[]; cum?: number[] }, s: number, half = 0.5): P2 {
+  const mm = m.cum ? (m as Measured) : measured(m.line), a = pointAt(mm, s - half), b = pointAt(mm, s + half);
+  return [b[0] - a[0], b[1] - a[1]];
+}
 
 /** the drawn carriageway edge of every plain (non-junction) road, with its side */
 export function plainRoadEdges(od: OpenDrive): SidedEdge[] {
@@ -258,31 +280,46 @@ export function plainRoadEdges(od: OpenDrive): SidedEdge[] {
  * normal (left edges: the left normal of the road's direction; right edges: the right normal), agreed with the converter.
  */
 export class ParallelEdges {
-  private readonly cells = new Map<string, Seg[]>();
+  private readonly cells = new Map<string, [number, number][]>(); // (edge, segment) pairs by cell
+  private readonly edges: (Measured & { side: 1 | -1 })[] = [];
   private readonly cell: number;
   constructor(edges: SidedEdge[], cell = 10) {
     this.cell = cell;
-    for (const { line, side } of edges) for (let i = 1; i < line.length; i++) {
-      const a = line[i - 1], b = line[i], l = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (l === 0) continue;
-      const out: P2 = side === 1 ? [-(b[1] - a[1]) / l, (b[0] - a[0]) / l] : [(b[1] - a[1]) / l, -(b[0] - a[0]) / l];
-      for (let cx = Math.floor(Math.min(a[0], b[0]) / cell); cx <= Math.floor(Math.max(a[0], b[0]) / cell); cx++)
-        for (let cy = Math.floor(Math.min(a[1], b[1]) / cell); cy <= Math.floor(Math.max(a[1], b[1]) / cell); cy++) {
-          const k = `${cx},${cy}`; const c = this.cells.get(k); if (c) c.push({ a, b, out }); else this.cells.set(k, [{ a, b, out }]);
-        }
-    }
+    edges.forEach(({ line, side }, e) => {
+      this.edges.push({ ...measured(line), side });
+      for (let i = 1; i < line.length; i++) {
+        const a = line[i - 1], b = line[i];
+        if (a[0] === b[0] && a[1] === b[1]) continue;
+        for (let cx = Math.floor(Math.min(a[0], b[0]) / cell); cx <= Math.floor(Math.max(a[0], b[0]) / cell); cx++)
+          for (let cy = Math.floor(Math.min(a[1], b[1]) / cell); cy <= Math.floor(Math.max(a[1], b[1]) / cell); cy++) {
+            const k = `${cx},${cy}`; const c = this.cells.get(k); if (c) c.push([e, i]); else this.cells.set(k, [[e, i]]);
+          }
+      }
+    });
   }
-  /** signed distance (see the class comment); NaN when no roughly parallel edge is within maxDist */
+  /**
+   * signed distance (see the class comment); NaN when no roughly parallel edge is within maxDist. Each edge (one road
+   * side) offers one candidate, its nearest point; the edge is parallel when its chord heading there (chordDir) is within
+   * maxAngle of `dir` (either way). The nearest parallel candidate wins, signed by the outward normal of that chord.
+   * (Agreed with the converter 2026-10-20: a farther, parallel part of an edge whose nearest point is not parallel does
+   * not count.)
+   */
   signed([px, py]: P2, dir: P2, maxDist = UNMATCHED_M, maxAngleDeg = 25): number {
     const r = Math.ceil(maxDist / this.cell), cx = Math.floor(px / this.cell), cy = Math.floor(py / this.cell), cosMax = Math.cos((maxAngleDeg * Math.PI) / 180);
-    const dl = Math.hypot(dir[0], dir[1]) || 1;
-    let best = Infinity, sign = 1;
-    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const { a: [xa, ya], b: [xb, yb], out } of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
-      const ex = xb - xa, ey = yb - ya, l2 = ex * ex + ey * ey;
-      if (Math.abs((ex * dir[0] + ey * dir[1]) / (Math.sqrt(l2) * dl)) < cosMax) continue; // not roughly parallel
+    const dl = Math.hypot(dir[0], dir[1]) || 1, nearest = new Map<number, { d: number; s: number; fx: number; fy: number }>();
+    for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (const [e, i] of this.cells.get(`${cx + dx},${cy + dy}`) ?? []) {
+      const E = this.edges[e], [xa, ya] = E.line[i - 1], [xb, yb] = E.line[i], ex = xb - xa, ey = yb - ya, l2 = ex * ex + ey * ey;
       const t = Math.max(0, Math.min(1, ((px - xa) * ex + (py - ya) * ey) / l2)), fx = xa + t * ex, fy = ya + t * ey;
-      const d = Math.hypot(px - fx, py - fy);
-      if (d < best) { best = d; sign = (px - fx) * out[0] + (py - fy) * out[1] >= 0 ? 1 : -1; }
+      const d = Math.hypot(px - fx, py - fy), cur = nearest.get(e);
+      if (!cur || d < cur.d) nearest.set(e, { d, s: E.cum[i - 1] + t * Math.sqrt(l2), fx, fy });
+    }
+    let best = Infinity, sign = 1;
+    for (const [e, { d, s, fx, fy }] of nearest) {
+      if (d > maxDist || d >= best) continue;
+      const E = this.edges[e], [hx, hy] = chordDir(E, s), hl = Math.hypot(hx, hy);
+      if (hl === 0 || Math.abs((hx * dir[0] + hy * dir[1]) / (hl * dl)) < cosMax) continue; // not roughly parallel
+      const out: P2 = E.side === 1 ? [-hy, hx] : [hy, -hx]; // away from the road: left of a left edge, right of a right edge
+      best = d; sign = (px - fx) * out[0] + (py - fy) * out[1] >= 0 ? 1 : -1;
     }
     return best <= maxDist ? sign * best : NaN;
   }
@@ -311,11 +348,9 @@ export function kerbOfArea(kerb: P2[], areas: PolygonDistance): boolean {
 
 /** the signed gap (ParallelEdges.signed) at each of a kerb's samples `s` (its midSamples); NaN where no edge is parallel */
 export function sampleGaps(kerb: P2[], s: P2[], edges: ParallelEdges): number[] {
-  return s.map((p, i) => {
-    // the kerb's local direction from its neighbouring samples (a one-sample kerb: its own end-to-end direction)
-    const a = s.length > 1 ? s[Math.max(0, i - 1)] : kerb[0], b = s.length > 1 ? s[Math.min(s.length - 1, i + 1)] : kerb[kerb.length - 1];
-    return edges.signed(p, [b[0] - a[0], b[1] - a[1]]);
-  });
+  const m = measured(kerb);
+  // sample i lies at 0.5 + i m along the kerb (midSamples); its heading is the kerb's chord there (chordDir, +-0.5 m)
+  return s.map((p, i) => edges.signed(p, chordDir(m, 0.5 + i)));
 }
 
 export interface SharedKerbStats { kerbs: number; dropped: number; samples: number; matched: number; medianSigned: number; p95abs: number; within05: number; within03: number }

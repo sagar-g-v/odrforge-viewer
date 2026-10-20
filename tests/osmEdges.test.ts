@@ -43,6 +43,16 @@ describe("OSM edge geometry", () => {
     const island = new PolygonDistance([[[1, 3.2], [5, 3.2], [5, 4], [1, 4]]]);
     expect(sharedKerbStats([[[2, 3.5], [4, 3.5]]], edges, island)).toMatchObject({ dropped: 1, samples: 0 });
   });
+  it("parallel test (agreed 2026-10-20): chord headings over +-0.5 m, and one candidate per edge, its nearest point", () => {
+    const none = new PolygonDistance([]);
+    // a 5 cm jog at 60 degrees in an edge along x: its own segment is not parallel, the +-0.5 m chord around it is
+    const jog = new ParallelEdges([{ line: [[0, 3], [5, 3], [5.025, 3.043], [10, 3.043]], side: 1 }]);
+    expect(sharedKerbStats([[[4.5, 3.5], [5.6, 3.5]]], jog, none).matched).toBe(1); // the one sample sits by the jog
+    // an L-shaped edge whose nearest point to the kerb is on its perpendicular leg: the whole edge is not parallel there,
+    // even though its far leg (5.5 m away) is; the other edge (y 0, right side) is taken instead
+    const L = new ParallelEdges([{ line: [[5, 3.2], [5, 9], [12, 9]], side: 1 }, { line: [[0, 0], [12, 0]], side: -1 }]);
+    expect(sharedKerbStats([[[4.8, 3.5], [5.8, 3.5]]], L, none).medianSigned).toBeCloseTo(-3.5, 9);
+  });
   it("kerb gap edges: plain roads with their lane-0 fallback, connecting roads only on their lane sides", () => {
     const lane = (id: number, type = "driving") => `<lane id="${id}" type="${type}" level="false"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane>`;
     const road = (id: string, junction: string, y: number) => `<road id="${id}" length="10" junction="${junction}"><planView><geometry s="0" x="0" y="${y}" hdg="0" length="10"><line/></geometry></planView>

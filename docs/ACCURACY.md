@@ -310,4 +310,16 @@ colour, not the limit.
       - **The rejected alternative,** leaving those samples out, would hide exactly the corner geometry.
       - **On the 19:55 London output:** 16,334 of 17,876 samples matched (15,647 with plain roads only), median +0.76 m,
         |p95| 4.0 m, 14.9 % within 0.3 m, 25.0 % within 0.5 m. The OSM overlay's kerb-gap dots use the same edges.
+    - **The parallel test** (agreed 2026-10-20, after a sample-by-sample diff with the converter's kerb_gap.py).
+      - **Headings:** both are chords over ±0.5 m, clamped to the polyline's ends. For the kerb, around the sample; for
+        the edge, around its nearest point (`chordDir`).
+      - **Candidates:** each edge (one road side) offers one candidate, its nearest point. If that point is not parallel
+        (25°), the edge does not count, even where a farther part of it is.
+      - **Before**, the viewer tested every edge segment at that segment's own heading. Short odd segments at lane-width
+        changes and road ends let kerbs match edges at 30–75°.
+      - **Result on London** (bd883cf), with the two tools' CSVs diffed by (way, sample) (`KERB_DUMP`): positions
+        identical. 15,761 gaps agree within 1 cm, 1,791 are unmatched in both, 285 differ by 1–10 cm and 27 by 10 cm or
+        more. 12 are matched by one tool only (was 264). The rest is the two tools' edge sampling on curves. The
+        summary agrees: viewer 16,076 matched (89.9 %), median +0.76 m, |p95| 3.90 m, 15.0 % within 0.3 m, 25.2 % within
+        0.5 m; converter 90.0 %, +0.76 m, 3.91 m, 15.0 %, 25.2 %.
   - The kerb measures have no limits yet. They follow once the converter's P2 kerb work is proven.
