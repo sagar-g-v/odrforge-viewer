@@ -3,9 +3,9 @@
 //   OSM_EDGES=1 npx vitest run tests/osmEdges.test.ts --silent=false
 // Limits only for proven results (docs/ACCURACY.md): street-side parking coverage, proven 2026-10-18 on the converter's
 // parking build (8344403 + 92f58db). The kerb numbers are still the baseline for the OSM-geometry mode's kerb work.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { coveredShare, densify, edgeStats, headerClip, insideClip, kerbGapEdges, midSamples, osmEdgeLines, osmKerbData, ParallelEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
+import { coveredShare, densify, edgeStats, headerClip, insideClip, kerbGapEdges, kerbOfArea, midSamples, sampleGaps, osmEdgeLines, osmKerbData, ParallelEdges, PolygonDistance, sharedKerbStats, type ClipBox, type P2 } from "../src/review/osmEdges";
 import { buildRender } from "../src/xodr/build";
 import { makeProjector } from "../src/xodr/geo";
 import { parseOpenDrive } from "../src/xodr/parse";
@@ -117,7 +117,18 @@ for (const area of ["london", "munich", "frankfurt_kreuz", "tokyo", "stelvio"]) 
       const text = readFileSync(osmFile, "utf8"), e = osmEdgeLines(text), K = osmKerbData(text);
       const anyLane = new PolygonDistance(polys(new Set(r.lanes.meta.map((m) => m.type))));
       const areas = new PolygonDistance([...K.islands, ...K.pedestrian].map(toXY));
-      const kerb = sharedKerbStats(K.kerbs.map(toXY), new ParallelEdges(kerbGapEdges(od)), areas);
+      const kerbEdges = new ParallelEdges(kerbGapEdges(od)), kerb = sharedKerbStats(K.kerbs.map(toXY), kerbEdges, areas);
+      // KERB_DUMP=<dir>: every sample of the shared kerb measure as CSV (way id, sample index, file x / y, signed gap or
+      // empty when unmatched), to compare with the converter's kerb_gap.py sample for sample
+      if (process.env.KERB_DUMP) {
+        const rows = ["way,i,x,y,gap"];
+        K.kerbs.forEach((line, w) => {
+          const k = toXY(line), smp = midSamples(k);
+          if (!smp.length || kerbOfArea(k, areas)) return;
+          sampleGaps(k, smp, kerbEdges).forEach((g, i) => rows.push(`${K.kerbIds[w]},${i},${smp[i][0].toFixed(3)},${smp[i][1].toFixed(3)},${Number.isFinite(g) ? g.toFixed(4) : ""}`));
+        });
+        writeFileSync(`${process.env.KERB_DUMP}/kerb_samples_viewer_${area}.csv`, rows.join("\n") + "\n");
+      }
       // street-side parking: OSM areas wholly inside the clip (the file's own record first, gate.py's box otherwise)
       const clip = headerClip(od.header.userData) ?? CLIP[area], inClip = K.parking.map((l) => insideClip(l, clip));
       const lotIds = K.parkingIds.filter((_, i) => inClip[i]), parkCover = new PolygonDistance(polys(new Set(["parking"])));

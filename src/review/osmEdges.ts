@@ -225,6 +225,7 @@ export const insideClip = (ring: P2[], c: ClipBox) => ring.every(([lon, lat]) =>
 
 export interface OsmKerbData {
   kerbs: P2[][]; // open barrier=kerb ways (closed rings dropped)
+  kerbIds: string[]; // their OSM way ids, in the same order
   islands: P2[][]; // area:highway=traffic_island, footway=traffic_island polygons
   pedestrian: P2[][]; // highway=pedestrian areas and area:highway=pedestrian polygons
   parking: P2[][]; // closed parking=street_side|lane|layby ways
@@ -233,10 +234,10 @@ export interface OsmKerbData {
 
 /** everything the shared kerb and parking measures need from an .osm (lon / lat); ways missing a node are left out */
 export function osmKerbData(osmText: string): OsmKerbData {
-  const out: OsmKerbData = { kerbs: [], islands: [], pedestrian: [], parking: [], parkingIds: [] };
+  const out: OsmKerbData = { kerbs: [], kerbIds: [], islands: [], pedestrian: [], parking: [], parkingIds: [] };
   for (const { id, tags: t, refs, line, closed } of osmWays(osmText)) {
     if (line.length !== refs.length || line.length < 2) continue;
-    if (isKerb(t) && !closed) out.kerbs.push(line);
+    if (isKerb(t) && !closed) { out.kerbs.push(line); out.kerbIds.push(id); }
     if (closed && isTrafficIsland(t)) out.islands.push(line);
     if (closed && isPedestrianArea(t)) out.pedestrian.push(line);
     if (closed && isStreetParking(t)) { out.parking.push(line); out.parkingIds.push(id); }
