@@ -19,6 +19,7 @@ import { browserStore, CATEGORIES, isReviewFlag, nextFlagId, serverStore, type F
 import { parseFindings, type Finding } from "./review/findings";
 import { buildOsmOverlay, OSM_KINDS, osmElements, type OsmElement } from "./review/osmOverlay";
 import { probe } from "./xodr/query";
+import { temporaryRoad } from "./xodr/lanes";
 import { findLocalImagery, type LocalImagery } from "./map/localImagery";
 import { fetchGrid, groundGridFiles, type GroundGrid } from "./map/odrz";
 
@@ -62,7 +63,7 @@ export default function App() {
   const [mode, setMode] = useState<"2d" | "3d">("2d");
   const [layers, setLayers] = useState<MapLayers>({
     lanes: true, junctions: true, marks: true, borders: true, refs: true, signals: true, objects: true, structures: true, crossPaths: true, grids: false, directions: true, tunnels: true, review: true, buildings: true, terrain: false, flags: true, findings: true,
-    osm: true, osmGap: false,
+    osm: true, osmGap: false, temporary: true,
   });
   const [heightMode, setHeightMode] = useState<HeightMode>("relative");
   const [exaggeration, setExaggeration] = useState(1);
@@ -344,6 +345,10 @@ export default function App() {
       const m = net.render.lanes.meta[info.index];
       const road = net.od?.roads[m.road];
       s = { road: m.road, laneId: m.lane, laneIndex: info.index, x, y, probe: road ? probe(road, m.lane, x, y) : null, whole: shift };
+    } else if (layer === "lanes-temporary" && info.index >= 0 && net.render.temporary) {
+      // a lane of a temporary lane layer (1.9.0 §11.2, roadworks): probed on that layer's lanes
+      const m = net.render.temporary.lanes.meta[info.index], road = net.od?.roads[m.road], tr = road ? temporaryRoad(road) : null;
+      s = { road: m.road, laneId: m.lane, laneIndex: info.index, layer: "temporary", x, y, probe: tr ? probe(tr, m.lane, x, y) : null, whole: shift };
     } else if (layer === "refs" && info.index >= 0) {
       // a reference line: its road
       const ri = net.render.refs.meta[info.index], road = net.od?.roads[ri];
@@ -549,7 +554,7 @@ export default function App() {
         <ErrorBoundary label="the map" resetKey={net?.render} onOpenAnother={() => fileInput.current?.click()}>
         <MapView
           render={net?.render ?? null} proj={net?.proj ?? null} imagery={imagery} theme={theme} basemap={basemap} mode={mode} layers={layers} heightMode={heightMode}
-          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers} osm={osmOverlay}
+          exaggeration={exaggeration} buildingOpacity={buildingOpacity} roadOpacity={roadOpacity} dim={dim} compare={cmpOverlay ? cmp.network?.render ?? null : null} ground={groundNow?.grid ?? null} selectedLane={sel && !sel.whole && sel.layer !== "temporary" ? sel.laneIndex : null} selectedTemporaryLane={sel && !sel.whole && sel.layer === "temporary" ? sel.laneIndex : null} selectedRoad={sel?.whole ? sel.road : null} selectedJunction={selJ?.index ?? null} selectedFeature={selF} flags={flagMarkers} findings={findingMarkers} review={reviewMarkers} osm={osmOverlay}
           flyTo={flyTo} fitKey={fitKey} onPick={onPick} onCursor={setCursor} cursorCrosshair={flagMode}
         />
         </ErrorBoundary>

@@ -207,6 +207,7 @@ function LayersTab(p: SidePanelProps) {
         <Toggle label="Road marks" on={L.marks} set={set("marks")} />
         <Toggle label="Driving direction" on={L.directions} set={set("directions")} hint="An arrow on every traffic lane (OpenDRIVE 1.8 §11.2.1: the road's RHT / LHT rule, the lane's side and @direction; double-headed for both directions)" />
         <Toggle label="Lane borders" on={L.borders} set={set("borders")} />
+        {p.net?.render.temporary && <Toggle label="Temporary lanes (roadworks)" on={L.temporary} set={set("temporary")} hint="The temporary lane layer (OpenDRIVE 1.9 §11.2): a yellow hatch with its own arrows and road marks over the permanent lanes, which it takes precedence over for driving" />}
         <Toggle label="Reference lines" on={L.refs} set={set("refs")} />
         <div className="sub-title">Junctions</div>
         <Toggle label="Junction areas" on={L.junctions} set={set("junctions")} hint="Solid: the file's <boundary> (OpenDRIVE 1.8 §12.10); dashed: approximate outline of the connecting roads" />

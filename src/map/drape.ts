@@ -46,6 +46,8 @@ export function drapeRender(r: RenderData, ground: Ground, mode: "flat" | "relat
     ...r,
     lanes: bin(r.lanes), marks: bin(r.marks), refs: bin(r.refs), objects: bin(r.objects), objectLines: bin(r.objectLines), arrows: bin(r.arrows), junctions: bin(r.junctions),
     points: { ...r.points, positions: d(r.points.positions) },
+    // the temporary lane layers (1.9.0 §11.2) lie on the same surface as the permanent lanes: laid on the ground with them
+    temporary: r.temporary ? { lanes: bin(r.temporary.lanes), arrows: bin(r.temporary.arrows), marks: bin(r.temporary.marks) } : r.temporary,
     grids: { lines: bin(r.grids.lines), points: { ...r.grids.points, positions: d(r.grids.points.positions) }, refLines: bin(r.grids.refLines) },
     features: {
       footprints: { ...F.footprints, positions: d(F.footprints.positions) },

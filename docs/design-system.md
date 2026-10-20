@@ -211,6 +211,7 @@ are deliberately close (a junction lane is a driving lane), and the junction-are
 | selected lane/junction/feature | `#1e9bff` (was `#5aa9ff`) | ✔ | ✔ | ✔ |
 | real junction (default, direct, crossing): fill / outline | `#f5b84a` solid tint at α .28 / 1 | ✔ | ✔ | ✔ |
 | **virtual junction**: fill / outline | `#7c5cff` iris, **45° hatch** (3px stripes, 5px gap) at α .55 / 1 | ✔ | ✔ | ✔ |
+| **temporary lane layer** (OpenDRIVE 1.9 §11.2, roadworks): fill / outline / arrows | `#f5c442` roadworks yellow (the spec's colour for temporary markings), **−45° hatch** (3px stripes, 5px gap) at α .59 / dashed 1.5px / α .9; the permanent lanes show between the stripes. Close in hue to the real-junction amber, told apart by the hatch and the dashed edge | ✔ | ✔ | ✔ |
 | cross path (dashed) | `#00e5ff` (was `#00cdff`: ΔE 16.7 from the sky info markers) | ✔ | ✔ | ✔ |
 | road reference lines | `#d0ff14` chartreuse (on the lanes: 3.1:1 light, 6.5:1 dark driving; was `#e84cff`, too close to compare magenta) | ✔ | ✔ | ✔ |
 | junction reference line (dashed) | `#ff4d00` vermilion (was `#eb4034`: ΔE 16.1 from error findings) | ✔ | ✔ | ✔ |
@@ -438,6 +439,8 @@ drops single characters, so a "30" read as "3".
 2. dim
 3. lanes and lane outlines
 4. road marks, crosswalks, flat object areas
+4a. temporary lane layers (OpenDRIVE 1.9 §11.2, roadworks): their hatch over the permanent lanes and paint, then their own
+    arrows, dashed edges and road marks over that
 5. junction areas and outlines
 6. structures
 7. 3D assets

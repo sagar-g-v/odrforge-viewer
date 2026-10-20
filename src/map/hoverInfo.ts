@@ -24,6 +24,10 @@ export function hoverText(layer: string, index: number, r: RenderData, extra: { 
       const m = r.lanes.meta[index];
       return m ? `${m.type} · lane ${m.lane} · ${road(m.road)}${m.junction ? " (in a junction)" : ""}` : null;
     }
+    case "lanes-temporary": {
+      const m = r.temporary?.lanes.meta[index];
+      return m ? `${m.type} · lane ${m.lane} · temporary layer (roadworks) · ${road(m.road)}` : null;
+    }
     case "junctions": case "junctions-virtual": {
       const i = layer === "junctions" ? index : virtualJunctions(r.junctions).index[index];
       const m = i !== undefined ? r.junctions.meta[i] : undefined;

@@ -1,7 +1,7 @@
 // OpenDrive model -> compact render buffers (lon, lat, z per vertex) for deck.gl binary layers.
 // Sampling: every element and record boundary, at most 2 m apart, closer on curves (chord error <= 1 cm).
 import { curvatureAt, evalGeom, evalRoad, type Pose } from "./geometry";
-import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt } from "./lanes";
+import { elevationAt, laneBorders, laneHeight, sectionEnd, surfaceZ, laneOffsetAt, temporaryRoad } from "./lanes";
 import type { Geom, OpenDrive, OutlineCorner, Road, RoadMark } from "./model";
 import { FeatureBuilder, signalKind, type Features, type Rgba } from "./features";
 import { MARK } from "../design/scene";
@@ -37,6 +37,9 @@ export interface RenderData {
   stats: { roads: number; junctions: number; lanes: number; lengthKm: number; vertices: number };
   roads?: { id: string; name: string }[]; // by road index (refs / lane meta .road): the map tooltip names roads
   issues?: string[]; // what could not be read or drawn as written (parse.ts, buildRender): shown to the user
+  // the temporary lane layers (1.9.0 §11.2, roadworks): lanes, driving arrows and road marks drawn over the permanent ones;
+  // lane meta .section indexes the road's temporary sections. null when no road has one
+  temporary?: { lanes: Binary & { meta: LaneMeta[] }; arrows: Binary & { meta: ArrowMeta[] }; marks: Binary & { meta: MarkMeta[] } } | null;
 }
 
 class Buf {
@@ -92,6 +95,7 @@ export function sampleS(road: Road): number[] {
   }
   for (const r of road.laneOffset) S.push(r.s);
   for (const r of road.elevation) S.push(r.s);
+  road.sections.forEach((sec, k) => { if (sec.length !== null) S.push(sectionEnd(road, k)); }); // a section ending at its @length (1.9.0 §11.4)
   for (const sec of road.sections) {
     S.push(sec.s);
     for (const l of [...sec.left, ...sec.right]) {
@@ -182,22 +186,16 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
   };
 
   const issues = [...(od.issues ?? [])];
-  od.roads.forEach((road, ri) => {
-    const why = undrawable(road);
-    if (why) { issues.push(`road ${road.id} not drawn: ${why}`); return; }
-    if (road.temporaryLayer) issues.push(`road ${road.id}: its temporary lane layer (OpenDRIVE 1.9 §11.2, e.g. roadworks) is not drawn; the permanent layer is`);
-    len += road.length;
-    const S = sampleS(road);
-    const poses = S.map((s) => evalRoad(road, s));
+  // the lanes, driving arrows and road marks of one lane layer of a road: the permanent one, or its temporary one (1.9.0
+  // §11.2, drawn over it; temporaryRoad gives it as a road of its own), into that layer's buffers
+  interface LayerOut { lanes: Buf; laneMeta: LaneMeta[]; arrows: Buf; arrowMeta: ArrowMeta[]; marks: Buf; markMeta: MarkMeta[] }
+  const PERM: LayerOut = { lanes, laneMeta, arrows, arrowMeta, marks, markMeta };
+  const TEMP: LayerOut = { lanes: new Buf(), laneMeta: [], arrows: new Buf(), arrowMeta: [], marks: new Buf(), markMeta: [] };
+  const drawLayer = (road: Road, ri: number, S: number[], poses: Pose[], out: LayerOut) => {
     const ptAt = (i: number, t: number) => {
       const p = poses[i];
       return [p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg)] as const;
     };
-    // reference line
-    refs.begin();
-    refMeta.push(ri);
-    S.forEach((s, i) => at(poses[i].x, poses[i].y, surfaceZ(road, s, 0), refs));
-
     road.sections.forEach((sec, k) => {
       const s1 = sectionEnd(road, k);
       const idx: number[] = [];
@@ -208,21 +206,21 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
         let wmax = 0;
         for (const b of borders) { const v = b.get(l.id)!; wmax = Math.max(wmax, Math.abs(v.outer - v.inner)); }
         if (wmax < 0.02) continue;
-        lanes.begin();
-        laneMeta.push({ road: ri, section: k, lane: l.id, type: l.type, junction: road.junction !== "-1" });
-        nLanes++;
+        out.lanes.begin();
+        out.laneMeta.push({ road: ri, section: k, lane: l.id, type: l.type, junction: road.junction !== "-1" });
+        if (out === PERM) nLanes++;
         // ring: inner border forward, outer border back (heights: §11.10 inner / outer raise)
-        const jp = road.junction !== "-1" ? (junctionPts.get(road.junction) ?? junctionPts.set(road.junction, []).get(road.junction)!) : null;
+        const jp = out === PERM && road.junction !== "-1" ? (junctionPts.get(road.junction) ?? junctionPts.set(road.junction, []).get(road.junction)!) : null;
         idx.forEach((i, j) => {
           const b = borders[j].get(l.id)!, [hIn] = laneHeight(l, S[i] - sec.s);
           const [x, y] = ptAt(i, b.inner);
-          at(x, y, surfaceZ(road, S[i], b.inner) + hIn, lanes);
+          at(x, y, surfaceZ(road, S[i], b.inner) + hIn, out.lanes);
         });
         for (let j = idx.length - 1; j >= 0; j--) {
           const i = idx[j], b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s);
           const [x, y] = ptAt(i, b.outer);
           const z = surfaceZ(road, S[i], b.outer) + hOut;
-          at(x, y, z, lanes);
+          at(x, y, z, out.lanes);
           if (jp && (j % 3 === 0 || j === 0 || j === idx.length - 1)) jp.push([x, y, z]);
         }
         // driving direction: an arrow every ARROW_EVERY m (one in the middle of a shorter lane), each vertex placed along
@@ -238,13 +236,13 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
             const shape: [number, number][] = dir.both
               ? [[-L / 2, 0], [-L / 2 + hl, -hw], [-L / 2 + hl, -sw], [L / 2 - hl, -sw], [L / 2 - hl, -hw], [L / 2, 0], [L / 2 - hl, hw], [L / 2 - hl, sw], [-L / 2 + hl, sw], [-L / 2 + hl, hw]]
               : [[-L / 2, -sw], [L / 2 - hl, -sw], [L / 2 - hl, -hw], [L / 2, 0], [L / 2 - hl, hw], [L / 2 - hl, sw], [-L / 2, sw]];
-            arrows.begin();
-            arrowMeta.push({ road: ri, lane: l.id, forward: dir.forward, both: dir.both });
+            out.arrows.begin();
+            out.arrowMeta.push({ road: ri, lane: l.id, forward: dir.forward, both: dir.both });
             for (const [u, v] of shape) {
               // u along the driving direction, v to its left: on the reference line s = sc + sgn u, t = centre + sgn v
               const sv = Math.min(Math.max(sc + sgn * u, sec.s), s1), p = evalRoad(road, sv), b = laneBorders(road, sec, sv).get(l.id)!;
               const t = (b.inner + b.outer) / 2 + sgn * v, [hIn, hOut] = laneHeight(l, sv - sec.s);
-              at(p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg), surfaceZ(road, sv, t) + (hIn + hOut) / 2, arrows);
+              at(p.x - t * Math.sin(p.hdg), p.y + t * Math.cos(p.hdg), surfaceZ(road, sv, t) + (hIn + hOut) / 2, out.arrows);
             }
           }
         }
@@ -254,12 +252,12 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
           const seg = idx.map((i, j) => [i, j] as const).filter(([i]) => S[i] >= a - 1e-9 && S[i] <= e + 1e-9);
           if (seg.length < 2) return;
           for (const ln of markLines(m, l.id < 0 ? 1 : -1)) {
-            marks.begin();
-            markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
+            out.marks.begin();
+            out.markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
             for (const [i, j] of seg) {
               const b = borders[j].get(l.id)!, [, hOut] = laneHeight(l, S[i] - sec.s), t = b.outer + ln.off;
               const [x, y] = ptAt(i, t);
-              at(x, y, surfaceZ(road, S[i], t) + hOut, marks);
+              at(x, y, surfaceZ(road, S[i], t) + hOut, out.marks);
             }
           }
         });
@@ -271,16 +269,32 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
         const seg = idx.filter((i) => S[i] >= a - 1e-9 && S[i] <= e + 1e-9);
         if (seg.length < 2) return;
         for (const ln of markLines(m, 0)) {
-          marks.begin();
-          markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
+          out.marks.begin();
+          out.markMeta.push({ road: ri, color: ln.color, width: ln.width, dash: ln.dash });
           for (const i of seg) {
             const t = laneOffsetAt(road, S[i]) + ln.off;
             const [x, y] = ptAt(i, t);
-            at(x, y, surfaceZ(road, S[i], t), marks);
+            at(x, y, surfaceZ(road, S[i], t), out.marks);
           }
         }
       });
     });
+  };
+
+  od.roads.forEach((road, ri) => {
+    const why = undrawable(road);
+    if (why) { issues.push(`road ${road.id} not drawn: ${why}`); return; }
+    len += road.length;
+    const S = sampleS(road);
+    const poses = S.map((s) => evalRoad(road, s));
+    // reference line
+    refs.begin();
+    refMeta.push(ri);
+    S.forEach((s, i) => at(poses[i].x, poses[i].y, surfaceZ(road, s, 0), refs));
+
+    drawLayer(road, ri, S, poses, PERM);
+    const tr = temporaryRoad(road);
+    if (tr) { const TS = sampleS(tr); drawLayer(tr, ri, TS, TS.map((v) => evalRoad(tr, v)), TEMP); }
 
     // signals (points) and objects with an outline (polygons)
     road.signals.forEach((sg, si) => {
@@ -421,5 +435,8 @@ export function buildRender(od: OpenDrive, project: Project): RenderData {
     stats: { roads: od.roads.length, junctions: od.junctions.length, lanes: nLanes, lengthKm: len / 1000, vertices: L.positions.length / 3 },
     roads: od.roads.map((rd) => ({ id: rd.id, name: rd.name })),
     issues: Number.isFinite(minLon) ? issues : [...issues, "nothing to draw: no road has drawable geometry"],
+    temporary: TEMP.laneMeta.length ? {
+      lanes: { ...TEMP.lanes.done(), meta: TEMP.laneMeta }, arrows: { ...TEMP.arrows.done(), meta: TEMP.arrowMeta }, marks: { ...TEMP.marks.done(), meta: TEMP.markMeta },
+    } : null,
   };
 }

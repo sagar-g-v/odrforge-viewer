@@ -28,6 +28,7 @@ export interface LaneRule { s: number; value: string; }
 
 export interface Lane {
   id: number; type: string; direction: string; level: boolean;
+  roadworks: boolean; // 1.9.0 §11.2: a permanent lane whose access is restricted by roadworks (@roadworks)
   widths: Poly3[]; // sOffset relative to the section start (1.8.0 §11.6.1)
   borders: Poly3[]; // alternative to widths (1.8.0 §11.6.2)
   heights: LaneHeight[];
@@ -37,7 +38,10 @@ export interface Lane {
   speeds: LaneSpeed[]; materials: LaneMaterial[]; access: LaneAccess[]; rules: LaneRule[]; userData: UserData[];
 }
 
-export interface LaneSection { s: number; singleSide: boolean; left: Lane[]; right: Lane[]; center: Lane | null; }
+// length: 1.9.0 §11.4, temporary layer only: the section ends there (else at the next section or the road's end)
+export interface LaneSection { s: number; length: number | null; singleSide: boolean; left: Lane[]; right: Lane[]; center: Lane | null; }
+/** a road's temporary lane layer (1.9.0 §11.2, e.g. roadworks): its own lane offset and lane sections, over the permanent ones */
+export interface LaneLayer { laneOffset: Poly3[]; sections: LaneSection[]; }
 
 export interface Link { type: string; id: string; contact: string; }
 
@@ -77,7 +81,7 @@ export interface ObjectRepeat {
 export interface Structure { kind: "bridge" | "tunnel"; id: string; name: string; s: number; length: number; type: string; }
 
 export interface Road {
-  temporaryLayer?: boolean; // the road has a temporary lane layer (1.9.0 §11.2, roadworks): not drawn, reported
+  temporary?: LaneLayer | null; // its temporary lane layer (1.9.0 §11.2, roadworks), drawn over the permanent one
   id: string; name: string; length: number; junction: string; rule: "RHT" | "LHT";
   pred: Link | null; succ: Link | null;
   types: { s: number; type: string; speed: number | null; unit: string }[];

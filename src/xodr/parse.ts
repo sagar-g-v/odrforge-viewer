@@ -47,6 +47,7 @@ function lane(n: XmlNode): Lane {
   return {
     id: num(n, "id"), type: n.attrs.type ?? "none", direction: n.attrs.direction ?? "standard",
     level: n.attrs.level === "true" || n.attrs.level === "1",
+    roadworks: n.attrs.roadworks === "true" || n.attrs.roadworks === "1",
     widths: byS(kids(n, "width").map((w) => poly(w, "sOffset"))),
     borders: byS(kids(n, "border").map((w) => poly(w, "sOffset"))),
     heights: byS(kids(n, "height").map((h) => ({ s: num(h, "sOffset"), inner: num(h, "inner"), outer: num(h, "outer") }))),
@@ -77,7 +78,7 @@ function section(n: XmlNode): LaneSection {
     kids(kid(n, tag), "lane").map(lane).sort((a, b) => sign * (a.id - b.id)); // inner lane first
   const centre = kids(kid(n, "center"), "lane")[0];
   return {
-    s: num(n, "s"), singleSide: n.attrs.singleSide === "true",
+    s: num(n, "s"), length: n.attrs.length !== undefined ? num(n, "length", NaN) : null, singleSide: n.attrs.singleSide === "true",
     left: side("left", 1), right: side("right", -1), center: centre ? lane(centre) : null,
   };
 }
@@ -119,13 +120,14 @@ function object(n: XmlNode): RoadObject {
 
 function road(n: XmlNode): Road {
   const l = kid(n, "link");
-  // lane layers (1.9.0 §11.2): exactly one permanent layer, at most one temporary one (roadworks). The permanent one is
-  // drawn, by its @layer (absent before 1.9: the only <lanes>), whatever the order; a temporary one is reported, not drawn
+  // lane layers (1.9.0 §11.2): exactly one permanent layer, at most one temporary one (roadworks), told apart by @layer
+  // (absent before 1.9: the only <lanes>) whatever their order
   const layers = kids(n, "lanes"), lanes = layers.find((x) => (x.attrs.layer ?? "permanent") === "permanent") ?? layers[0];
+  const temp = layers.find((x) => x.attrs.layer === "temporary");
   const rule = (n.attrs.rule ?? "RHT").toUpperCase() === "LHT" ? "LHT" : "RHT";
   return {
     id: n.attrs.id ?? "", name: n.attrs.name ?? "", length: num(n, "length"), junction: n.attrs.junction ?? "-1", rule,
-    temporaryLayer: layers.some((x) => x.attrs.layer === "temporary"),
+    temporary: temp ? { laneOffset: byS(kids(temp, "laneOffset").map((e) => poly(e))), sections: byS(kids(temp, "laneSection").map(section)) } : null,
     pred: link(kid(l, "predecessor")), succ: link(kid(l, "successor")),
     types: kids(n, "type").map((t) => {
       const sp = kid(t, "speed");

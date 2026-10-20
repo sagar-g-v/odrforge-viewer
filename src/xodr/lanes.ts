@@ -27,8 +27,15 @@ export function sectionIndex(road: Road, s: number): number {
   return lo;
 }
 
+/** where section k ends: its own @length (1.9.0 §11.4, temporary layer), else the next section, else the road's end */
 export function sectionEnd(road: Road, k: number): number {
-  return k + 1 < road.sections.length ? road.sections[k + 1].s : road.length;
+  const next = k + 1 < road.sections.length ? road.sections[k + 1].s : road.length, len = road.sections[k]?.length;
+  return len !== null && len !== undefined && len > 0 ? Math.min(next, road.sections[k].s + len) : next;
+}
+
+/** a road's temporary lane layer as a road of its own (its lane offset and sections; geometry and heights shared), or null */
+export function temporaryRoad(road: Road): Road | null {
+  return road.temporary && road.temporary.sections.length ? { ...road, laneOffset: road.temporary.laneOffset, sections: road.temporary.sections, temporary: null } : null;
 }
 
 /** lane height (inner, outer raise) at ds within its section: each record holds until the next one */

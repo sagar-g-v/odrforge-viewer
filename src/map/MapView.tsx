@@ -25,7 +25,7 @@ import { buildRoadFloor } from "./roadFloor";
 import { drapeRender, groundProbe, terrainLift } from "./drape";
 import { depthBias } from "./drawOrder";
 import { LaneZIndex } from "./markerZ";
-import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OSM_REF, OVERLAY, STRUCTURE, withAlpha } from "../design/scene";
+import { ASSET, BUILDING, EDGE, LABEL, MARK, MARKER, MATERIAL, OSM_REF, OVERLAY, STRUCTURE, TEMPORARY, withAlpha } from "../design/scene";
 import { gapColor, gapRadius, withHeights, type OsmKind, type OsmOverlay } from "../review/osmOverlay";
 import { drawnZ, hasRealHeights, heightPlan, medianGround, NO_GROUND_LEVEL, viewHeights, type HeightMode } from "./heights";
 import type { Projector } from "../xodr/geo";
@@ -57,6 +57,7 @@ export interface MapLayers {
   review: boolean; // the LLM review's items (<page>.review.json)
   buildings: boolean; terrain: boolean; flags: boolean; findings: boolean;
   osm: boolean; osmGap: boolean; // the OSM reference overlay (review/osmOverlay.ts) and its kerb-gap dots
+  temporary: boolean; // temporary lane layers (1.9.0 §11.2, roadworks) over the permanent lanes
 }
 
 export interface MarkerPoint { id: string; lon: number; lat: number; color: Rgba; label?: string; selected?: boolean; tip?: string; radius?: number } // tip: the hover tooltip
@@ -77,6 +78,7 @@ export interface MapViewProps {
   ground: GroundGrid | null; // the network's own ground grid (converter .odrz): the terrain where present
   compare: RenderData | null; // B of a comparison: its lane outlines and reference lines over A
   selectedLane: number | null;
+  selectedTemporaryLane: number | null; // index into render.temporary.lanes
   selectedRoad: number | null; // a whole road selected (all its lanes highlighted)
   selectedJunction: number | null;
   selectedFeature: { kind: string; road: number; index: number } | null;
@@ -274,6 +276,9 @@ function deckTransformCompat(map: MlMap) {
 }
 
 /** a pick on the tunnel x-ray is a pick of the lane it shows (the inspector, the hover tooltip and flags work on it) */
+/** the temporary lane layers' hatch (design-system §3; FillStyleExtension procedural pattern) */
+const TEMPORARY_PATTERNS = { roadworks: { type: "hatch", angle: TEMPORARY.hatch.angle, strokeWidth: TEMPORARY.hatch.line, gap: TEMPORARY.hatch.gap } } as const;
+
 function asLanePick<T extends { layer?: { id: string } | null; index: number; object?: unknown }>(info: T): T {
   const o = info.object as XrayPath | undefined;
   return info.layer?.id === "tunnel-xray" && o ? { ...info, layer: { ...info.layer, id: "lanes" }, index: o.lane } : info;
@@ -652,6 +657,41 @@ export default function MapView(p: MapViewProps) {
           },
           dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
         }));
+      // temporary lane layers (1.9.0 §11.2, roadworks; design-system §3): a yellow -45° hatch over the permanent lanes, a
+      // dashed edge, their own arrows, and their own paint (the file's colours, yellow by the spec) over the permanent paint
+      const T = r.temporary;
+      if (p.layers.temporary && p.layers.lanes && T && T.lanes.meta.length) {
+        const nt = T.lanes.meta.length, TL = T.lanes;
+        out.push(new SolidPolygonLayer({
+          id: "lanes-temporary", data: { length: nt, startIndices: sub(TL.starts, nt), attributes: { getPolygon: { value: TL.positions, size: 3 } } },
+          _full3d: true, pickable: true, autoHighlight: true, highlightColor: OVERLAY.hover, modelMatrix, parameters: depthBias("lanes-temporary"),
+          getFillColor: (_: unknown, { index }: { index: number }) => (index === p.selectedTemporaryLane ? OVERLAY.selected : TEMPORARY.fill),
+          getFillPattern: () => "roadworks", fillPatternMapping: TEMPORARY_PATTERNS, fillPatternSizeUnits: "pixels",
+          extensions: [new FillStyleExtension({ pattern: true, proceduralPattern: true })],
+          updateTriggers: { getFillColor: [p.selectedTemporaryLane] },
+        }));
+        out.push(new PathLayer({
+          id: "lane-borders-temporary", data: { length: nt, startIndices: sub(TL.starts, nt), attributes: { getPath: { value: TL.positions, size: 3 } } },
+          _pathType: "loop", widthUnits: "pixels", getWidth: TEMPORARY.edgeWidth, getColor: TEMPORARY.edge, modelMatrix, parameters: depthBias("lane-borders-temporary"),
+          getDashArray: TEMPORARY.edgeDash, dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+        }));
+        const TA = T.arrows, nta = TA.meta.length;
+        if (p.layers.directions && nta)
+          out.push(new SolidPolygonLayer({
+            id: "lane-directions-temporary", data: { length: nta, startIndices: sub(TA.starts, nta), attributes: { getPolygon: { value: TA.positions, size: 3 } } },
+            _full3d: true, modelMatrix, parameters: depthBias("lane-directions-temporary"), getFillColor: TEMPORARY.arrow,
+          }));
+        const TM = T.marks, ntm = TM.meta.length;
+        if (p.layers.marks && ntm)
+          out.push(new PathLayer({
+            id: "marks-temporary", data: { length: ntm, startIndices: sub(TM.starts, ntm), attributes: { getPath: { value: TM.positions, size: 3 } } },
+            _pathType: "open", widthUnits: "meters", widthMinPixels: 1, modelMatrix, parameters: depthBias("marks-temporary"),
+            getWidth: (_: unknown, { index }: { index: number }) => TM.meta[index].width,
+            getColor: (_: unknown, { index }: { index: number }) => TM.meta[index].color,
+            getDashArray: (_: unknown, { index }: { index: number }) => { const m = TM.meta[index]; return m.dash ? [m.dash[0] / m.width, m.dash[1] / m.width] : [0, 0]; },
+            dashJustified: true, extensions: [new PathStyleExtension({ dash: true })],
+          }));
+      }
       // junction outlines above lanes and marks: the area reads at a glance (fill stays under the lanes)
       if (p.layers.junctions && nj)
         out.push(new PathLayer({
@@ -876,7 +916,7 @@ export default function MapView(p: MapViewProps) {
     if (p.layers.findings && p.findings.length) out.push(...markers("findings", p.findings, MARKER.findingRadius));
     if (p.layers.flags && p.flags.length) out.push(...markers("flags", p.flags, MARKER.flagRadius));
     return out;
-  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, p.review, modelMatrix,
+  }, [p.render, draped, p.layers, p.theme, p.selectedLane, p.selectedTemporaryLane, p.selectedRoad, p.selectedJunction, p.selectedFeature, p.flags, p.findings, p.review, modelMatrix,
       beforeId, p.mode, p.roadOpacity, cmpDraped, laneZ, plan, lift, terrainOn, groundAt, signLabelsOn, barrierLinesOn, xray, p.osm, osmPositions]);
 
   useEffect(() => {

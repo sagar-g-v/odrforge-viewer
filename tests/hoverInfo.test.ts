@@ -32,6 +32,12 @@ describe("hover tooltip text", () => {
     expect(hoverText("review", 0, r, { review: [{ tip: "review #19 · critical · leads_nowhere: …" }] })).toBe("review #19 · critical · leads_nowhere: …");
     expect(hoverText("review", 3, r, { review: [] })).toBeNull();
   });
+  it("a lane of a temporary lane layer (1.9.0 §11.2) says so", () => {
+    const tmp = XODR.replace('<lanes><laneSection s="0">', '<lanes layer="temporary"><laneSection s="5" length="20"><center><lane id="0" type="none"/></center><right><lane id="-1" type="driving"><width sOffset="0" a="3" b="0" c="0" d="0"/></lane></right></laneSection></lanes><lanes layer="permanent"><laneSection s="0">');
+    const od2 = parseOpenDrive(tmp), r2 = buildRender(od2, makeProjector(od2.header.geoReference).forward);
+    expect(hoverText("lanes-temporary", 0, r2)).toBe("driving · lane -1 · temporary layer (roadworks) · road 42 · Hauptstraße");
+    expect(hoverText("lanes-temporary", 0, r)).toBeNull(); // no temporary layer
+  });
   it("nothing for no pick or an unknown layer", () => {
     expect(hoverText("lanes", -1, r)).toBeNull();
     expect(hoverText("basemap", 0, r)).toBeNull();

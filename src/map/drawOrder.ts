@@ -7,6 +7,9 @@ export const DRAW_ORDER: Record<string, number> = {
   "objects": 3, // flat object outlines (crosswalks, islands) on the lanes
   "lane-directions": 3, // driving-direction arrows on the lanes
   "lane-borders": 4, "marks": 4, // painted lines on the surface
+  // the temporary lane layer (1.9.0 §11.2, roadworks) over the permanent one: its hatch over the permanent lanes and
+  // their paint, its arrows and paint (yellow) over that, as the spec lays temporary markings on the permanent ones
+  "lanes-temporary": 5, "lane-directions-temporary": 6, "marks-temporary": 6, "lane-borders-temporary": 6,
   "junctions-virtual": 4, // virtual junction hatch (design §3): on its through road's lanes, which show between the stripes
   "refs": 5, "object-lines": 5, "structures": 5, "cross-paths": 5,
   "barrier-casing": 5, "barrier-lines": 5, // guard rails / barriers: a cased line on their top edge (design §8)

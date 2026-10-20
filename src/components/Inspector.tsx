@@ -7,7 +7,8 @@ import { Icon } from "./Icon";
 import type { LaneProbe } from "../xodr/query";
 
 /** a lane, or with whole = true its road (all lanes highlighted) */
-export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; whole?: boolean; }
+// layer "temporary": a lane of the road's temporary lane layer (1.9.0 §11.2); laneIndex then indexes render.temporary.lanes
+export interface Selection { road: number; laneId: number | null; laneIndex: number | null; x: number; y: number; probe: LaneProbe | null; whole?: boolean; layer?: "temporary"; }
 
 const f = (v: number | null | undefined, d = 2) => {
   if (v === null || v === undefined || !Number.isFinite(v)) return "–";
@@ -85,8 +86,10 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad, onWhole
       </section>
       {!sel.whole && (lane || sel.laneId !== null) && (
         <section>
-          <h3>Lane {sel.laneId}</h3>
-          <Row k="type" v={lane?.type ?? net.render.lanes.meta[sel.laneIndex ?? 0]?.type} />
+          <h3>Lane {sel.laneId}{sel.layer === "temporary" ? " · temporary layer" : ""}</h3>
+          {sel.layer === "temporary" && <Row k="layer" v="temporary (OpenDRIVE 1.9 §11.2, e.g. roadworks): drawn over the permanent lanes, takes precedence for driving" />}
+          <Row k="type" v={lane?.type ?? (sel.layer === "temporary" ? net.render.temporary?.lanes.meta[sel.laneIndex ?? 0]?.type : net.render.lanes.meta[sel.laneIndex ?? 0]?.type)} />
+          {lane?.roadworks && <Row k="roadworks" v="access restricted by roadworks (@roadworks, 1.9 §11.2)" />}
           {lane && <Row k="direction" v={lane.direction} />}
           <Row k="width" v={`${f(pr?.width)} m`} />
           <Row k="border t inner / outer" v={`${f(pr?.inner)} / ${f(pr?.outer)}`} />

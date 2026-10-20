@@ -106,6 +106,17 @@ export const JUNCTION = {
   label: { real: "junction", virtual: "virtual junction" },
 };
 
+/**
+ * Temporary lane layers (OpenDRIVE 1.9.0 §11.2, roadworks), over the permanent lanes: a -45° hatch of the roadworks yellow
+ * (the spec's colour for temporary markings, MARK.yellow) with a dashed outline. Told from real junctions (amber, solid
+ * tint) and virtual ones (iris, +45° hatch) by its pattern as well as its colour; the permanent lanes show between the
+ * stripes
+ */
+export const TEMPORARY = {
+  fill: [245, 196, 66, 150] as Rgba, edge: [245, 196, 66, 235] as Rgba, arrow: [245, 196, 66, 230] as Rgba,
+  hatch: { angle: -45, line: 3, gap: 5 }, edgeWidth: 1.5, edgeDash: [4, 3] as [number, number],
+};
+
 /** thin edges and halos, per theme */
 export const EDGE = {
   laneDark: [6, 17, 42, 90] as Rgba, laneLight: [15, 34, 54, 70] as Rgba, // lane outlines: night / ink at ~30%
