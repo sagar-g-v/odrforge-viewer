@@ -1,4 +1,5 @@
-# Guards docs/ACCURACY.md on every push: types, lint, unit tests (the real-data checks skip without the test areas), build.
+# Guards docs/ACCURACY.md on every push: types, lint, unit tests (the real-data checks skip without the test areas), build,
+# and the UI smoke test on the production build (e2e/, Playwright driving the runner's installed Chrome).
 name: ci
 on: [push, pull_request]
 jobs:
@@ -15,3 +16,4 @@ jobs:
       - run: npx oxlint src
       - run: npm test
       - run: npm run build
+      - run: npx playwright test

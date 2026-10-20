@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The UI smoke test's network (e2e/smoke.e2e.ts): one straight 80 m road with three right lanes, georeferenced at Munich.
+     Written for this test; no third-party data. -->
+<OpenDRIVE>
+  <header revMajor="1" revMinor="8" name="one-road" vendor="odrforge-viewer e2e">
+    <geoReference><![CDATA[+proj=tmerc +lat_0=48.137 +lon_0=11.575 +k=1 +x_0=0 +y_0=0 +ellps=WGS84 +units=m]]></geoReference>
+  </header>
+  <road id="1" name="Smoke Street" length="80" junction="-1">
+    <planView>
+      <geometry s="0" x="-40" y="0" hdg="0" length="80"><line/></geometry>
+    </planView>
+    <lanes>
+      <laneSection s="0">
+        <center><lane id="0" type="none" level="false"/></center>
+        <right>
+          <lane id="-1" type="driving" level="false"><width sOffset="0" a="4" b="0" c="0" d="0"/></lane>
+          <lane id="-2" type="driving" level="false"><width sOffset="0" a="4" b="0" c="0" d="0"/></lane>
+          <lane id="-3" type="sidewalk" level="false"><width sOffset="0" a="2" b="0" c="0" d="0"/></lane>
+        </right>
+      </laneSection>
+    </lanes>
+  </road>
+</OpenDRIVE>

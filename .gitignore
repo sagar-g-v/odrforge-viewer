@@ -30,3 +30,7 @@ dist-ssr
 
 # graphify code graph (local, rebuilt with graphify extract . --code-only / graphify update .)
 graphify-out/
+
+# Playwright (npx playwright test)
+test-results/
+playwright-report/

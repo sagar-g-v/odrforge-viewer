@@ -78,6 +78,7 @@ network (698 k vertices): 1.3 s in Node, 1.4 s in the production build.
 npm test             # vitest: geometry, lanes, parsers, flags, broken files, real-data limits (skipped without the test areas)
 npx tsc -b           # types
 npx oxlint src tests # lint
+npm run build && npm run e2e  # UI smoke test on the production build (Playwright, your installed Chrome)
 ```
 
 Test fixtures contain OdrForge output derived from OpenStreetMap data (© OpenStreetMap contributors, ODbL 1.0).
