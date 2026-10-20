@@ -64,6 +64,14 @@ describe("OSM edge geometry", () => {
     // road 2 (connecting, in junction 5): only its right carriageway edge (y 47), no lane-0 edge through the junction
     expect(edges.filter((e) => e.line[0][1] > 10).map((e) => [e.side, e.line[0][1]])).toEqual([[-1, 47]]);
   });
+  it("kerb gap edges: one per lane section and side (a width step at a section joint makes no joining segment)", () => {
+    const lane = (id: number, w: number) => `<lane id="${id}" type="driving" level="false"><width sOffset="0" a="${w}" b="0" c="0" d="0"/></lane>`;
+    const sec = (s: number, w: number) => `<laneSection s="${s}"><center><lane id="0" type="none" level="false"/></center><right>${lane(-1, w)}</right></laneSection>`;
+    const od = parseOpenDrive(`<OpenDRIVE><header revMajor="1" revMinor="8"/><road id="1" length="10" junction="-1">
+      <planView><geometry s="0" x="0" y="0" hdg="0" length="10"><line/></geometry></planView><lanes>${sec(0, 3)}${sec(5, 4)}</lanes></road></OpenDRIVE>`);
+    const right = kerbGapEdges(od).filter((e) => e.side === -1);
+    expect(right.map((e) => [e.line[0], e.line[e.line.length - 1]])).toEqual([[[0, -3], [5, -3]], [[5, -4], [10, -4]]]);
+  });
   it("reads the clip box an output records in its header", () => {
     expect(headerClip([{ code: "clip", value: "48.132,11.560,48.145,11.585" }])).toEqual([48.132, 11.56, 48.145, 11.585]);
     expect(headerClip([{ code: "clip", value: "48.1,11.5" }])).toBeNull();

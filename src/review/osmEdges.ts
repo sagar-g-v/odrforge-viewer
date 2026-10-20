@@ -6,7 +6,7 @@
 // Guarded by tests/osmEdges.test.ts.
 import { sampleS } from "../xodr/build";
 import { evalRoad } from "../xodr/geometry";
-import { laneBorders, laneOffsetAt, sectionIndex } from "../xodr/lanes";
+import { laneBorders, laneOffsetAt, sectionEnd } from "../xodr/lanes";
 import type { OpenDrive } from "../xodr/model";
 import { kids, parseXml } from "../xodr/xml";
 
@@ -131,29 +131,42 @@ const OFF_CARRIAGEWAY = new Set(["sidewalk", "walking", "curb", "border", "none"
 export interface SidedEdge { line: P2[]; side: 1 | -1 } // side: +1 the road's left edge, -1 its right edge (s increasing)
 
 export function carriagewayEdges(od: OpenDrive): SidedEdge[] {
+  return sectionEdges(od.roads, true);
+}
+
+/**
+ * The carriageway edges of roads, one polyline per lane section and side (agreed with the converter 2026-10-20: at a
+ * section joint the two sections are separate edges, so a width step makes no slanted joining segment). Each section is
+ * sampled from its start to its end (its end evaluated with its own lanes). fallback: a side without carriageway lanes
+ * takes the lane-0 line (plain roads; not connecting roads, where it would cross the junction)
+ */
+function sectionEdges(roads: OpenDrive["roads"], fallback: boolean): SidedEdge[] {
   const out: SidedEdge[] = [];
-  for (const road of od.roads) {
-    const left: P2[] = [], right: P2[] = [];
-    for (const s of sampleS(road)) {
-      const sec = road.sections[sectionIndex(road, s)];
-      if (!sec) continue;
-      const b = laneBorders(road, sec, s), p = evalRoad(road, s);
-      const outer = (lanes: typeof sec.left) => {
-        let t: number | null = null;
-        for (const l of lanes) if (!OFF_CARRIAGEWAY.has(l.type)) t = b.get(l.id)?.outer ?? t; // lanes run inside out
-        return t;
-      };
-      let tl = outer(sec.left), tr = outer(sec.right);
-      // a side without carriageway lanes (one carriageway of a dual road): its edge is the lane-0 line (the lane offset),
-      // so a kerb in the central median meets its own edge, not the far edge across the carriageway
-      const t0 = laneOffsetAt(road, s);
-      if (tl === null && tr !== null) tl = t0;
-      if (tr === null && tl !== null) tr = t0;
-      if (tl !== null) left.push([p.x - tl * Math.sin(p.hdg), p.y + tl * Math.cos(p.hdg)]);
-      if (tr !== null) right.push([p.x - tr * Math.sin(p.hdg), p.y + tr * Math.cos(p.hdg)]);
-    }
-    if (left.length > 1) out.push({ line: left, side: 1 });
-    if (right.length > 1) out.push({ line: right, side: -1 });
+  for (const road of roads) {
+    const S = sampleS(road);
+    road.sections.forEach((sec, k) => {
+      const s1 = sectionEnd(road, k), left: P2[] = [], right: P2[] = [];
+      for (const s of [sec.s, ...S.filter((v) => v > sec.s + 1e-9 && v < s1 - 1e-9), s1]) {
+        const b = laneBorders(road, sec, s), p = evalRoad(road, s);
+        const outer = (lanes: typeof sec.left) => {
+          let t: number | null = null;
+          for (const l of lanes) if (!OFF_CARRIAGEWAY.has(l.type)) t = b.get(l.id)?.outer ?? t; // lanes run inside out
+          return t;
+        };
+        let tl = outer(sec.left), tr = outer(sec.right);
+        // a side without carriageway lanes (one carriageway of a dual road): its edge is the lane-0 line (the lane offset),
+        // so a kerb in the central median meets its own edge, not the far edge across the carriageway
+        if (fallback) {
+          const t0 = laneOffsetAt(road, s);
+          if (tl === null && tr !== null) tl = t0;
+          if (tr === null && tl !== null) tr = t0;
+        }
+        if (tl !== null) left.push([p.x - tl * Math.sin(p.hdg), p.y + tl * Math.cos(p.hdg)]);
+        if (tr !== null) right.push([p.x - tr * Math.sin(p.hdg), p.y + tr * Math.cos(p.hdg)]);
+      }
+      if (left.length > 1) out.push({ line: left, side: 1 });
+      if (right.length > 1) out.push({ line: right, side: -1 });
+    });
   }
   return out;
 }
@@ -163,27 +176,7 @@ export function carriagewayEdges(od: OpenDrive): SidedEdge[] {
  * road usually has lanes on one side, and the lane-0 fallback of plain roads would put an edge through the junction
  */
 export function connectingRoadEdges(od: OpenDrive): SidedEdge[] {
-  const out: SidedEdge[] = [];
-  for (const road of od.roads) {
-    if (road.junction === "-1") continue;
-    const left: P2[] = [], right: P2[] = [];
-    for (const s of sampleS(road)) {
-      const sec = road.sections[sectionIndex(road, s)];
-      if (!sec) continue;
-      const b = laneBorders(road, sec, s), p = evalRoad(road, s);
-      const outer = (lanes: typeof sec.left) => {
-        let t: number | null = null;
-        for (const l of lanes) if (!OFF_CARRIAGEWAY.has(l.type)) t = b.get(l.id)?.outer ?? t;
-        return t;
-      };
-      const tl = outer(sec.left), tr = outer(sec.right);
-      if (tl !== null) left.push([p.x - tl * Math.sin(p.hdg), p.y + tl * Math.cos(p.hdg)]);
-      if (tr !== null) right.push([p.x - tr * Math.sin(p.hdg), p.y + tr * Math.cos(p.hdg)]);
-    }
-    if (left.length > 1) out.push({ line: left, side: 1 });
-    if (right.length > 1) out.push({ line: right, side: -1 });
-  }
-  return out;
+  return sectionEdges(od.roads.filter((r) => r.junction !== "-1"), false);
 }
 
 /**
