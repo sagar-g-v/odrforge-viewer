@@ -1,4 +1,4 @@
-// OdrForge's viewer export: the `const DATA={...};` JSON that osm2xodr --viz embeds in its .html pages (src/viz.cpp).
+// OdrForge's viewer export: the `const DATA={...};` JSON that OdrForge embeds in its .html pages (`odrforge view`, or `odrforge build --viz`; src/viz.cpp).
 // Lanes are already sampled there (delta-coded page units, cm), with per-point heights since OdrForge 2fdb8d3.
 import type { Projector } from "./geo";
 import { medianZ, type LaneMeta, type MarkMeta, type RenderData } from "./build";

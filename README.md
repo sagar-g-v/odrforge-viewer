@@ -25,7 +25,7 @@ Open a network in one of three ways:
   ```
   Deep link: `http://localhost:5173/?server=http://127.0.0.1:8766&file=munich_standard.xodr`
 - **Open file…** or drag and drop a `.xodr` (flags then stay in this browser; export them as JSON).
-- An OdrForge viewer page (`.html` from `osm2xodr --viz`): its embedded, pre-sampled data loads faster.
+- An OdrForge viewer page (`.html` from `odrforge view <in.xodr> <out.html>` or `odrforge build ... --viz`): its embedded, pre-sampled data loads faster.
 
 ## Using it
 

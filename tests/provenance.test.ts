@@ -15,6 +15,14 @@ const SNAP = {
 };
 
 describe("matchProvenance", () => {
+  it("the binary build time from either key: odrforge_built (since the CLI rename), else osm2xodr_built (older records)", () => {
+    const { osm2xodr_built: old, ...rest } = SNAP;
+    const built = (m: object) => { const p = matchProvenance(m as typeof SNAP, PAGE); return p.status === "match" ? p.facts.binaryBuilt : "no match"; };
+    expect(built({ ...rest, odrforge_built: "2026-10-22T09:00:00" })).toBe("2026-10-22T09:00:00");
+    expect(built({ ...rest, osm2xodr_built: old })).toBe(old);
+    expect(built({ ...rest, odrforge_built: "2026-10-22T09:00:00", osm2xodr_built: old })).toBe("2026-10-22T09:00:00"); // the new key wins
+    expect(built(rest)).toBeNull();
+  });
   it("no file next to the page: no metrics for this build", () => {
     expect(matchProvenance(null, PAGE)).toEqual({ status: "none" });
   });

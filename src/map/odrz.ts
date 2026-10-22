@@ -1,4 +1,4 @@
-// The converter's ground grid (OdrForge tools/make_terrain.py, read by osm2xodr --terrain): a regular grid in the
+// The converter's ground grid (OdrForge tools/make_terrain.py, read by `odrforge build --terrain`): a regular grid in the
 // network's projected frame, float32 heights, NaN = unknown. The viewer uses it as its terrain where the network has
 // one, so roads built from it sit exactly on the drawn ground (the open Terrarium DEM can be metres off in cities and
 // steep terrain).

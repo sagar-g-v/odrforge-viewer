@@ -14,7 +14,10 @@ export interface PageSource {
 
 /** <file>.metrics.json (schema 1) */
 export interface PageMetrics {
-  schema: number; label: string; time: string; commit: string; osm2xodr_built: string | null; folder: string | null;
+  schema: number; label: string; time: string; commit: string; folder: string | null;
+  // when the converter binary was built: odrforge_built since the CLI became `odrforge` (2026-10-22); records written
+  // before carry osm2xodr_built (both are read)
+  odrforge_built?: string | null; osm2xodr_built?: string | null;
   file: string; sha256?: string; bytes?: number; mtime?: string;
   metrics: Record<string, number | string | null>;
 }
@@ -84,7 +87,7 @@ export function matchProvenance(raw: unknown, src: PageSource): Provenance {
   return {
     status: "match",
     facts: {
-      commit: m.commit.replace(/\+dirty$/, ""), dirty: /\+dirty$/.test(m.commit), runTime: m.time, binaryBuilt: m.osm2xodr_built ?? null,
+      commit: m.commit.replace(/\+dirty$/, ""), dirty: /\+dirty$/.test(m.commit), runTime: m.time, binaryBuilt: m.odrforge_built ?? m.osm2xodr_built ?? null,
       folder: m.folder ?? null, label: m.label ?? "", by,
       centreP95: num(x["terrain:centre_p95"]), conformedP95: num(x["terrain:conformed_p95"]), conformedP99: num(x["terrain:conformed_p99"]),
       decksWithin05: num(x["terrain:decks_within_0.5m"]),
