@@ -16,6 +16,13 @@ const f = (v: number | null | undefined, d = 2) => {
   return /^-0\.?0*$/.test(t) ? t.slice(1) : t; // -0.001 -> "0.00", not "-0.00"
 };
 
+// a speed as the file gives it, rounded to 0.01 without trailing zeros ("13.89 m/s", not "13.8888888889 m/s"), and in
+// km/h too when the file gives m/s
+export const speedText = (v: number, unit: string) => {
+  const t = `${+v.toFixed(2)} ${unit}`;
+  return unit === "m/s" ? `${t} (${f(v * 3.6, 1)} km/h)` : t;
+};
+
 function Row({ k, v }: { k: string; v: React.ReactNode }) {
   return <div className="kv"><span>{k}</span><span>{v}</span></div>;
 }
@@ -94,7 +101,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad, onWhole
           <Row k="width" v={`${f(pr?.width)} m`} />
           <Row k="border t inner / outer" v={`${f(pr?.inner)} / ${f(pr?.outer)}`} />
           {lane && <Row k="links" v={`${lane.pred ?? "–"} → ${lane.succ ?? "–"}`} />}
-          {lSpeed && <Row k={`speed${of(lane!.speeds.length)}`} v={`max ${lSpeed.max} ${lSpeed.unit}${lSpeed.unit === "m/s" ? ` (${f(lSpeed.max * 3.6, 1)} km/h)` : ""}`} />}
+          {lSpeed && <Row k={`speed${of(lane!.speeds.length)}`} v={`max ${speedText(lSpeed.max, lSpeed.unit)}`} />}
           {height && <Row k={`height inner / outer${of(lane!.heights.length)}`} v={`${height.inner} / ${height.outer} m`} />}
           {mat && <Row k={`material${of(lane!.materials.length)}`}
             v={`${mat.surface || "–"} · friction ${f(mat.friction)} · roughness ${f(mat.roughness)}`} />}
@@ -113,7 +120,7 @@ export default function Inspector({ net, sel, onClose, onFlag, onGoRoad, onWhole
         {road && <Row k="successor" v={link(road.succ)} />}
         {road && <Row k="lane sections" v={road.sections.length} />}
         {road && <Row k="geometry" v={[...new Set(road.geoms.map((g) => g.kind))].join(", ")} />}
-        {speed && <Row k={`type${of(road!.types.length)}`} v={`${speed.type || "–"}${speed.speed !== null ? ` · speed ${speed.speed} ${speed.unit}` : ""}`} />}
+        {speed && <Row k={`type${of(road!.types.length)}`} v={`${speed.type || "–"}${speed.speed !== null ? ` · speed ${speedText(speed.speed, speed.unit)}` : ""}`} />}
         {road && <UserDataRows data={road.userData} />}
       </section>
       {junction && (
