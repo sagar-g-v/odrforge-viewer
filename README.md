@@ -7,6 +7,67 @@ findings (ASAM Quality Checker, OdrForge exact invariants) as map markers.
 Companion to [OdrForge](https://github.com/sagar-g-v/odrforge) (OSM → OpenDRIVE), but reads OpenDRIVE files from any
 tool (OpenDRIVE 1.4 – 1.8).
 
+![Zooming from the whole Munich city-centre network to one junction](docs/media/viewer-zoom-munich.gif)
+
+*Munich city centre (OdrForge `--target standard`, 3,667 roads, 391 junctions, 6,358 lanes, 87.8 km): from the whole
+network down to single lanes, road marks and driving directions.*
+
+## Workflow
+
+```mermaid
+flowchart LR
+  A["OpenDRIVE file<br/>(.xodr from OdrForge or any tool)"] --> B["Open: review server,<br/>file / drag and drop,<br/>or an OdrForge viewer page"]
+  B --> C["Look: 2D / 3D, map or satellite,<br/>terrain, OSM buildings"]
+  C --> D["Inspect: click a lane, junction,<br/>signal or object"]
+  D --> E["Review: place flags,<br/>load checker findings,<br/>compare two builds"]
+  E -->|flags.json next to the network| F["OdrForge fixes and replies<br/>(tools/inspect/flags.py)"]
+  F --> B
+```
+
+1. **Open** a network: from OdrForge's review server (flags are saved next to the `.xodr`), a local file, or an
+   OdrForge `--viz` page.
+2. **Look** at it in 2D or tilted 3D, over the OpenStreetMap map or satellite imagery, with terrain and buildings.
+3. **Inspect** any lane: its OpenDRIVE records at the clicked point (s / t, width, height, superelevation, speed,
+   material, links) and the OSM ways it came from.
+4. **Review**: mark what is wrong with a flag, load ASAM Quality Checker / OdrForge findings, or compare two builds of
+   the same area. The converter answers each flag in the same file, and the reply shows in the list.
+
+## In pictures
+
+All screenshots are of this viewer (dev server, headless Chrome, 1600 × 900) on OdrForge outputs of the test areas,
+loaded from the review server. Map data © OpenStreetMap contributors; imagery © Esri, Maxar, Earthstar Geographics.
+
+**A junction over satellite imagery.** Lanes, junction area (orange outline), stop lines, crosswalks and driving
+arrows drawn at the file's geometry over Esri World Imagery, Munich (Sonnenstraße / Karlsplatz).
+
+![Munich junction over satellite imagery](docs/media/munich-junction-satellite.png)
+
+**Lane inspector.** Clicking lane −5 of road 609 (Sonnenstraße) shows the lane's records at that point: s / t,
+surface height, superelevation, width, links, speed, material and road mark, the road's links and geometry, and the
+OSM ways it was built from (linked).
+
+![Lane inspector](docs/media/lane-inspector.png)
+
+**3D.** The Frankfurter Kreuz (A3 over A5) in tilted 3D over satellite imagery: the camera circles the
+interchange; bridges and ramps are drawn at the heights the file gives them.
+
+![Frankfurter Kreuz in 3D](docs/media/viewer-3d-frankfurter-kreuz.gif)
+
+| | |
+|---|---|
+| ![Frankfurter Kreuz, 3D](docs/media/frankfurter-kreuz-3d.png) | ![Stelvio Pass, 3D](docs/media/stelvio-3d-terrain.png) |
+| Frankfurter Kreuz, 3D over satellite imagery (1,860 roads, 242 junctions) | Stelvio Pass: the hairpins on the mountain terrain (273 roads, 11.5 km) |
+
+**Review flags.** The Flags tab lists every flag with its status (fixed / open / won't fix), the note it was placed
+with and the converter's reply; the numbered markers on the map are the same flags.
+
+![Review flags](docs/media/review-flags.png)
+
+**The whole network.** Munich city centre in 2D over the OpenStreetMap map: lanes, junction areas and signals for all
+3,667 roads.
+
+![Munich network](docs/media/munich-network.png)
+
 ## Run
 
 ```bash
