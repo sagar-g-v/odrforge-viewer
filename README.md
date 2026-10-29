@@ -144,3 +144,9 @@ npm run build && npm run e2e  # UI smoke test on the production build (Playwrigh
 ```
 
 Test fixtures contain OdrForge output derived from OpenStreetMap data (© OpenStreetMap contributors, ODbL 1.0).
+
+## License
+
+The code is licensed under the Apache License 2.0 (see [LICENSE](LICENSE)). Test fixtures and the pictures in
+`docs/media` show OdrForge output derived from OpenStreetMap data (© OpenStreetMap contributors, ODbL 1.0); the
+satellite imagery in the pictures is © Esri, Maxar, Earthstar Geographics.
